@@ -380,16 +380,17 @@ namespace Spectrum128kEmulator
         private Color GetSpectrumColor(int color, bool bright)
         {
             int intensity = bright ? 255 : 192;
+
             return color switch
             {
                 0 => Color.Black,
-                1 => Color.FromArgb(0, 0, intensity),
-                2 => Color.FromArgb(0, intensity, 0),
-                3 => Color.FromArgb(0, intensity, intensity),
-                4 => Color.FromArgb(intensity, 0, 0),
-                5 => Color.FromArgb(intensity, 0, intensity),
-                6 => Color.FromArgb(intensity, intensity, 0),
-                7 => Color.FromArgb(intensity, intensity, intensity),
+                1 => Color.FromArgb(0, 0, intensity),                 // Blue
+                2 => Color.FromArgb(intensity, 0, 0),                 // Red
+                3 => Color.FromArgb(intensity, 0, intensity),         // Magenta
+                4 => Color.FromArgb(0, intensity, 0),                 // Green
+                5 => Color.FromArgb(0, intensity, intensity),         // Cyan
+                6 => Color.FromArgb(intensity, intensity, 0),         // Yellow
+                7 => Color.FromArgb(intensity, intensity, intensity), // White
                 _ => Color.Black
             };
         }
