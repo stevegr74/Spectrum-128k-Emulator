@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Drawing;
 using System.Drawing.Imaging;
+using System.IO;
 using System.Linq;
 using System.Windows.Forms;
 using Spectrum128kEmulator.Z80;
@@ -36,8 +37,13 @@ namespace Spectrum128kEmulator
         private readonly PictureBox screenBox = new PictureBox
         {
             Dock = DockStyle.Fill,
-            SizeMode = PictureBoxSizeMode.StretchImage
+            SizeMode = PictureBoxSizeMode.StretchImage,
+            TabStop = true
         };
+
+        private readonly Dictionary<ushort, int> screenWriteLog = new Dictionary<ushort, int>();
+        private readonly Dictionary<ushort, int> aboveScreenWriteLog = new Dictionary<ushort, int>();
+        private int lastAboveWriteFrame = -1;
 
         public MainForm()
         {
@@ -49,19 +55,15 @@ namespace Spectrum128kEmulator
             for (int i = 0; i < 2; i++) romBanks[i] = new byte[16384];
 
             LoadRoms();
-            
-            // Initialize screen with default pattern (white paper, black ink, with border)
             InitializeScreenRam();
+            InitializeKeyboard();
+            ClearKeyboard();
 
             cpu.ReadMemory = ReadMemory;
             cpu.WriteMemory = WriteMemory;
             cpu.ReadPort = ReadPort;
             cpu.WritePort = WritePort;
-/*            cpu.Trace = s =>
-            {
-                if (frameCount < 50 || s.Contains("PC=0x00"))
-                    Console.WriteLine(s);
-            };*/
+
             cpu.Trace = s =>
             {
                 if (s.StartsWith("UNIMPL"))
@@ -75,21 +77,179 @@ namespace Spectrum128kEmulator
 
             Console.WriteLine("=== Emulator started - ROM loaded - CPU Reset ===");
         }
-        
+
+        private void InitializeKeyboard()
+        {
+            KeyPreview = true;
+            KeyDown += MainForm_KeyDown;
+            KeyUp += MainForm_KeyUp;
+            Deactivate += MainForm_Deactivate;
+            screenBox.MouseClick += (_, _) => screenBox.Focus();
+            Shown += (_, _) => screenBox.Focus();
+        }
+
+        private void MainForm_Deactivate(object? sender, EventArgs e)
+        {
+            ClearKeyboard();
+        }
+
+        private void ClearKeyboard()
+        {
+            for (int i = 0; i < 8; i++)
+                keyboardMatrix[i] = 0xFF;
+        }
+
+        private void SetKey(int row, int bit, bool pressed)
+        {
+            if (pressed)
+                keyboardMatrix[row] = (byte)(keyboardMatrix[row] & ~(1 << bit));
+            else
+                keyboardMatrix[row] = (byte)(keyboardMatrix[row] | (1 << bit));
+        }
+
+        private void MainForm_KeyDown(object? sender, KeyEventArgs e)
+        {
+            HandleKey(e.KeyCode, true);
+            e.Handled = true;
+            e.SuppressKeyPress = true;
+        }
+
+        private void MainForm_KeyUp(object? sender, KeyEventArgs e)
+        {
+            HandleKey(e.KeyCode, false);
+            e.Handled = true;
+            e.SuppressKeyPress = true;
+        }
+
+        private void HandleKey(Keys key, bool pressed)
+        {
+            switch (key)
+            {
+                // Row 0: CAPS SHIFT, Z, X, C, V
+                case Keys.ShiftKey:
+                case Keys.LShiftKey:
+                case Keys.RShiftKey:
+                    SetKey(0, 0, pressed); break;
+                case Keys.Z:
+                    SetKey(0, 1, pressed); break;
+                case Keys.X:
+                    SetKey(0, 2, pressed); break;
+                case Keys.C:
+                    SetKey(0, 3, pressed); break;
+                case Keys.V:
+                    SetKey(0, 4, pressed); break;
+
+                // Row 1: A, S, D, F, G
+                case Keys.A:
+                    SetKey(1, 0, pressed); break;
+                case Keys.S:
+                    SetKey(1, 1, pressed); break;
+                case Keys.D:
+                    SetKey(1, 2, pressed); break;
+                case Keys.F:
+                    SetKey(1, 3, pressed); break;
+                case Keys.G:
+                    SetKey(1, 4, pressed); break;
+
+                // Row 2: Q, W, E, R, T
+                case Keys.Q:
+                    SetKey(2, 0, pressed); break;
+                case Keys.W:
+                    SetKey(2, 1, pressed); break;
+                case Keys.E:
+                    SetKey(2, 2, pressed); break;
+                case Keys.R:
+                    SetKey(2, 3, pressed); break;
+                case Keys.T:
+                    SetKey(2, 4, pressed); break;
+
+                // Row 3: 1, 2, 3, 4, 5
+                case Keys.D1:
+                case Keys.NumPad1:
+                    SetKey(3, 0, pressed); break;
+                case Keys.D2:
+                case Keys.NumPad2:
+                    SetKey(3, 1, pressed); break;
+                case Keys.D3:
+                case Keys.NumPad3:
+                    SetKey(3, 2, pressed); break;
+                case Keys.D4:
+                case Keys.NumPad4:
+                    SetKey(3, 3, pressed); break;
+                case Keys.D5:
+                case Keys.NumPad5:
+                    SetKey(3, 4, pressed); break;
+
+                // Row 4: 0, 9, 8, 7, 6
+                case Keys.D0:
+                case Keys.NumPad0:
+                    SetKey(4, 0, pressed); break;
+                case Keys.D9:
+                case Keys.NumPad9:
+                    SetKey(4, 1, pressed); break;
+                case Keys.D8:
+                case Keys.NumPad8:
+                    SetKey(4, 2, pressed); break;
+                case Keys.D7:
+                case Keys.NumPad7:
+                    SetKey(4, 3, pressed); break;
+                case Keys.D6:
+                case Keys.NumPad6:
+                    SetKey(4, 4, pressed); break;
+
+                // Row 5: P, O, I, U, Y
+                case Keys.P:
+                    SetKey(5, 0, pressed); break;
+                case Keys.O:
+                    SetKey(5, 1, pressed); break;
+                case Keys.I:
+                    SetKey(5, 2, pressed); break;
+                case Keys.U:
+                    SetKey(5, 3, pressed); break;
+                case Keys.Y:
+                    SetKey(5, 4, pressed); break;
+
+                // Row 6: ENTER, L, K, J, H
+                case Keys.Enter:
+                    SetKey(6, 0, pressed); break;
+                case Keys.L:
+                    SetKey(6, 1, pressed); break;
+                case Keys.K:
+                    SetKey(6, 2, pressed); break;
+                case Keys.J:
+                    SetKey(6, 3, pressed); break;
+                case Keys.H:
+                    SetKey(6, 4, pressed); break;
+
+                // Row 7: SPACE, SYMBOL SHIFT, M, N, B
+                case Keys.Space:
+                    SetKey(7, 0, pressed); break;
+                case Keys.ControlKey:
+                case Keys.LControlKey:
+                case Keys.RControlKey:
+                case Keys.Menu:
+                case Keys.LMenu:
+                case Keys.RMenu:
+                    SetKey(7, 1, pressed); break;
+                case Keys.M:
+                    SetKey(7, 2, pressed); break;
+                case Keys.N:
+                    SetKey(7, 3, pressed); break;
+                case Keys.B:
+                    SetKey(7, 4, pressed); break;
+            }
+        }
+
         private void InitializeScreenRam()
         {
-            // Fill screen bank 5 with default attributes (white paper, black ink)
             byte[] screenRam = ramBanks[5];
-            
-            // Clear the pixel area with zeros
+
             for (int i = 0; i < 0x1800; i++)
                 screenRam[i] = 0;
-            
-            // Set attributes (0x1800-0x1AFF): white paper (0x38 = bits: 0|0 bright|ink(0)|paper(7))
-            // Ink=0 (black), Paper=7 (white)
+
             for (int i = 0x1800; i < 0x1B00; i++)
                 screenRam[i] = 0x38;
-            
+
             Console.WriteLine("Screen RAM initialized with white paper, black ink");
         }
 
@@ -134,13 +294,10 @@ namespace Spectrum128kEmulator
             return ramBanks[bank][addr & 0x3FFF];
         }
 
-        private Dictionary<ushort, int> screenWriteLog = new Dictionary<ushort, int>();
-        private Dictionary<ushort, int> aboveScreenWriteLog = new Dictionary<ushort, int>();
-        private int lastAboveWriteFrame = -1;
-
         private void WriteMemory(ushort addr, byte value)
         {
-            if (addr < 0x4000) return;
+            if (addr < 0x4000)
+                return;
 
             int bank = addr switch
             {
@@ -149,7 +306,6 @@ namespace Spectrum128kEmulator
                 _ => pagedRamBank
             };
 
-            // Track ALL writes to screen area (0x4000-0x5AFF) and above
             if (addr >= 0x4000 && addr < 0x5B00)
             {
                 if (!screenWriteLog.ContainsKey(addr))
@@ -180,8 +336,8 @@ namespace Spectrum128kEmulator
                         result &= keyboardMatrix[row];
                 }
 
-                // Keep upper bits high for now
-                result |= 0xE0;
+                // Bit 6 = EAR input, keep high for now.
+                result |= 0x40;
                 return result;
             }
 
@@ -234,13 +390,12 @@ namespace Spectrum128kEmulator
         {
             if (frameCount > 0)
                 cpu.InterruptPending = true;
-            
+
             cpu.ExecuteCycles(70908);
             frameCount++;
 
             if (frameCount == 80 || frameCount == 200 || frameCount == 300)
             {
-                // DEBUG: Show which banks have data
                 Console.WriteLine($"\n=== FRAME {frameCount} BANK CONTENT DEBUG ===");
                 for (int b = 0; b < 8; b++)
                 {
@@ -250,8 +405,7 @@ namespace Spectrum128kEmulator
                     for (int i = 0x1800; i < 0x1B00; i++) if (ramBanks[b][i] != 0x38) attrCount++;
                     if (pixelCount > 0 || attrCount > 0)
                     {
-                        // Get variety of pixel values
-                        var pixelvals = new System.Collections.Generic.Dictionary<byte, int>();
+                        var pixelvals = new Dictionary<byte, int>();
                         for (int i = 0; i < 0x1800; i++)
                         {
                             if (ramBanks[b][i] != 0)
@@ -272,16 +426,16 @@ namespace Spectrum128kEmulator
             {
                 int nonZeroPixels = 0, nonZeroAttrs = 0;
                 byte[] bank = ramBanks[screenBank];
-                
+
                 for (int i = 0; i < 0x1800; i++) if (bank[i] != 0) nonZeroPixels++;
                 for (int i = 0x1800; i < 0x1B00; i++) if (bank[i] != 0x38) nonZeroAttrs++;
-                
+
                 int screenWrites = screenWriteLog.Values.Sum();
                 int aboveWrites = aboveScreenWriteLog.Values.Sum();
                 string writeNote = lastAboveWriteFrame < frameCount - 20 ? " [WRITES STOPPED]" : "";
                 Console.WriteLine($"Frame {frameCount}: PC=0x{cpu.Regs.PC:X4} SP=0x{cpu.Regs.SP:X4} IFF1={cpu.IFF1} Pixels={nonZeroPixels} Attrs={nonZeroAttrs} | ScreenAddr writes={screenWrites} AboveAddr writes={aboveWrites} LastWrite@Frame{lastAboveWriteFrame}{writeNote}");
                 Console.Out.Flush();
-                
+
                 if (frameCount == 100)
                 {
                     if (screenWriteLog.Count > 0)
@@ -291,8 +445,10 @@ namespace Spectrum128kEmulator
                             Console.WriteLine($"  0x{kvp.Key:X4}: {kvp.Value} times");
                     }
                     else
+                    {
                         Console.WriteLine("NO writes to screen area (0x4000-0x5AFF)!");
-                    
+                    }
+
                     if (aboveScreenWriteLog.Count > 0)
                     {
                         Console.WriteLine("Writes above screen (0x5B00-0x5C00):");
@@ -302,7 +458,7 @@ namespace Spectrum128kEmulator
                     Console.Out.Flush();
                 }
             }
-            
+
             if (cpu.Regs.PC == 0x00E5 || cpu.Regs.PC == 0x1C7D || cpu.Regs.PC == 0x5B10 || cpu.Regs.PC == 0x02A1)
             {
                 Console.WriteLine($"TRACE Frame {frameCount}: PC=0x{cpu.Regs.PC:X4} SP=0x{cpu.Regs.SP:X4} IFF1={cpu.IFF1}");
@@ -317,7 +473,6 @@ namespace Spectrum128kEmulator
             using var g = Graphics.FromImage(screenBitmap);
             g.Clear(GetSpectrumColor(borderColor, false));
 
-            // Debug: Check what's in each bank
             if (frameCount == 80)
             {
                 Console.WriteLine($"\n[BANK DIAGNOSTICS Frame 80] Current screenBank={screenBank}");
@@ -331,8 +486,7 @@ namespace Spectrum128kEmulator
             }
 
             byte[] screenRam = ramBanks[screenBank];
-            
-            // Debug: log what we're rendering
+
             if (frameCount == 80)
             {
                 int nonZeroPixels = 0;
@@ -352,9 +506,9 @@ namespace Spectrum128kEmulator
                     int column = x >> 3;
 
                     int pixelOffset = ((charRow & 0x18) << 8) |
-                                    ((charRow & 0x07) << 5) |
-                                    (charLine << 8) |
-                                    column;
+                                      ((charRow & 0x07) << 5) |
+                                      (charLine << 8) |
+                                      column;
 
                     int attrOffset = 0x1800 + (charRow * 32) + column;
 
