@@ -105,6 +105,9 @@ namespace Spectrum128kEmulator
                 keyboardMatrix[row] = (byte)(keyboardMatrix[row] & ~(1 << bit));
             else
                 keyboardMatrix[row] = (byte)(keyboardMatrix[row] | (1 << bit));
+
+            Console.WriteLine($"KEY row={row} bit={bit} pressed={pressed} -> {string.Join(" ", keyboardMatrix.Select(b => $"0x{b:X2}"))}");
+            Console.Out.Flush();
         }
 
         private void MainForm_KeyDown(object? sender, KeyEventArgs e)
@@ -125,6 +128,31 @@ namespace Spectrum128kEmulator
         {
             switch (key)
             {
+                // PC arrow keys -> Spectrum cursor combos
+                case Keys.Left:
+                    SetKey(0, 0, pressed); // CAPS SHIFT
+                    SetKey(3, 4, pressed); // 5
+                    break;
+
+                case Keys.Down:
+                    SetKey(0, 0, pressed); // CAPS SHIFT
+                    SetKey(4, 4, pressed); // 6
+                    break;
+
+                case Keys.Up:
+                    SetKey(0, 0, pressed); // CAPS SHIFT
+                    SetKey(4, 3, pressed); // 7
+                    break;
+
+                case Keys.Right:
+                    SetKey(0, 0, pressed); // CAPS SHIFT
+                    SetKey(4, 2, pressed); // 8
+                    break;
+
+                case Keys.Back:
+                    SetKey(0, 0, pressed); // CAPS SHIFT
+                    SetKey(4, 0, pressed); // 0
+                    break;
                 // Row 0: CAPS SHIFT, Z, X, C, V
                 case Keys.ShiftKey:
                 case Keys.LShiftKey:
@@ -346,6 +374,40 @@ namespace Spectrum128kEmulator
 
         private void WritePort(ushort port, byte value)
         {
+            // ULA / FE first
+            if ((port & 0x0001) == 0)
+            {
+                borderColor = value & 0x07;
+                return;
+            }
+
+            // 128K paging: only ports with A15=0, A1=0, and low byte FD
+            if ((port & 0x8002) == 0 && (port & 0x00FF) == 0xFD)
+            {
+                if (pagingLocked)
+                    return;
+
+                pagedRamBank = value & 0x07;
+                screenBank = ((value & 0x08) != 0) ? 7 : 5;
+                currentRomBank = ((value & 0x10) != 0) ? 1 : 0;
+
+                if ((value & 0x20) != 0)
+                    pagingLocked = true;
+
+                byte newPaging = (byte)(value & 0x3F);
+                if (newPaging != last7ffdValue)
+                {
+                    last7ffdValue = newPaging;
+                    Console.WriteLine($"[7FFD] PC=0x{cpu.Regs.PC:X4} Frame{frameCount} RAM={pagedRamBank} SCREEN={screenBank} ROM={currentRomBank}");
+                    Console.Out.Flush();
+                }
+
+                return;
+            }
+        }
+
+        /*private void WritePort(ushort port, byte value)
+        {
             // 128K paging first
             if ((port & 0x8002) == 0)
             {
@@ -384,7 +446,7 @@ namespace Spectrum128kEmulator
 
                 return;
             }
-        }
+        }*/
 
         private void FrameTimer_Tick(object? sender, EventArgs e)
         {
