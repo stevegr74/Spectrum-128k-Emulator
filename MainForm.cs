@@ -387,6 +387,10 @@ namespace Spectrum128kEmulator
                 if (pagingLocked)
                     return;
 
+                int oldRam = pagedRamBank;
+                int oldScreen = screenBank;
+                int oldRom = currentRomBank;
+
                 pagedRamBank = value & 0x07;
                 screenBank = ((value & 0x08) != 0) ? 7 : 5;
                 currentRomBank = ((value & 0x10) != 0) ? 1 : 0;
@@ -398,55 +402,15 @@ namespace Spectrum128kEmulator
                 if (newPaging != last7ffdValue)
                 {
                     last7ffdValue = newPaging;
-                    Console.WriteLine($"[7FFD] PC=0x{cpu.Regs.PC:X4} Frame{frameCount} RAM={pagedRamBank} SCREEN={screenBank} ROM={currentRomBank}");
+                    Console.WriteLine(
+                        $"[7FFD] PC=0x{cpu.Regs.PC:X4} Frame={frameCount} " +
+                        $"RAM {oldRam}->{pagedRamBank} SCREEN {oldScreen}->{screenBank} ROM {oldRom}->{currentRomBank} VAL=0x{value:X2}");
                     Console.Out.Flush();
                 }
 
                 return;
             }
         }
-
-        /*private void WritePort(ushort port, byte value)
-        {
-            // 128K paging first
-            if ((port & 0x8002) == 0)
-            {
-                if (!pagingLocked)
-                {
-                    pagedRamBank = value & 0x07;
-                    screenBank = ((value & 0x08) != 0) ? 7 : 5;
-                    currentRomBank = ((value & 0x10) != 0) ? 1 : 0;
-
-                    if ((value & 0x20) != 0)
-                        pagingLocked = true;
-
-                    byte newPaging = (byte)(value & 0x3F);
-                    if (newPaging != last7ffdValue)
-                    {
-                        last7ffdValue = newPaging;
-                        Console.WriteLine(
-                            $"[7FFD] PC=0x{cpu.Regs.PC:X4} Frame{frameCount} RAM={pagedRamBank} SCREEN={screenBank} ROM={currentRomBank}");
-                        Console.Out.Flush();
-                    }
-                }
-
-                return;
-            }
-
-            // ULA / FE family
-            if ((port & 0x0001) == 0)
-            {
-                borderColor = value & 0x07;
-
-                if (frameCount < 10)
-                {
-                    Console.WriteLine($"[FE] Border={borderColor}");
-                    Console.Out.Flush();
-                }
-
-                return;
-            }
-        }*/
 
         private void FrameTimer_Tick(object? sender, EventArgs e)
         {
