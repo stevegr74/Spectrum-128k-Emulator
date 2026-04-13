@@ -90,7 +90,9 @@ Manual Harness
 
 A simple headless harness is included for debugging:
 
+```bash
 dotnet run --project Spectrum128kEmulator.ManualHarness
+```
 
 This runs frames without UI and logs CPU/machine state.
 
