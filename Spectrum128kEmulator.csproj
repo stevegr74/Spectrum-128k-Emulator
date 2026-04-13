@@ -1,4 +1,4 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
     <OutputType>Exe</OutputType>
@@ -12,6 +12,15 @@
     <Content Include="ROMs\**">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
+  </ItemGroup>
+
+  <ItemGroup>
+    <Compile Remove="Spectrum128kEmulator.Tests\**\*.cs" />
+    <Compile Remove="Spectrum128kEmulator.ManualHarness\**\*.cs" />
+    <EmbeddedResource Remove="Spectrum128kEmulator.Tests\**\*" />
+    <EmbeddedResource Remove="Spectrum128kEmulator.ManualHarness\**\*" />
+    <None Remove="Spectrum128kEmulator.Tests\**\*" />
+    <None Remove="Spectrum128kEmulator.ManualHarness\**\*" />
   </ItemGroup>
 
 </Project>
