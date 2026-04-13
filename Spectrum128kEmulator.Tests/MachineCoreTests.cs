@@ -72,5 +72,34 @@ namespace Spectrum128kEmulator.Tests
                 Directory.Delete(romFolder, true);
             }
         }
+
+        [Fact]
+        public void FlashPhase_Toggles_Every_16_Frames()
+        {
+            string romFolder = CreateTempRoms();
+            try
+            {
+                var machine = new Spectrum128Machine(romFolder);
+
+                Assert.False(machine.FlashPhase);
+
+                for (int i = 0; i < 15; i++)
+                    machine.ExecuteFrame();
+
+                Assert.False(machine.FlashPhase);
+
+                machine.ExecuteFrame();
+                Assert.True(machine.FlashPhase);
+
+                for (int i = 0; i < 16; i++)
+                    machine.ExecuteFrame();
+
+                Assert.False(machine.FlashPhase);
+            }
+            finally
+            {
+                Directory.Delete(romFolder, true);
+            }
+        }
     }
 }
