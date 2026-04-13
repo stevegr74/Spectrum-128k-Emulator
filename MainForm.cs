@@ -225,7 +225,7 @@ namespace Spectrum128kEmulator
                 Console.Out.Flush();
             }
 
-            SpectrumRenderer.RenderToBitmap(screenBitmap, machine.GetScreenBankData(), machine.BorderColor);
+            SpectrumRenderer.RenderToBitmap(screenBitmap, machine.GetScreenBankData(), machine.BorderColor, machine.FlashPhase);
             screenBox.Image = screenBitmap;
         }
     }

@@ -58,6 +58,7 @@ namespace Spectrum128kEmulator
         public int ScreenBank { get; private set; } = 5;
         public int BorderColor { get; private set; } = 1;
         public int FrameCount { get; private set; }
+        public bool FlashPhase => ((FrameCount / 16) & 1) != 0;
 
         public Dictionary<ushort, int> ScreenWriteLog { get; } = new Dictionary<ushort, int>();
         public Dictionary<ushort, int> AboveScreenWriteLog { get; } = new Dictionary<ushort, int>();
