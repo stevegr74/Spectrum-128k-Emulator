@@ -74,7 +74,9 @@ Tests
 
 Run all tests:
 
+```bash
 dotnet test
+```
 
 Coverage includes:
 
