@@ -234,6 +234,21 @@ namespace Spectrum128kEmulator.Z80
             }
         }
 
+        public void RestoreInterruptState(bool iff1, bool iff2, int interruptMode)
+        {
+            IFF1 = iff1;
+            IFF2 = iff2;
+            this.interruptMode = interruptMode & 0x03;
+            eiDelay = 0;
+        }
+
+        public void ClearSnapshotExecutionState()
+        {
+            halted = false;
+            InterruptPending = false;
+            TStates = 0;
+        }
+
         // =========================================================
         // Opcode tables
         // =========================================================
