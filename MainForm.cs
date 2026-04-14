@@ -5,6 +5,8 @@ namespace Spectrum128kEmulator
 {
     public partial class MainForm : Form
     {
+        private int framesRenderedThisSecond;
+        private long lastStatsTicks;
         private readonly System.Diagnostics.Stopwatch frameClock = System.Diagnostics.Stopwatch.StartNew();
         private long nextFrameTicks;
         private readonly double ticksPerFrame = (double)System.Diagnostics.Stopwatch.Frequency / 50.0;
@@ -17,6 +19,7 @@ namespace Spectrum128kEmulator
             SizeMode = PictureBoxSizeMode.StretchImage,
             TabStop = true
         };
+        private readonly Label fpsLabel = new Label();
 
         private readonly Spectrum128Machine machine;
 
@@ -25,6 +28,15 @@ namespace Spectrum128kEmulator
             Text = "Spectrum 128K Emulator";
             ClientSize = new Size(512, 384);
             Controls.Add(screenBox);
+
+            fpsLabel.Text = "FPS=0";
+            fpsLabel.AutoSize = true;
+            fpsLabel.ForeColor = Color.White;
+            fpsLabel.BackColor = Color.Black;
+            fpsLabel.Location = new Point(5, 5);
+
+            Controls.Add(fpsLabel);
+            fpsLabel.BringToFront();
 
             string romFolder = Path.Combine(AppContext.BaseDirectory, "ROMs");
             machine = new Spectrum128Machine(romFolder);
@@ -40,7 +52,7 @@ namespace Spectrum128kEmulator
             nextFrameTicks = frameClock.ElapsedTicks + (long)ticksPerFrame;
             frameTimer.Tick += FrameTimer_Tick;
             frameTimer.Start();
-
+            lastStatsTicks = frameClock.ElapsedTicks;
             Console.WriteLine("=== Emulator started - ROM loaded - CPU Reset ===");
         }
 
@@ -237,7 +249,20 @@ namespace Spectrum128kEmulator
                     machine.FlashPhase);
 
                 screenBox.Image = screenBitmap;
+
+                framesRenderedThisSecond++;
             }
+
+            long nowTicks = frameClock.ElapsedTicks;
+            long ticksPerSecond = System.Diagnostics.Stopwatch.Frequency;
+
+            if (nowTicks - lastStatsTicks >= ticksPerSecond)
+            {
+                fpsLabel.Text = $"FPS={framesRenderedThisSecond} Frame={machine.FrameCount}";
+
+                framesRenderedThisSecond = 0;
+                lastStatsTicks = nowTicks;
+            }     
 
 #if EXTENDED_DEBUG
             if (machine.FrameCount % 20 == 0)
