@@ -1,11 +1,16 @@
+//#define EXTENDED_DEBUG
 using System.Drawing.Imaging;
 
 namespace Spectrum128kEmulator
 {
     public partial class MainForm : Form
     {
+        private readonly System.Diagnostics.Stopwatch frameClock = System.Diagnostics.Stopwatch.StartNew();
+        private long nextFrameTicks;
+        private readonly double ticksPerFrame = (double)System.Diagnostics.Stopwatch.Frequency / 50.0;
+        private const int MaxCatchUpFramesPerTick = 3;
         private readonly Bitmap screenBitmap = new Bitmap(Spectrum128Machine.ScreenWidth, Spectrum128Machine.ScreenHeight, PixelFormat.Format32bppArgb);
-        private readonly System.Windows.Forms.Timer frameTimer = new System.Windows.Forms.Timer { Interval = 20 };
+        private readonly System.Windows.Forms.Timer frameTimer = new System.Windows.Forms.Timer { Interval = 5 };
         private readonly PictureBox screenBox = new PictureBox
         {
             Dock = DockStyle.Fill,
@@ -17,7 +22,7 @@ namespace Spectrum128kEmulator
 
         public MainForm()
         {
-            Text = "Spectrum 128K Emulator - Pure .NET";
+            Text = "Spectrum 128K Emulator";
             ClientSize = new Size(512, 384);
             Controls.Add(screenBox);
 
@@ -31,8 +36,8 @@ namespace Spectrum128kEmulator
                     Console.Out.Flush();
                 }
             };
-
             InitializeKeyboard();
+            nextFrameTicks = frameClock.ElapsedTicks + (long)ticksPerFrame;
             frameTimer.Tick += FrameTimer_Tick;
             frameTimer.Start();
 
@@ -206,8 +211,35 @@ namespace Spectrum128kEmulator
 
         private void FrameTimer_Tick(object? sender, EventArgs e)
         {
-            machine.ExecuteFrame();
+            int executedFrames = 0;
+            long now = frameClock.ElapsedTicks;
 
+            while (now >= nextFrameTicks && executedFrames < MaxCatchUpFramesPerTick)
+            {
+                machine.ExecuteFrame();
+                nextFrameTicks += (long)ticksPerFrame;
+                executedFrames++;
+                now = frameClock.ElapsedTicks;
+            }
+
+            // If we fell badly behind, resync gently instead of spiralling forever.
+            if (executedFrames == MaxCatchUpFramesPerTick && now >= nextFrameTicks)
+            {
+                nextFrameTicks = now + (long)ticksPerFrame;
+            }
+
+            if (executedFrames > 0)
+            {
+                SpectrumRenderer.RenderToBitmap(
+                    screenBitmap,
+                    machine.GetScreenBankData(),
+                    machine.BorderColor,
+                    machine.FlashPhase);
+
+                screenBox.Image = screenBitmap;
+            }
+
+#if EXTENDED_DEBUG
             if (machine.FrameCount % 20 == 0)
             {
                 byte[] bank = machine.GetScreenBankData();
@@ -224,9 +256,7 @@ namespace Spectrum128kEmulator
                     $"Frame {machine.FrameCount}: PC=0x{machine.Cpu.Regs.PC:X4} SP=0x{machine.Cpu.Regs.SP:X4} IFF1={machine.Cpu.IFF1} Pixels={nonZeroPixels} Attrs={nonZeroAttrs} | ScreenAddr writes={screenWrites} AboveAddr writes={aboveWrites} LastWrite@Frame{machine.LastAboveWriteFrame}{writeNote}");
                 Console.Out.Flush();
             }
-
-            SpectrumRenderer.RenderToBitmap(screenBitmap, machine.GetScreenBankData(), machine.BorderColor, machine.FlashPhase);
-            screenBox.Image = screenBitmap;
-        }
+#endif
+        }        
     }
 }

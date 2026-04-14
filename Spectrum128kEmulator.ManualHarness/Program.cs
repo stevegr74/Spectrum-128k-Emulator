@@ -36,4 +36,14 @@ for (int frame = 0; frame < 120; frame++)
     }
 }
 
+var hostClock = System.Diagnostics.Stopwatch.StartNew();
+
+for (int frame = 0; frame < 250; frame++)
+{
+    machine.ExecuteFrame();
+}
+
+hostClock.Stop();
+Console.WriteLine($"250 frames executed in {hostClock.ElapsedMilliseconds} ms");
+
 Console.WriteLine("Manual smoke harness complete.");
