@@ -101,5 +101,26 @@ namespace Spectrum128kEmulator.Tests
                 Directory.Delete(romFolder, true);
             }
         }
+
+        [Fact]
+        public void ExecuteFrame_Advances_At_Least_One_Frame_Of_TStates()
+        {
+            string romFolder = CreateTempRoms();
+            try
+            {
+                var machine = new Spectrum128Machine(romFolder);
+                ulong before = machine.Cpu.TStates;
+
+                machine.ExecuteFrame();
+
+                ulong after = machine.Cpu.TStates;
+
+                Assert.InRange(after - before, (ulong)Spectrum128Machine.FrameTStates128, (ulong)Spectrum128Machine.FrameTStates128 + 32UL);
+            }
+            finally
+            {
+                Directory.Delete(romFolder, true);
+            }
+        }        
     }
 }

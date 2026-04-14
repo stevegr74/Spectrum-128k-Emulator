@@ -84,9 +84,7 @@ namespace Spectrum128kEmulator
 
         public void ExecuteFrame()
         {
-            if (FrameCount > 0)
-                cpu.InterruptPending = true;
-
+            TriggerFrameInterrupt();
             cpu.ExecuteCycles(FrameTStates128);
             FrameCount++;
         }
@@ -267,5 +265,10 @@ namespace Spectrum128kEmulator
                 }
             }
         }
+
+        private void TriggerFrameInterrupt()
+        {
+            cpu.InterruptPending = true;
+        }        
     }
 }
