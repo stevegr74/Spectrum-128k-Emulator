@@ -5,10 +5,10 @@ namespace Spectrum128kEmulator
 {
     public partial class MainForm : Form
     {
-        private const bool LogFrameDiagnostics = false;
-        private const bool LogUnimplementedOpcodes = true;
-        private const bool LogPagingWrites = false;
-        private const bool LogKeyEvents = false;
+        private static readonly bool LogFrameDiagnostics = false;
+        private static readonly bool LogUnimplementedOpcodes = true;
+        private static readonly bool LogPagingWrites = false;
+        private static readonly bool LogKeyEvents = false;
 
         private int framesRenderedThisSecond;
         private long lastStatsTicks;

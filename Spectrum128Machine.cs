@@ -232,6 +232,34 @@ namespace Spectrum128kEmulator
             return 0xFF;
         }
 
+        public void ConfigureFor48kSnapshot(int borderColor)
+        {
+            // Standard 48K layout inside the current 128K machine model.
+            PagedRamBank = 0;
+            ScreenBank = 5;
+            CurrentRomBank = 1; // Use the 48 BASIC ROM in your current setup.
+            PagingLocked = true;
+            BorderColor = borderColor & 0x07;
+            FrameCount = 0;
+        }
+
+        public void Load48kSnapshotRam(byte[] ram48)
+        {
+            if (ram48 == null)
+                throw new ArgumentNullException(nameof(ram48));
+            if (ram48.Length != 48 * 1024)
+                throw new ArgumentException("48K snapshot RAM must be exactly 49152 bytes.", nameof(ram48));
+
+            // 0x4000-0x7FFF -> bank 5
+            Buffer.BlockCopy(ram48, 0, ramBanks[5], 0, 0x4000);
+
+            // 0x8000-0xBFFF -> bank 2
+            Buffer.BlockCopy(ram48, 0x4000, ramBanks[2], 0, 0x4000);
+
+            // 0xC000-0xFFFF -> bank 0 in 48K mode
+            Buffer.BlockCopy(ram48, 0x8000, ramBanks[0], 0, 0x4000);
+        }
+
         private void WritePort(ushort port, byte value)
         {
             if ((port & 0x0001) == 0)
