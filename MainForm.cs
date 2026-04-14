@@ -5,6 +5,11 @@ namespace Spectrum128kEmulator
 {
     public partial class MainForm : Form
     {
+        private const bool LogFrameDiagnostics = false;
+        private const bool LogUnimplementedOpcodes = true;
+        private const bool LogPagingWrites = false;
+        private const bool LogKeyEvents = false;
+
         private int framesRenderedThisSecond;
         private long lastStatsTicks;
         private readonly System.Diagnostics.Stopwatch frameClock = System.Diagnostics.Stopwatch.StartNew();
@@ -42,7 +47,8 @@ namespace Spectrum128kEmulator
             machine = new Spectrum128Machine(romFolder);
             machine.Trace = s =>
             {
-                if (s.StartsWith("UNIMPL") || s.StartsWith("[7FFD]"))
+                if ((LogUnimplementedOpcodes && s.StartsWith("UNIMPL")) ||
+                    (LogPagingWrites && s.StartsWith("[7FFD]")))
                 {
                     Console.WriteLine(s);
                     Console.Out.Flush();
@@ -216,9 +222,12 @@ namespace Spectrum128kEmulator
                     machine.SetKey(7, 4, pressed); break;
             }
 
-            Console.WriteLine(
-                $"KEYEVENT key={key} pressed={pressed} PC=0x{machine.Cpu.Regs.PC:X4} SP=0x{machine.Cpu.Regs.SP:X4} IFF1={machine.Cpu.IFF1} MATRIX={string.Join(" ", machine.GetKeyboardMatrixCopy().Select(b => $"0x{b:X2}"))}");
-            Console.Out.Flush();
+            if (LogKeyEvents)
+            {
+                Console.WriteLine(
+                    $"KEYEVENT key={key} pressed={pressed} PC=0x{machine.Cpu.Regs.PC:X4} SP=0x{machine.Cpu.Regs.SP:X4} IFF1={machine.Cpu.IFF1} MATRIX={string.Join(" ", machine.GetKeyboardMatrixCopy().Select(b => $"0x{b:X2}"))}");
+                Console.Out.Flush();
+            }
         }
 
         private void FrameTimer_Tick(object? sender, EventArgs e)
@@ -264,24 +273,30 @@ namespace Spectrum128kEmulator
                 lastStatsTicks = nowTicks;
             }     
 
-#if EXTENDED_DEBUG
-            if (machine.FrameCount % 20 == 0)
+            if (LogFrameDiagnostics && machine.FrameCount % 20 == 0)
             {
                 byte[] bank = machine.GetScreenBankData();
                 int nonZeroPixels = 0;
                 int nonZeroAttrs = 0;
-                for (int i = 0; i < 0x1800; i++) if (bank[i] != 0) nonZeroPixels++;
-                for (int i = 0x1800; i < 0x1B00; i++) if (bank[i] != 0x38) nonZeroAttrs++;
+
+                for (int i = 0; i < 0x1800; i++)
+                    if (bank[i] != 0) nonZeroPixels++;
+
+                for (int i = 0x1800; i < 0x1B00; i++)
+                    if (bank[i] != 0x38) nonZeroAttrs++;
 
                 int screenWrites = machine.ScreenWriteLog.Values.Sum();
                 int aboveWrites = machine.AboveScreenWriteLog.Values.Sum();
-                string writeNote = machine.LastAboveWriteFrame < machine.FrameCount - 20 ? " [WRITES STOPPED]" : string.Empty;
+
+                string writeNote = machine.LastAboveWriteFrame < machine.FrameCount - 20
+                    ? " [WRITES STOPPED]"
+                    : string.Empty;
 
                 Console.WriteLine(
                     $"Frame {machine.FrameCount}: PC=0x{machine.Cpu.Regs.PC:X4} SP=0x{machine.Cpu.Regs.SP:X4} IFF1={machine.Cpu.IFF1} Pixels={nonZeroPixels} Attrs={nonZeroAttrs} | ScreenAddr writes={screenWrites} AboveAddr writes={aboveWrites} LastWrite@Frame{machine.LastAboveWriteFrame}{writeNote}");
+
                 Console.Out.Flush();
             }
-#endif
         }        
     }
 }
