@@ -93,6 +93,12 @@ namespace Spectrum128kEmulator
 
         private void HandleKey(Keys key, bool pressed)
         {
+            if (pressed && key == Keys.F9)
+            {
+                LoadSnapshotFromDialog();
+                return;
+            }
+
             switch (key)
             {
                 case Keys.Left:
@@ -227,6 +233,44 @@ namespace Spectrum128kEmulator
                 Console.WriteLine(
                     $"KEYEVENT key={key} pressed={pressed} PC=0x{machine.Cpu.Regs.PC:X4} SP=0x{machine.Cpu.Regs.SP:X4} IFF1={machine.Cpu.IFF1} MATRIX={string.Join(" ", machine.GetKeyboardMatrixCopy().Select(b => $"0x{b:X2}"))}");
                 Console.Out.Flush();
+            }
+        }
+
+        private void LoadSnapshotFromDialog()
+        {
+            using var dialog = new OpenFileDialog
+            {
+                Title = "Load 48K .sna Snapshot",
+                Filter = "Spectrum snapshots (*.sna)|*.sna|All files (*.*)|*.*",
+                CheckFileExists = true,
+                Multiselect = false
+            };
+
+            if (dialog.ShowDialog(this) != DialogResult.OK)
+                return;
+
+            try
+            {
+                SnapshotLoader.LoadSna48k(machine, dialog.FileName);
+
+                SpectrumRenderer.RenderToBitmap(
+                    screenBitmap,
+                    machine.GetScreenBankData(),
+                    machine.BorderColor,
+                    machine.FlashPhase);
+
+                screenBox.Image = screenBitmap;
+                fpsLabel.Text = $"Loaded: {Path.GetFileName(dialog.FileName)}";
+                screenBox.Focus();
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show(
+                    this,
+                    $"Failed to load snapshot:\n{ex.Message}",
+                    "Snapshot Load Error",
+                    MessageBoxButtons.OK,
+                    MessageBoxIcon.Error);
             }
         }
 
