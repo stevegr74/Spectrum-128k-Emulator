@@ -15,6 +15,8 @@ This project focuses on clean architecture, correctness, and incremental develop
 - Screen rendering (256x192)
 - Attribute handling (INK, PAPER, BRIGHT, FLASH)
 - Frame-based FLASH implementation
+- Stopwatch-based frame pacing (50Hz target)
+- Per-frame interrupt scheduling
 - Headless machine core (testable)
 - Renderer separated from emulation
 - Manual smoke harness for debugging
@@ -23,7 +25,8 @@ This project focuses on clean architecture, correctness, and incremental develop
 
 ## Current Status
 
-**Milestone 2 Complete**
+**Milestone 2 Complete**  
+**Milestone 3 In Progress**
 
 - Emulator boots into 128 menu
 - Menu navigation works
@@ -31,6 +34,8 @@ This project focuses on clean architecture, correctness, and incremental develop
 - BASIC programs run correctly
 - FLASH rendering behaves correctly
 - Rendering optimized using `LockBits`
+- Stable frame pacing implemented (~50 FPS)
+- Per-frame interrupt cadence in place
 - Regression tests in place (CPU, machine, renderer, ROM boot)
 
 ---
@@ -64,13 +69,18 @@ dotnet run
 
 ROM files must be placed in:
 
+```
 /ROMs
+```
 
 Expected:
 
-128K ROM
-48K ROM
-Tests
+- 128K ROM
+- 48K ROM
+
+---
+
+## Tests
 
 Run all tests:
 
@@ -80,13 +90,16 @@ dotnet test
 
 Coverage includes:
 
-CPU instruction behaviour
-Memory paging
-Keyboard matrix
-FLASH timing
-Renderer correctness
-ROM boot smoke test
-Manual Harness
+- CPU instruction behaviour
+- Memory paging
+- Keyboard matrix
+- FLASH timing
+- Renderer correctness
+- ROM boot smoke test
+
+---
+
+## Manual Harness
 
 A simple headless harness is included for debugging:
 
@@ -96,57 +109,70 @@ dotnet run --project Spectrum128kEmulator.ManualHarness
 
 This runs frames without UI and logs CPU/machine state.
 
+> Note: The manual harness includes verbose debug logging and is intended for debugging, not performance measurement.
+
 ---
 
 ## Roadmap
-Milestone 1 — Input & Menu ✅
-Keyboard matrix
-128 menu navigation
-Enter BASIC
 
-Milestone 2 — Rendering Fidelity ✅
-FLASH implementation
-Renderer cleanup and optimisation
+### Milestone 1 — Input & Menu ✅
+- Keyboard matrix
+- 128 menu navigation
+- Enter BASIC
 
-Milestone 3 — Timing (Next)
-Stable frame pacing (50Hz)
-Accurate interrupt cadence
-Reduced host timing drift
+### Milestone 2 — Rendering Fidelity ✅
+- FLASH implementation
+- Renderer cleanup and optimisation
 
-Milestone 4 — Snapshots
-Load .z80 and .sna
+### Milestone 3 — Timing (In Progress)
+- Stable frame pacing (50Hz)
+- Per-frame interrupt cadence
+- Ongoing refinement of host timing behaviour
 
-Milestone 5 — Tape Loading
-Basic .tap support
-ROM loader compatibility
+### Milestone 4 — Snapshots
+- Load `.z80` and `.sna`
 
-Milestone 6 — Audio
-AY-3-8912 register emulation
-Basic sound output
+### Milestone 5 — Tape Loading
+- Basic `.tap` support
+- ROM loader compatibility
 
-Future Improvements (Stretch Goals)
-ULA contention timing
-Scanline-accurate rendering
-Border effects
-Demo compatibility improvements
-Design Principles
-Standard library only (no external dependencies)
-Incremental development (no large rewrites)
-Behaviour verified with tests
-Clear separation between emulation and UI
-Contributing
+### Milestone 6 — Audio
+- AY-3-8912 register emulation
+- Basic sound output
 
 ---
+
+## Future Improvements (Stretch Goals)
+
+- ULA contention timing
+- Scanline-accurate rendering
+- Border effects
+- Demo compatibility improvements
+
+---
+
+## Design Principles
+
+- Standard library only (no external dependencies)
+- Incremental development (no large rewrites)
+- Behaviour verified with tests
+- Clear separation between emulation and UI
+
+---
+
+## Contributing
 
 This is primarily a personal project for learning and development.
 
 Contributions are welcome but limited to:
 
-Bug fixes
-Fixes must include tests
+- Bug fixes
+- Fixes must include tests
 
-See CONTRIBUTING.md for full details.
+See `CONTRIBUTING.md` for full details.
 
-License
+---
+
+## License
 
 MIT
