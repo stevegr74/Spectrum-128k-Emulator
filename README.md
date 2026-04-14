@@ -96,26 +96,34 @@ dotnet run --project Spectrum128kEmulator.ManualHarness
 
 This runs frames without UI and logs CPU/machine state.
 
-Roadmap
+---
+
+## Roadmap
 Milestone 1 — Input & Menu ✅
 Keyboard matrix
 128 menu navigation
 Enter BASIC
+
 Milestone 2 — Rendering Fidelity ✅
 FLASH implementation
 Renderer cleanup and optimisation
+
 Milestone 3 — Timing (Next)
 Stable frame pacing (50Hz)
 Accurate interrupt cadence
 Reduced host timing drift
+
 Milestone 4 — Snapshots
 Load .z80 and .sna
+
 Milestone 5 — Tape Loading
 Basic .tap support
 ROM loader compatibility
+
 Milestone 6 — Audio
 AY-3-8912 register emulation
 Basic sound output
+
 Future Improvements (Stretch Goals)
 ULA contention timing
 Scanline-accurate rendering
@@ -127,6 +135,8 @@ Incremental development (no large rewrites)
 Behaviour verified with tests
 Clear separation between emulation and UI
 Contributing
+
+---
 
 This is primarily a personal project for learning and development.
 
