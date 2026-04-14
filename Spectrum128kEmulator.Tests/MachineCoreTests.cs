@@ -121,6 +121,25 @@ namespace Spectrum128kEmulator.Tests
             {
                 Directory.Delete(romFolder, true);
             }
-        }        
+        }
+
+        [Fact]
+        public void ExecuteFrame_Advances_FrameCount_Predictably()
+        {
+            string romFolder = CreateTempRoms();
+            try
+            {
+                var machine = new Spectrum128Machine(romFolder);
+
+                for (int i = 0; i < 10; i++)
+                    machine.ExecuteFrame();
+
+                Assert.Equal(10, machine.FrameCount);
+            }
+            finally
+            {
+                Directory.Delete(romFolder, true);
+            }
+        }
     }
 }
