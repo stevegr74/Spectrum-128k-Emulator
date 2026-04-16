@@ -31,13 +31,17 @@ namespace Spectrum128kEmulator.Z80
 
         private readonly Queue<string> recentTrace = new Queue<string>();
         private bool reportedHighRamEntry = false;
+        private bool flagsChangedLastInstruction = false;
+        private byte lastFlagsBeforeInstruction = 0;
 
         private enum Flag : byte
         {
             C = 0,
             N = 1,
             P = 2,
+            F3 = 3,
             H = 4,
+            F5 = 5,
             Z = 6,
             S = 7
         }
@@ -90,6 +94,8 @@ namespace Spectrum128kEmulator.Z80
             InterruptPending = false;
             IFF1 = false;
             IFF2 = false;
+            flagsChangedLastInstruction = false;
+            lastFlagsBeforeInstruction = 0;
 
             eiDelay = 0;
             interruptMode = 1;
@@ -155,6 +161,7 @@ namespace Spectrum128kEmulator.Z80
             ushort spBefore = Regs.SP;
             ushort ixBefore = Regs.IX;
             ushort iyBefore = Regs.IY;
+            byte fBefore = Regs.F;
 
             byte op = FetchByte();
 
@@ -232,6 +239,9 @@ namespace Spectrum128kEmulator.Z80
                     IFF2 = true;
                 }
             }
+
+            lastFlagsBeforeInstruction = fBefore;
+            flagsChangedLastInstruction = Regs.F != fBefore;
         }
 
         public void RestoreInterruptState(bool iff1, bool iff2, int interruptMode)
@@ -247,6 +257,8 @@ namespace Spectrum128kEmulator.Z80
             halted = false;
             InterruptPending = false;
             TStates = 0;
+            flagsChangedLastInstruction = false;
+            lastFlagsBeforeInstruction = 0;            
         }
 
         // =========================================================
@@ -274,6 +286,7 @@ namespace Spectrum128kEmulator.Z80
                 SetFlag(Flag.C, carry);
                 SetFlag(Flag.H, false);
                 SetFlag(Flag.N, false);
+                CopyUndocumentedFlagsFrom(Regs.A);                
                 TStates += 4;
             };
 
@@ -284,6 +297,7 @@ namespace Spectrum128kEmulator.Z80
                 SetFlag(Flag.C, carry);
                 SetFlag(Flag.H, false);
                 SetFlag(Flag.N, false);
+                CopyUndocumentedFlagsFrom(Regs.A);
                 TStates += 4;
             };
 
@@ -295,6 +309,7 @@ namespace Spectrum128kEmulator.Z80
                 SetFlag(Flag.C, newCarry);
                 SetFlag(Flag.H, false);
                 SetFlag(Flag.N, false);
+                CopyUndocumentedFlagsFrom(Regs.A);
                 TStates += 4;
             };
 
@@ -306,6 +321,7 @@ namespace Spectrum128kEmulator.Z80
                 SetFlag(Flag.C, newCarry);
                 SetFlag(Flag.H, false);
                 SetFlag(Flag.N, false);
+                CopyUndocumentedFlagsFrom(Regs.A);
                 TStates += 4;
             };
 
@@ -366,41 +382,47 @@ namespace Spectrum128kEmulator.Z80
             opcodeTable[0x27] = () => // DAA
             {
                 byte oldA = Regs.A;
-                bool carry = (Regs.F & 0x01) != 0;
-                bool half = (Regs.F & 0x10) != 0;
-                bool subtract = (Regs.F & 0x02) != 0;
+                byte oldF = Regs.F;
 
-                int adjust = 0;
+                bool oldC = (oldF & (1 << (int)Flag.C)) != 0;
+                bool oldH = (oldF & (1 << (int)Flag.H)) != 0;
+                bool oldN = (oldF & (1 << (int)Flag.N)) != 0;
 
-                if (!subtract)
+                int correction = 0;
+                bool carry = oldC;
+
+                if (!oldN)
                 {
-                    if (half || (oldA & 0x0F) > 0x09)
-                        adjust |= 0x06;
+                    if (oldH || (oldA & 0x0F) > 0x09)
+                        correction |= 0x06;
 
-                    if (carry || oldA > 0x99)
+                    if (oldC || oldA > 0x99)
                     {
-                        adjust |= 0x60;
+                        correction |= 0x60;
                         carry = true;
                     }
 
-                    Regs.A = (byte)(oldA + adjust);
+                    Regs.A = (byte)(oldA + correction);
+                    SetFlag(Flag.H, ((oldA & 0x0F) + (correction & 0x0F)) > 0x0F);
                 }
                 else
                 {
-                    if (half)
-                        adjust |= 0x06;
+                    if (oldH || (oldA & 0x0F) > 0x09)
+                        correction |= 0x06;
 
-                    if (carry)
-                        adjust |= 0x60;
+                    if (oldC)
+                        correction |= 0x60;
 
-                    Regs.A = (byte)(oldA - adjust);
+                    Regs.A = (byte)(oldA - correction);
+                    SetFlag(Flag.H, ((oldA ^ Regs.A) & 0x10) != 0);
                 }
 
                 SetFlag(Flag.S, (Regs.A & 0x80) != 0);
                 SetFlag(Flag.Z, Regs.A == 0);
-                SetFlag(Flag.H, ((oldA ^ Regs.A) & 0x10) != 0);
                 SetFlag(Flag.P, Parity(Regs.A));
                 SetFlag(Flag.C, carry);
+                // N unchanged
+                CopyUndocumentedFlagsFrom(Regs.A);
 
                 TStates += 4;
             };
@@ -419,6 +441,7 @@ namespace Spectrum128kEmulator.Z80
                 Regs.A = (byte)~Regs.A;
                 SetFlag(Flag.N, true);
                 SetFlag(Flag.H, true);
+                CopyUndocumentedFlagsFrom(Regs.A);
                 TStates += 4;
             };
 
@@ -427,15 +450,17 @@ namespace Spectrum128kEmulator.Z80
                 SetFlag(Flag.C, true);
                 SetFlag(Flag.N, false);
                 SetFlag(Flag.H, false);
+                ApplyScfCcfUndocumentedFlags();
                 TStates += 4;
             };
 
             opcodeTable[0x3F] = () => // CCF
             {
-                bool oldC = (Regs.F & 0x01) != 0;
+                bool oldC = (Regs.F & (1 << (int)Flag.C)) != 0;
                 SetFlag(Flag.C, !oldC);
                 SetFlag(Flag.N, false);
                 SetFlag(Flag.H, oldC);
+                ApplyScfCcfUndocumentedFlags();
                 TStates += 4;
             };
 
@@ -764,15 +789,21 @@ namespace Spectrum128kEmulator.Z80
                 };
             }
 
-            edOpcodeTable[0x40] = () => { byte value = ReadPort(Regs.BC); Regs.B = value; SetInFlags(value); TStates += 12; };
-            edOpcodeTable[0x48] = () => { byte value = ReadPort(Regs.BC); Regs.C = value; SetInFlags(value); TStates += 12; };
-            edOpcodeTable[0x50] = () => { byte value = ReadPort(Regs.BC); Regs.D = value; SetInFlags(value); TStates += 12; };
-            edOpcodeTable[0x58] = () => { byte value = ReadPort(Regs.BC); Regs.E = value; SetInFlags(value); TStates += 12; };
-            edOpcodeTable[0x60] = () => { byte value = ReadPort(Regs.BC); Regs.H = value; SetInFlags(value); TStates += 12; };
-            edOpcodeTable[0x68] = () => { byte value = ReadPort(Regs.BC); Regs.L = value; SetInFlags(value); TStates += 12; };
-            edOpcodeTable[0x70] = () => { byte value = ReadPort(Regs.BC); SetInFlags(value); TStates += 12; };
-            edOpcodeTable[0x78] = () => { byte value = ReadPort(Regs.BC); Regs.A = value; SetInFlags(value); TStates += 12; };
+            // =========================
+            // IN r,(C)
+            // =========================
+            edOpcodeTable[0x40] = () => { byte v = ReadPort(Regs.BC); Regs.B = v; SetInFlags(v); TStates += 12; };
+            edOpcodeTable[0x48] = () => { byte v = ReadPort(Regs.BC); Regs.C = v; SetInFlags(v); TStates += 12; };
+            edOpcodeTable[0x50] = () => { byte v = ReadPort(Regs.BC); Regs.D = v; SetInFlags(v); TStates += 12; };
+            edOpcodeTable[0x58] = () => { byte v = ReadPort(Regs.BC); Regs.E = v; SetInFlags(v); TStates += 12; };
+            edOpcodeTable[0x60] = () => { byte v = ReadPort(Regs.BC); Regs.H = v; SetInFlags(v); TStates += 12; };
+            edOpcodeTable[0x68] = () => { byte v = ReadPort(Regs.BC); Regs.L = v; SetInFlags(v); TStates += 12; };
+            edOpcodeTable[0x70] = () => { byte v = ReadPort(Regs.BC); SetInFlags(v); TStates += 12; };
+            edOpcodeTable[0x78] = () => { byte v = ReadPort(Regs.BC); Regs.A = v; SetInFlags(v); TStates += 12; };
 
+            // =========================
+            // OUT (C),r
+            // =========================
             edOpcodeTable[0x41] = () => { WritePort(Regs.BC, Regs.B); TStates += 12; };
             edOpcodeTable[0x49] = () => { WritePort(Regs.BC, Regs.C); TStates += 12; };
             edOpcodeTable[0x51] = () => { WritePort(Regs.BC, Regs.D); TStates += 12; };
@@ -782,10 +813,13 @@ namespace Spectrum128kEmulator.Z80
             edOpcodeTable[0x71] = () => { WritePort(Regs.BC, 0); TStates += 12; };
             edOpcodeTable[0x79] = () => { WritePort(Regs.BC, Regs.A); TStates += 12; };
 
+            // =========================
+            // Transfer A <-> I/R
+            // =========================
             edOpcodeTable[0x47] = () => { Regs.I = Regs.A; TStates += 9; };
             edOpcodeTable[0x4F] = () => { Regs.R = Regs.A; TStates += 9; };
 
-            edOpcodeTable[0x57] = () =>
+            edOpcodeTable[0x57] = () => // LD A,I
             {
                 Regs.A = Regs.I;
                 SetFlag(Flag.S, (Regs.A & 0x80) != 0);
@@ -793,10 +827,11 @@ namespace Spectrum128kEmulator.Z80
                 SetFlag(Flag.H, false);
                 SetFlag(Flag.P, IFF2);
                 SetFlag(Flag.N, false);
+                CopyUndocumentedFlagsFrom(Regs.A);
                 TStates += 9;
             };
 
-            edOpcodeTable[0x5F] = () =>
+            edOpcodeTable[0x5F] = () => // LD A,R
             {
                 Regs.A = Regs.R;
                 SetFlag(Flag.S, (Regs.A & 0x80) != 0);
@@ -804,9 +839,13 @@ namespace Spectrum128kEmulator.Z80
                 SetFlag(Flag.H, false);
                 SetFlag(Flag.P, IFF2);
                 SetFlag(Flag.N, false);
+                CopyUndocumentedFlagsFrom(Regs.A);
                 TStates += 9;
             };
 
+            // =========================
+            // SBC/ADC HL,rr
+            // =========================
             edOpcodeTable[0x42] = () => { Regs.HL = Sub16(Regs.HL, Regs.BC, (Regs.F & 0x01) != 0); TStates += 15; };
             edOpcodeTable[0x52] = () => { Regs.HL = Sub16(Regs.HL, Regs.DE, (Regs.F & 0x01) != 0); TStates += 15; };
             edOpcodeTable[0x62] = () => { Regs.HL = Sub16(Regs.HL, Regs.HL, (Regs.F & 0x01) != 0); TStates += 15; };
@@ -817,6 +856,9 @@ namespace Spectrum128kEmulator.Z80
             edOpcodeTable[0x6A] = () => { Regs.HL = Add16WithCarry(Regs.HL, Regs.HL, (Regs.F & 0x01) != 0); TStates += 15; };
             edOpcodeTable[0x7A] = () => { Regs.HL = Add16WithCarry(Regs.HL, Regs.SP, (Regs.F & 0x01) != 0); TStates += 15; };
 
+            // =========================
+            // 16-bit loads via memory
+            // =========================
             edOpcodeTable[0x43] = () => { ushort a = FetchWord(); WriteMemory(a, Regs.C); WriteMemory((ushort)(a + 1), Regs.B); TStates += 20; };
             edOpcodeTable[0x53] = () => { ushort a = FetchWord(); WriteMemory(a, Regs.E); WriteMemory((ushort)(a + 1), Regs.D); TStates += 20; };
             edOpcodeTable[0x63] = () => { ushort a = FetchWord(); WriteMemory(a, Regs.L); WriteMemory((ushort)(a + 1), Regs.H); TStates += 20; };
@@ -827,6 +869,13 @@ namespace Spectrum128kEmulator.Z80
             edOpcodeTable[0x6B] = () => { ushort a = FetchWord(); Regs.HL = (ushort)(ReadMemory(a) | (ReadMemory((ushort)(a + 1)) << 8)); TStates += 20; };
             edOpcodeTable[0x7B] = () => { ushort a = FetchWord(); Regs.SP = (ushort)(ReadMemory(a) | (ReadMemory((ushort)(a + 1)) << 8)); TStates += 20; };
 
+            // =========================
+            // NEG (ED prefix)
+            // =========================
+            // All of these opcodes are undocumented aliases of NEG.
+            // Z80 defines 8 encodings (ED 44,4C,54,5C,64,6C,74,7C)
+            // that all perform: A = 0 - A with full flag behaviour.
+            // Must map ALL of them for ZEXDOC/ZEXALL compliance.
             edOpcodeTable[0x44] = () => { NegA(); TStates += 8; };
             edOpcodeTable[0x4C] = () => { NegA(); TStates += 8; };
             edOpcodeTable[0x54] = () => { NegA(); TStates += 8; };
@@ -836,6 +885,9 @@ namespace Spectrum128kEmulator.Z80
             edOpcodeTable[0x74] = () => { NegA(); TStates += 8; };
             edOpcodeTable[0x7C] = () => { NegA(); TStates += 8; };
 
+            // =========================
+            // Return / interrupt mode
+            // =========================
             edOpcodeTable[0x45] = () => { IFF1 = IFF2; Regs.PC = Pop(); TStates += 14; }; // RETN
             edOpcodeTable[0x4D] = () => { IFF1 = IFF2; Regs.PC = Pop(); TStates += 14; }; // RETI
 
@@ -843,6 +895,9 @@ namespace Spectrum128kEmulator.Z80
             edOpcodeTable[0x56] = () => { interruptMode = 1; TStates += 8; };
             edOpcodeTable[0x5E] = () => { interruptMode = 2; TStates += 8; };
 
+            // =========================
+            // Decimal rotate through memory
+            // =========================
             edOpcodeTable[0x67] = () => // RRD
             {
                 byte mem = ReadMemory(Regs.HL);
@@ -858,6 +913,7 @@ namespace Spectrum128kEmulator.Z80
                 SetFlag(Flag.H, false);
                 SetFlag(Flag.P, Parity(Regs.A));
                 SetFlag(Flag.N, false);
+                CopyUndocumentedFlagsFrom(Regs.A);
 
                 TStates += 18;
             };
@@ -877,10 +933,14 @@ namespace Spectrum128kEmulator.Z80
                 SetFlag(Flag.H, false);
                 SetFlag(Flag.P, Parity(Regs.A));
                 SetFlag(Flag.N, false);
+                CopyUndocumentedFlagsFrom(Regs.A);
 
                 TStates += 18;
             };
 
+            // =========================
+            // Block transfer
+            // =========================
             edOpcodeTable[0xA0] = () => // LDI
             {
                 byte value = ReadMemory(Regs.HL);
@@ -891,6 +951,7 @@ namespace Spectrum128kEmulator.Z80
                 SetFlag(Flag.H, false);
                 SetFlag(Flag.N, false);
                 SetFlag(Flag.P, Regs.BC != 0);
+
                 TStates += 16;
             };
 
@@ -926,6 +987,7 @@ namespace Spectrum128kEmulator.Z80
                 SetFlag(Flag.H, false);
                 SetFlag(Flag.N, false);
                 SetFlag(Flag.P, Regs.BC != 0);
+
                 TStates += 16;
             };
 
@@ -950,6 +1012,78 @@ namespace Spectrum128kEmulator.Z80
                     TStates += 16;
                 }
             };
+
+            // =========================
+            // Block compare
+            // =========================
+            edOpcodeTable[0xA1] = () => BlockCompare(true, false);  // CPI
+            edOpcodeTable[0xB1] = () => BlockCompare(true, true);   // CPIR
+            edOpcodeTable[0xA9] = () => BlockCompare(false, false); // CPD
+            edOpcodeTable[0xB9] = () => BlockCompare(false, true);  // CPDR
+        }
+
+        private void CopyUndocumentedFlagsFrom(byte value)
+        {
+            SetFlag(Flag.F3, (value & 0x08) != 0);
+            SetFlag(Flag.F5, (value & 0x20) != 0);
+        }
+
+        private void ApplyScfCcfUndocumentedFlags()
+        {
+            byte source = flagsChangedLastInstruction
+                ? Regs.A
+                : (byte)(Regs.A | lastFlagsBeforeInstruction);
+
+            SetFlag(Flag.F3, (source & 0x08) != 0);
+            SetFlag(Flag.F5, (source & 0x20) != 0);
+        }        
+
+        private byte CompareAInternal(byte value)
+        {
+            byte a = Regs.A;
+            int result = a - value;
+            byte r = (byte)result;
+
+            SetFlag(Flag.S, (r & 0x80) != 0);
+            SetFlag(Flag.Z, r == 0);
+            SetFlag(Flag.H, ((a ^ value ^ r) & 0x10) != 0);
+            SetFlag(Flag.P, OverflowSub(a, value, r));
+            SetFlag(Flag.N, true);
+            SetFlag(Flag.C, result < 0);
+
+            CopyUndocumentedFlagsFrom(r);
+            return r;
+        }        
+
+        private void BlockCompare(bool increment, bool repeat)
+        {
+            bool oldCarry = (Regs.F & (1 << (int)Flag.C)) != 0;
+
+            byte value = ReadMemory(Regs.HL);
+            byte r = CompareAInternal(value);
+
+            bool halfBorrow = (Regs.F & (1 << (int)Flag.H)) != 0;
+
+            Regs.HL = increment ? (ushort)(Regs.HL + 1) : (ushort)(Regs.HL - 1);
+            Regs.BC--;
+
+            SetFlag(Flag.P, Regs.BC != 0);
+
+            byte n = (byte)(r - (halfBorrow ? 1 : 0));
+            SetFlag(Flag.F3, (n & 0x08) != 0);
+            SetFlag(Flag.F5, (n & 0x20) != 0);
+
+            SetFlag(Flag.C, oldCarry);
+
+            if (repeat && Regs.BC != 0 && r != 0)
+            {
+                Regs.PC = (ushort)(Regs.PC - 2);
+                TStates += 21;
+            }
+            else
+            {
+                TStates += 16;
+            }
         }
 
         private void InitializeDDTable()
@@ -1051,8 +1185,13 @@ namespace Spectrum128kEmulator.Z80
             ddOpcodeTable[0x61] = () => { IXH = Regs.C; TStates += 8; };
             ddOpcodeTable[0x62] = () => { IXH = Regs.D; TStates += 8; };
             ddOpcodeTable[0x63] = () => { IXH = Regs.E; TStates += 8; };
-            ddOpcodeTable[0x67] = () => { IXH = Regs.A; TStates += 8; };
 
+            ddOpcodeTable[0x64] = () => { IXH = IXH; TStates += 8; };
+            ddOpcodeTable[0x65] = () => { IXH = IXL; TStates += 8; };
+            ddOpcodeTable[0x6C] = () => { IXL = IXH; TStates += 8; };
+            ddOpcodeTable[0x6D] = () => { IXL = IXL; TStates += 8; };
+
+            ddOpcodeTable[0x67] = () => { IXH = Regs.A; TStates += 8; };
             ddOpcodeTable[0x68] = () => { IXL = Regs.B; TStates += 8; };
             ddOpcodeTable[0x69] = () => { IXL = Regs.C; TStates += 8; };
             ddOpcodeTable[0x6A] = () => { IXL = Regs.D; TStates += 8; };
@@ -1236,12 +1375,16 @@ namespace Spectrum128kEmulator.Z80
             fdOpcodeTable[0x61] = () => { IYH = Regs.C; TStates += 8; };
             fdOpcodeTable[0x62] = () => { IYH = Regs.D; TStates += 8; };
             fdOpcodeTable[0x63] = () => { IYH = Regs.E; TStates += 8; };
+            fdOpcodeTable[0x64] = () => { IYH = IYH; TStates += 8; };
+            fdOpcodeTable[0x65] = () => { IYH = IYL; TStates += 8; };
             fdOpcodeTable[0x67] = () => { IYH = Regs.A; TStates += 8; };
 
             fdOpcodeTable[0x68] = () => { IYL = Regs.B; TStates += 8; };
             fdOpcodeTable[0x69] = () => { IYL = Regs.C; TStates += 8; };
             fdOpcodeTable[0x6A] = () => { IYL = Regs.D; TStates += 8; };
             fdOpcodeTable[0x6B] = () => { IYL = Regs.E; TStates += 8; };
+            fdOpcodeTable[0x6C] = () => { IYL = IYH; TStates += 8; };
+            fdOpcodeTable[0x6D] = () => { IYL = IYL; TStates += 8; };            
 
             fdOpcodeTable[0x66] = () => { sbyte d = (sbyte)FetchByte(); Regs.H = ReadMemory((ushort)(Regs.IY + d)); TStates += 19; };
             fdOpcodeTable[0x6E] = () => { sbyte d = (sbyte)FetchByte(); Regs.L = ReadMemory((ushort)(Regs.IY + d)); TStates += 19; };
@@ -1615,6 +1758,7 @@ namespace Spectrum128kEmulator.Z80
             SetFlag(Flag.P, OverflowSub(a, value, r));
             SetFlag(Flag.N, true);
             SetFlag(Flag.C, result < 0);
+            CopyUndocumentedFlagsFrom(r);
 
             TStates += (ulong)baseT;
         }
@@ -1622,9 +1766,13 @@ namespace Spectrum128kEmulator.Z80
         private ushort Add16(ushort a, ushort b)
         {
             int result = a + b;
+            ushort r = (ushort)result;
+
             SetFlag(Flag.N, false);
             SetFlag(Flag.H, ((a & 0x0FFF) + (b & 0x0FFF)) > 0x0FFF);
             SetFlag(Flag.C, result > 0xFFFF);
+            CopyUndocumentedFlagsFrom((byte)(r >> 8));
+
             return (ushort)result;
         }
 
@@ -1640,6 +1788,7 @@ namespace Spectrum128kEmulator.Z80
             SetFlag(Flag.P, (((a ^ ~b) & (a ^ r)) & 0x8000) != 0);
             SetFlag(Flag.N, false);
             SetFlag(Flag.C, result > 0xFFFF);
+            CopyUndocumentedFlagsFrom((byte)(r >> 8));
 
             return r;
         }
@@ -1656,6 +1805,7 @@ namespace Spectrum128kEmulator.Z80
             SetFlag(Flag.P, (((a ^ b) & (a ^ r)) & 0x8000) != 0);
             SetFlag(Flag.N, true);
             SetFlag(Flag.C, result < 0);
+            CopyUndocumentedFlagsFrom((byte)(r >> 8));
 
             return r;
         }
@@ -1664,14 +1814,18 @@ namespace Spectrum128kEmulator.Z80
         {
             byte oldA = Regs.A;
             int result = 0 - oldA;
-            Regs.A = (byte)result;
+            byte r = (byte)result;
 
-            SetFlag(Flag.S, (Regs.A & 0x80) != 0);
-            SetFlag(Flag.Z, Regs.A == 0);
+            Regs.A = r;
+
+            SetFlag(Flag.S, (r & 0x80) != 0);
+            SetFlag(Flag.Z, r == 0);
             SetFlag(Flag.H, (oldA & 0x0F) != 0);
-            SetFlag(Flag.P, oldA == 0x80);
+            SetFlag(Flag.P, oldA == 0x80); // overflow
             SetFlag(Flag.N, true);
             SetFlag(Flag.C, oldA != 0);
+
+            CopyUndocumentedFlagsFrom(r);
         }
 
         // =========================================================
@@ -1695,6 +1849,7 @@ namespace Spectrum128kEmulator.Z80
             SetFlag(Flag.H, false);
             SetFlag(Flag.P, Parity(value));
             SetFlag(Flag.N, false);
+            CopyUndocumentedFlagsFrom(value);
         }
 
         private bool Parity(byte value)
@@ -1788,7 +1943,7 @@ namespace Spectrum128kEmulator.Z80
             byte b = ReadMemory(Regs.PC);
             Regs.PC = (ushort)(Regs.PC + 1);
             TStates += 4;
-            Regs.R = (byte)((Regs.R + 1) & 0x7F);
+            Regs.R = (byte)((Regs.R & 0x80) | ((Regs.R + 1) & 0x7F));
             return b;
         }
 
