@@ -5,6 +5,8 @@ namespace Spectrum128kEmulator.Tests
 {
     public class CpuMicroTests
     {
+        private static bool FlagSet(byte f, int bit) => (f & (1 << bit)) != 0;
+        
         [Fact]
         public void Dd_E9_Jumps_To_IX()
         {
@@ -100,6 +102,170 @@ namespace Spectrum128kEmulator.Tests
 
             Assert.Equal((byte)0x00, cpu.Regs.A);
             Assert.True((cpu.Regs.F & 0x40) != 0);
+        }
+
+        [Fact]
+        public void AdcHlBc_NoCarryIn_Adds_And_Leaves_N_Clear()
+        {
+            var memory = new byte[65536];
+            var cpu = new Z80Cpu
+            {
+                ReadMemory = addr => memory[addr],
+                WriteMemory = (addr, value) => memory[addr] = value
+            };
+
+            // LD HL,1234
+            memory[0x0000] = 0x21;
+            memory[0x0001] = 0x34;
+            memory[0x0002] = 0x12;
+
+            // LD BC,1111
+            memory[0x0003] = 0x01;
+            memory[0x0004] = 0x11;
+            memory[0x0005] = 0x11;
+
+            // XOR A  -> clears carry and gives known flags
+            memory[0x0006] = 0xAF;
+
+            // ED 4A -> ADC HL,BC
+            memory[0x0007] = 0xED;
+            memory[0x0008] = 0x4A;
+
+            cpu.Reset();
+            cpu.Step(); // LD HL,1234
+            cpu.Step(); // LD BC,1111
+            cpu.Step(); // XOR A
+            cpu.Step(); // ADC HL,BC
+
+            Assert.Equal((ushort)0x2345, cpu.Regs.HL);
+            Assert.False(FlagSet(cpu.Regs.F, 0)); // C
+            Assert.False(FlagSet(cpu.Regs.F, 1)); // N
+            Assert.False(FlagSet(cpu.Regs.F, 4)); // H
+            Assert.False(FlagSet(cpu.Regs.F, 6)); // Z
+            Assert.False(FlagSet(cpu.Regs.F, 7)); // S
+        }
+
+        [Fact]
+        public void AdcHlBc_CarryIn_Sets_H_And_Correct_Result()
+        {
+            var memory = new byte[65536];
+            var cpu = new Z80Cpu
+            {
+                ReadMemory = addr => memory[addr],
+                WriteMemory = (addr, value) => memory[addr] = value
+            };
+
+            // LD HL,0FFF
+            memory[0x0000] = 0x21;
+            memory[0x0001] = 0xFF;
+            memory[0x0002] = 0x0F;
+
+            // LD BC,0000
+            memory[0x0003] = 0x01;
+            memory[0x0004] = 0x00;
+            memory[0x0005] = 0x00;
+
+            // SCF -> carry in = 1
+            memory[0x0006] = 0x37;
+
+            // ED 4A -> ADC HL,BC
+            memory[0x0007] = 0xED;
+            memory[0x0008] = 0x4A;
+
+            cpu.Reset();
+            cpu.Step(); // LD HL,0FFF
+            cpu.Step(); // LD BC,0000
+            cpu.Step(); // SCF
+            cpu.Step(); // ADC HL,BC
+
+            Assert.Equal((ushort)0x1000, cpu.Regs.HL);
+            Assert.False(FlagSet(cpu.Regs.F, 0)); // C
+            Assert.False(FlagSet(cpu.Regs.F, 1)); // N
+            Assert.True(FlagSet(cpu.Regs.F, 4));  // H
+            Assert.False(FlagSet(cpu.Regs.F, 6)); // Z
+            Assert.False(FlagSet(cpu.Regs.F, 7)); // S
+        }
+
+        [Fact]
+        public void SbcHlBc_NoCarryIn_Subtracts_And_Sets_N()
+        {
+            var memory = new byte[65536];
+            var cpu = new Z80Cpu
+            {
+                ReadMemory = addr => memory[addr],
+                WriteMemory = (addr, value) => memory[addr] = value
+            };
+
+            // LD HL,2345
+            memory[0x0000] = 0x21;
+            memory[0x0001] = 0x45;
+            memory[0x0002] = 0x23;
+
+            // LD BC,1111
+            memory[0x0003] = 0x01;
+            memory[0x0004] = 0x11;
+            memory[0x0005] = 0x11;
+
+            // XOR A -> clear carry
+            memory[0x0006] = 0xAF;
+
+            // ED 42 -> SBC HL,BC
+            memory[0x0007] = 0xED;
+            memory[0x0008] = 0x42;
+
+            cpu.Reset();
+            cpu.Step(); // LD HL,2345
+            cpu.Step(); // LD BC,1111
+            cpu.Step(); // XOR A
+            cpu.Step(); // SBC HL,BC
+
+            Assert.Equal((ushort)0x1234, cpu.Regs.HL);
+            Assert.False(FlagSet(cpu.Regs.F, 0)); // C
+            Assert.True(FlagSet(cpu.Regs.F, 1));  // N
+            Assert.False(FlagSet(cpu.Regs.F, 4)); // H
+            Assert.False(FlagSet(cpu.Regs.F, 6)); // Z
+            Assert.False(FlagSet(cpu.Regs.F, 7)); // S
+        }
+
+        [Fact]
+        public void SbcHlBc_CarryIn_Borrows_And_Sets_C_And_H()
+        {
+            var memory = new byte[65536];
+            var cpu = new Z80Cpu
+            {
+                ReadMemory = addr => memory[addr],
+                WriteMemory = (addr, value) => memory[addr] = value
+            };
+
+            // LD HL,1000
+            memory[0x0000] = 0x21;
+            memory[0x0001] = 0x00;
+            memory[0x0002] = 0x10;
+
+            // LD BC,1000
+            memory[0x0003] = 0x01;
+            memory[0x0004] = 0x00;
+            memory[0x0005] = 0x10;
+
+            // SCF -> carry in = 1
+            memory[0x0006] = 0x37;
+
+            // ED 42 -> SBC HL,BC
+            memory[0x0007] = 0xED;
+            memory[0x0008] = 0x42;
+
+            cpu.Reset();
+            cpu.Step(); // LD HL,1000
+            cpu.Step(); // LD BC,1000
+            cpu.Step(); // SCF
+            cpu.Step(); // SBC HL,BC
+
+            Assert.Equal((ushort)0xFFFF, cpu.Regs.HL);
+            Assert.True(FlagSet(cpu.Regs.F, 0));  // C
+            Assert.True(FlagSet(cpu.Regs.F, 1));  // N
+            Assert.True(FlagSet(cpu.Regs.F, 4));  // H
+            Assert.False(FlagSet(cpu.Regs.F, 6)); // Z
+            Assert.True(FlagSet(cpu.Regs.F, 7));  // S
         }
     }
 }
