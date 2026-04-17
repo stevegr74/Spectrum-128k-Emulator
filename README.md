@@ -2,48 +2,55 @@
 
 A from-scratch ZX Spectrum 128K emulator written in C# using only standard libraries.
 
-This project focuses on clean architecture, correctness, and incremental development, supported by automated tests and compliance tooling to enable future accuracy improvements.
+This project focuses on correctness, clean architecture, and incremental development, with strong validation through automated tests and Z80 compliance tooling.
 
 ---
 
 ## Features
 
 - Z80 CPU emulation
+- Full ZEXDOC CPU compliance (all instruction groups passing)
 - 128K memory paging (port `0x7FFD`)
 - ROM loading (128K + 48K modes)
-- 48K `.sna` snapshot loading
-- `.z80` snapshot support in progress
-- Keyboard matrix (8x5, active low)
-- Screen rendering (`256x192`)
+- 48K `.sna` snapshot loading (verified)
+- `.z80` snapshot support (in progress)
+- Keyboard matrix (8×5, active low)
+- Screen rendering (`256×192`)
 - Attribute handling (INK, PAPER, BRIGHT, FLASH)
 - Frame-based FLASH implementation
-- Stopwatch-based frame pacing (50Hz target)
+- Frame pacing (~50Hz)
 - Per-frame interrupt scheduling
 - Headless machine core (testable)
 - Renderer separated from emulation
-- Manual smoke harness for debugging
-- Headless Z80 compliance runner for ZEXDOC
+- Headless Z80 compliance runner (ZEXDOC)
 
 ---
 
 ## Current Status
 
-**Milestone 4 In Progress**
+**Milestone 4 Complete — Z80 Compliance Achieved**
 
-- Emulator boots into the 128 menu
+- Emulator boots into 128K menu
 - Menu navigation works
 - Can enter 48 BASIC / 128 BASIC
-- BASIC programs run correctly
-- FLASH rendering behaves correctly
-- Rendering optimized using `LockBits`
-- Stable frame pacing implemented (~50 FPS baseline)
-- Per-frame interrupt cadence in place
-- 48K `.sna` loading is implemented and verified
-- `.z80` loading is in progress
-- ZEXDOC runs to completion in the headless compliance runner
-- Most ZEXDOC groups are now passing
-- One remaining grouped compliance failure is still under investigation:
-  - `<daa,cpl,scf,ccf>`
+- BASIC programs execute correctly
+- Rendering pipeline stable and optimized
+- FLASH behaviour implemented correctly
+- Frame pacing stable (~50 FPS baseline)
+- Interrupt cadence implemented
+
+### CPU Compliance
+
+- ZEXDOC runs to completion in a headless runner
+- All instruction groups pass
+- DAA implementation fixed and validated
+
+ZEXDOC is used as the authoritative validation source for CPU correctness.
+
+### Snapshot Support Progress (Milestone 5)
+
+- 48K `.sna` loading implemented and verified (real game runs)
+- `.z80` snapshot support started (v1 loader in progress)
 
 ---
 
@@ -52,25 +59,25 @@ This project focuses on clean architecture, correctness, and incremental develop
 The emulator is structured for clarity and testability:
 
 - `Z80Cpu`  
-  Instruction execution, flags, prefix tables, and register state
+  Instruction decoding, execution, and flag handling
 
 - `Spectrum128Machine`  
-  Memory, paging, keyboard, interrupts, ROM mapping, and frame-level timing
+  Memory, paging, keyboard, ROM mapping, interrupts, and frame timing
 
 - `SpectrumRenderer`  
-  Converts screen RAM and attributes into pixels
+  Converts screen memory into pixel output
 
 - `SnapshotLoader` / `Z80SnapshotLoader`  
   Snapshot loading support
 
 - `MainForm`  
-  Thin WinForms UI shell
+  Thin WinForms UI layer
 
 - Test projects  
-  Validate CPU, machine behaviour, rendering correctness, and compliance-focused edge cases
+  CPU correctness, machine behaviour, rendering, and regression tests
 
 - `Spectrum128kEmulator.Z80Compliance`  
-  Headless compliance runner used for ZEXDOC and instruction-behaviour debugging
+  Headless CPU validation using ZEXDOC
 
 ---
 
@@ -78,7 +85,7 @@ The emulator is structured for clarity and testability:
 
 Run the emulator:
 
-```bash
+```
 dotnet run
 ```
 
@@ -90,8 +97,8 @@ ROM files must be placed in:
 
 Expected ROMs:
 
-- 128-0.rom
-- 128-1.rom
+- `128-0.rom`
+- `128-1.rom`
 
 ---
 
@@ -99,20 +106,21 @@ Expected ROMs:
 
 Run all tests:
 
-```bash
+```
 dotnet test
 ```
 
-Coverage includes:
+Test coverage includes:
 
 - CPU instruction behaviour
 - Memory paging
 - Keyboard matrix
 - FLASH timing
 - Renderer correctness
-- ROM boot smoke test
-- Focused opcode tests
-- Exhaustive sweep tests for tricky flag behaviour
+- ROM boot smoke tests
+- Focused opcode regression tests
+
+ZEXDOC is used separately for full CPU validation.
 
 ---
 
@@ -120,12 +128,13 @@ Coverage includes:
 
 Current snapshot status:
 
-- .sna
-  48K loading implemented and verified
-- .z80
-  Supported in progress and still being expanded/refined
+- `.sna`
+  - 48K loading implemented and verified
 
-The emulator UI currently supports snapshot loading through keyboard shortcuts in the WinForms shell.
+- `.z80`
+  - Support in progress (v1 currently being expanded)
+
+Snapshots can be loaded via keyboard shortcuts in the UI.
 
 ---
 
@@ -133,73 +142,78 @@ The emulator UI currently supports snapshot loading through keyboard shortcuts i
 
 A simple headless harness is included for debugging:
 
-```bash
+```
 dotnet run --project Spectrum128kEmulator.ManualHarness
 ```
 
-This runs frames without UI and logs CPU/machine state.
+This runs the emulator without UI and logs state.
 
-> Note: The manual harness includes verbose debug logging and is intended for debugging, not performance measurement.
+> Intended for debugging, not performance measurement.
 
 ---
 
 ## Z80 Compliance Runner
 
-A separate headless compliance runner is included for CPU verification work:
+A dedicated headless runner is included for CPU validation:
 
-```bash
+```
 dotnet run -c Release --project Spectrum128kEmulator.Z80Compliance -- test-assets/z80/zexdoc.com 7000000000
 ```
 
-This runner loads ZEXDOC in a minimal CP/M-style environment and executes uncapped in a tight loop.
-
 Notes:
 
-- It is intentionally headless and uncapped
-- It is meant for CPU correctness/compliance work, not Spectrum timing validation
-- Current status: ZEXDOC runs to completion, with one remaining grouped failure still being investigated
+- Runs ZEXDOC in a minimal CP/M-style environment
+- Fully uncapped execution
+- Used for correctness validation, not timing accuracy
+- All instruction groups currently pass
 
 ---
 
 ## Roadmap
 
-### Milestone 1 — Input & Menu ✅
-- Keyboard matrix
-- 128 menu navigation
-- Enter BASIC
+### Milestone 1 — Keyboard & Menu ✅
+- Keyboard matrix implemented
+- 128K menu navigation working
+- BASIC entry functional
 
-### Milestone 2 — Rendering Fidelity ✅
-- FLASH implementation
-- Renderer cleanup and optimisation
+### Milestone 2 — Rendering & FLASH ✅
+- Attribute rendering (INK, PAPER, BRIGHT)
+- FLASH behaviour implemented correctly
+- Renderer optimisation
 
-### Milestone 3 — Baseline complete ✅
-- Stable frame pacing (50Hz)
-- Per-frame interrupt cadence
-- Baseline host timing behaviour in place
+### Milestone 3 — Timing Baseline ✅
+- Stable frame pacing (~50Hz)
+- Frame-based execution loop
+- Interrupt cadence established
 
-### Milestone 4 — Snapshots (In Progress)
-- Load `.z80`
-- Load `.sna`
-- Continue refining .z80 support and compatibility
+### Milestone 4 — Z80 Compliance ✅
+- ZEXDOC runs to completion
+- All instruction groups passing
+- CPU behaviour validated against hardware-derived tests
 
-### Milestone 5 — Tape Loading
+### Milestone 5 — Snapshots (In Progress)
+- 48K `.sna` loading complete and verified
+- `.z80` snapshot support started (v1 loader in progress)
+- Further compatibility and compression support to be added
+
+### Milestone 6 — Tape Loading
 - Basic `.tap` support
-- ROM loader compatibility
+- Initial implementation via ROM loader path
 
-### Milestone 6 — Audio
+### Milestone 7 — Audio
 - AY-3-8912 register emulation
-- Basic sound output
+- Basic audio output
 
 ---
 
-## Future Improvements (Stretch Goals)
+## Future Improvements
 
 - ULA contention timing
 - Scanline-accurate rendering
 - Border effects
 - Demo compatibility improvements
-- Stronger Z80 compliance coverage
-- Further snapshot compatibility work
+- Extended snapshot compatibility
+- ZEXALL / deeper compliance validation
 
 ---
 
@@ -207,9 +221,9 @@ Notes:
 
 - Standard library only (no external dependencies)
 - Incremental development (no large rewrites)
-- Behaviour verified with tests
+- Behaviour verified with tests and ZEXDOC
 - Clear separation between emulation and UI
-- Headless tooling for reproducible debugging and compliance work
+- Headless tooling for reproducible debugging
 
 ---
 
@@ -217,12 +231,12 @@ Notes:
 
 This is primarily a personal project for learning and development.
 
-Contributions are welcome but limited to:
+Contributions are welcome for:
 
 - Bug fixes
-- Fixes must include tests where practical
+- Improvements with accompanying tests
 
-See `CONTRIBUTING.md` for full details.
+See `CONTRIBUTING.md` for details.
 
 ---
 
