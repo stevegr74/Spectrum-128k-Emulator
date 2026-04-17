@@ -1,11 +1,19 @@
-﻿using System;
+using System;
 using System.IO;
 using System.Text;
 using Spectrum128kEmulator.Z80;
 
+if (args.Length == 1 && string.Equals(args[0], "fast-daa-group", StringComparison.OrdinalIgnoreCase))
+{
+    var z80cpu = new Z80Cpu();
+    DaaGroupTest.Run(z80cpu);
+    return 0;
+}
+
 if (args.Length < 1 || args.Length > 2)
 {
     Console.WriteLine("Usage: Spectrum128kEmulator.Z80Compliance <path-to-zexdoc.com> [max-steps]");
+    Console.WriteLine("   or: Spectrum128kEmulator.Z80Compliance fast-daa-group");
     return 1;
 }
 
@@ -32,12 +40,10 @@ if (program.Length + 0x100 > 65536)
     return 1;
 }
 
-// Load COM program at 0x0100
 Buffer.BlockCopy(program, 0, memory, 0x0100, program.Length);
 
-// Very small CP/M-ish setup
-memory[0x0000] = 0xC9; // RET
-memory[0x0005] = 0xC9; // RET placeholder; actual BDOS is intercepted
+memory[0x0000] = 0xC9;
+memory[0x0005] = 0xC9;
 
 var cpu = new Z80Cpu
 {
@@ -78,7 +84,6 @@ while (!finished && steps < maxSteps)
 
     if (pcBeforeStep == 0x0000)
     {
-        // Treat jump/return to 0 as program exit
         finished = true;
         break;
     }
@@ -145,18 +150,15 @@ static bool HandleBdos(
     switch (function)
     {
         case 0:
-            // CP/M warm boot / program termination
             shouldExit = true;
             break;
 
         case 2:
-            // Console output: char in E
             output.Append((char)cpu.Regs.E);
             outputCharCount++;
             break;
 
         case 9:
-            // Print $-terminated string at DE
             bdosStringCallCount++;
             ushort addr = cpu.Regs.DE;
             while (memory[addr] != (byte)'$')
@@ -172,7 +174,6 @@ static bool HandleBdos(
                 $"Unhandled BDOS function {function} at PC=0x{cpu.Regs.PC:X4}");
     }
 
-    // Simulate RET from BDOS call
     ushort returnAddress = Pop(cpu, memory);
     cpu.Regs.PC = returnAddress;
 
@@ -184,6 +185,6 @@ static ushort Pop(Z80Cpu cpu, byte[] memory)
     ushort sp = cpu.Regs.SP;
     byte low = memory[sp];
     byte high = memory[(ushort)(sp + 1)];
-    cpu.Regs.SP = (ushort)(sp + 2);
+    cpu.Regs.SP += 2;
     return (ushort)(low | (high << 8));
 }
