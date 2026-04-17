@@ -14,6 +14,7 @@ namespace Spectrum128kEmulator.Z80
         public Func<ushort, byte> ReadPort { get; set; } = _ => 0xFF;
         public Action<ushort, byte> WritePort { get; set; } = (_, _) => { };
         public Action<string>? Trace { get; set; }
+        public Func<Z80Cpu, bool>? BeforeInstruction { get; set; }
 
         private bool halted = false;
         public bool IsHalted => halted;
@@ -245,6 +246,9 @@ namespace Spectrum128kEmulator.Z80
 
             while (TStates < target)
             {
+                if (BeforeInstruction != null && BeforeInstruction(this))
+                    continue;
+
                 if (InterruptPending && IFF1)
                 {
                     if (Regs.SP < 0x4000)
@@ -396,6 +400,11 @@ namespace Spectrum128kEmulator.Z80
             flagsChangedLastInstruction = false;
             lastFlagsBeforeInstruction = 0;
 
+        }
+
+        public void AdvanceTStates(uint tStates)
+        {
+            TStates += tStates;
         }
 
         // =========================================================

@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using Spectrum128kEmulator.Tap;
 using Spectrum128kEmulator.Z80;
 
 namespace Spectrum128kEmulator
@@ -21,6 +22,7 @@ namespace Spectrum128kEmulator
         };
 
         private byte last7ffdValue = 0xFF;
+        private MountedTape? mountedTape;
 
         public Spectrum128Machine(string romFolder)
         {
@@ -41,6 +43,7 @@ namespace Spectrum128kEmulator
             cpu.WriteMemory = WriteMemory;
             cpu.ReadPort = ReadPort;
             cpu.WritePort = WritePort;
+            cpu.BeforeInstruction = HandleBeforeInstruction;
             cpu.Reset();
         }
 
@@ -63,6 +66,8 @@ namespace Spectrum128kEmulator
         public Dictionary<ushort, int> ScreenWriteLog { get; } = new Dictionary<ushort, int>();
         public Dictionary<ushort, int> AboveScreenWriteLog { get; } = new Dictionary<ushort, int>();
         public int LastAboveWriteFrame { get; private set; } = -1;
+        public bool HasMountedTape => mountedTape != null;
+        public string? MountedTapeName => mountedTape?.DisplayName;
 
         public void Reset()
         {
@@ -74,6 +79,7 @@ namespace Spectrum128kEmulator
             FrameCount = 0;
             LastAboveWriteFrame = -1;
             last7ffdValue = 0xFF;
+            mountedTape = null;
 
             ClearLogs();
             ClearKeyboard();
@@ -134,6 +140,26 @@ namespace Spectrum128kEmulator
         public byte DebugReadPort(ushort port) => ReadPort(port);
 
         public void DebugWritePort(ushort port, byte value) => WritePort(port, value);
+
+        public void MountTape(MountedTape tape)
+        {
+            mountedTape = tape ?? throw new ArgumentNullException(nameof(tape));
+        }
+
+        public void EjectTape()
+        {
+            mountedTape = null;
+        }
+
+        public bool TryServiceTapeTrap()
+        {
+            return mountedTape != null && mountedTape.TryHandleRomLoadTrap(this, cpu);
+        }
+
+        private bool HandleBeforeInstruction(Z80Cpu z80)
+        {
+            return mountedTape != null && mountedTape.TryHandleRomLoadTrap(this, z80);
+        }
 
         private void LoadRoms(string romFolder)
         {
@@ -224,8 +250,11 @@ namespace Spectrum128kEmulator
                         result &= keyboardMatrix[row];
                 }
 
-                // EAR input high for now
-                result |= 0x40;
+                bool earHigh = mountedTape?.ReadEarBit() ?? true;
+                if (earHigh)
+                    result |= 0x40;
+                else
+                    result = (byte)(result & ~0x40);
                 return result;
             }
 
@@ -258,6 +287,30 @@ namespace Spectrum128kEmulator
 
             // 0xC000-0xFFFF -> bank 0 in 48K mode
             Buffer.BlockCopy(ram48, 0x8000, ramBanks[0], 0, 0x4000);
+        }
+
+
+        public void LoadRamBank(int bank, byte[] data)
+        {
+            if ((uint)bank >= ramBanks.Length)
+                throw new ArgumentOutOfRangeException(nameof(bank));
+            if (data == null)
+                throw new ArgumentNullException(nameof(data));
+            if (data.Length != 16 * 1024)
+                throw new ArgumentException("RAM bank data must be exactly 16384 bytes.", nameof(data));
+
+            Buffer.BlockCopy(data, 0, ramBanks[bank], 0, data.Length);
+        }
+
+        public void ConfigureFor128kSnapshot(byte last7ffdValue, int borderColor)
+        {
+            PagedRamBank = last7ffdValue & 0x07;
+            ScreenBank = ((last7ffdValue & 0x08) != 0) ? 7 : 5;
+            CurrentRomBank = ((last7ffdValue & 0x10) != 0) ? 1 : 0;
+            PagingLocked = (last7ffdValue & 0x20) != 0;
+            BorderColor = borderColor & 0x07;
+            FrameCount = 0;
+            this.last7ffdValue = (byte)(last7ffdValue & 0x3F);
         }
 
         private void WritePort(ushort port, byte value)
