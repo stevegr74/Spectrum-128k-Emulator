@@ -267,5 +267,25 @@ namespace Spectrum128kEmulator.Tests
             Assert.False(FlagSet(cpu.Regs.F, 6)); // Z
             Assert.True(FlagSet(cpu.Regs.F, 7));  // S
         }
+
+        [Theory]
+        [InlineData(0x8E, 0x04, 0x94, 0x90)]
+        [InlineData(0x8E, 0x05, 0xF4, 0x91)]
+        [InlineData(0x99, 0x00, 0x99, 0x84)]
+        public void Daa_KnownEdgeCases(byte a, byte f, byte expectedA, byte expectedF)
+        {
+            var cpu = new Z80Cpu();
+
+            cpu.ReadMemory = _ => 0x27; // DAA
+            cpu.WriteMemory = (_, _) => { };
+
+            cpu.Regs.A = a;
+            cpu.Regs.F = f;
+
+            cpu.Step();
+
+            Assert.Equal(expectedA, cpu.Regs.A);
+            Assert.Equal(expectedF & 0xD7, cpu.Regs.F & 0xD7);
+        }
     }
 }
