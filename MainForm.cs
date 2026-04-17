@@ -95,7 +95,19 @@ namespace Spectrum128kEmulator
         {
             if (pressed && key == Keys.F9)
             {
-                LoadSnapshotFromDialog();
+                LoadSnaSnapshotFromDialog();
+                return;
+            }
+
+            if (pressed && key == Keys.F10)
+            {
+                LoadZ80SnapshotFromDialog();
+                return;
+            }
+
+            if (pressed && key == Keys.F11)
+            {
+                MountTapFromDialog();
                 return;
             }
 
@@ -236,7 +248,7 @@ namespace Spectrum128kEmulator
             }
         }
 
-        private void LoadSnapshotFromDialog()
+        private void LoadSnaSnapshotFromDialog()
         {
             using var dialog = new OpenFileDialog
             {
@@ -252,6 +264,74 @@ namespace Spectrum128kEmulator
             try
             {
                 SnapshotLoader.LoadSna48k(machine, dialog.FileName);
+
+                SpectrumRenderer.RenderToBitmap(
+                    screenBitmap,
+                    machine.GetScreenBankData(),
+                    machine.BorderColor,
+                    machine.FlashPhase);
+
+                screenBox.Image = screenBitmap;
+                fpsLabel.Text = $"Loaded: {Path.GetFileName(dialog.FileName)}";
+                screenBox.Focus();
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show(
+                    this,
+                    $"Failed to load snapshot:\n{ex.Message}",
+                    "Snapshot Load Error",
+                    MessageBoxButtons.OK,
+                    MessageBoxIcon.Error);
+            }
+        }
+
+        private void MountTapFromDialog()
+        {
+            using var dialog = new OpenFileDialog
+            {
+                Title = "Mount .tap Tape Image",
+                Filter = "Spectrum tape images (*.tap)|*.tap|All files (*.*)|*.*",
+                CheckFileExists = true,
+                Multiselect = false
+            };
+
+            if (dialog.ShowDialog(this) != DialogResult.OK)
+                return;
+
+            try
+            {
+                Tap.TapMountResult result = Tap.TapLoader.Mount(machine, dialog.FileName);
+                fpsLabel.Text = $"TAP mounted: {Path.GetFileName(dialog.FileName)} ({result.TotalBlockCount} blocks)";
+                screenBox.Focus();
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show(
+                    this,
+                    $"Failed to mount tape:\n{ex.Message}",
+                    "Tape Mount Error",
+                    MessageBoxButtons.OK,
+                    MessageBoxIcon.Error);
+            }
+        }
+
+        private void LoadZ80SnapshotFromDialog()
+        {
+            using var dialog = new OpenFileDialog
+            {
+                Title = "Load .z80 Snapshot",
+                Filter = "Z80 snapshots (*.z80)|*.z80|All files (*.*)|*.*",
+                CheckFileExists = true,
+                Multiselect = false
+            };
+
+            if (dialog.ShowDialog(this) != DialogResult.OK)
+                return;
+
+            try
+            {
+                Z80SnapshotLoader.Load(machine, dialog.FileName);
 
                 SpectrumRenderer.RenderToBitmap(
                     screenBitmap,

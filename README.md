@@ -13,13 +13,19 @@ This project focuses on correctness, clean architecture, and incremental develop
 - 128K memory paging (port `0x7FFD`)
 - ROM loading (128K + 48K modes)
 - 48K `.sna` snapshot loading (verified)
-- `.z80` snapshot support (in progress)
+- `.z80` snapshot support
+  - v1 loading implemented
+  - v2/v3 page-block support implemented
 - Keyboard matrix (8×5, active low)
 - Screen rendering (`256×192`)
 - Attribute handling (INK, PAPER, BRIGHT, FLASH)
 - Frame-based FLASH implementation
 - Frame pacing (~50Hz)
 - Per-frame interrupt scheduling
+- Basic `.tap` support
+  - block parsing
+  - fake loader path
+  - initial ROM-assisted loading path
 - Headless machine core (testable)
 - Renderer separated from emulation
 - Headless Z80 compliance runner (ZEXDOC)
@@ -28,7 +34,7 @@ This project focuses on correctness, clean architecture, and incremental develop
 
 ## Current Status
 
-**Milestone 4 Complete — Z80 Compliance Achieved**
+**Milestone 5 Complete — Snapshot Support Achieved**
 
 - Emulator boots into 128K menu
 - Menu navigation works
@@ -50,7 +56,16 @@ ZEXDOC is used as the authoritative validation source for CPU correctness.
 ### Snapshot Support Progress (Milestone 5)
 
 - 48K `.sna` loading implemented and verified (real game runs)
-- `.z80` snapshot support started (v1 loader in progress)
+- `.z80` snapshot support implemented (v1 + v2/v3)
+- 128K paging and memory restoration working
+- robocop128k.z80 verified working and playable
+
+### Tape Loading Progress (Milestone 6)
+
+- `.tap` parsing implemented
+- Phase 1 fake loader implemented
+- Phase 2 ROM-assisted loading path started (LD-BYTES trap)
+- Timing still simplified (no pulse-level emulation yet)
 
 ---
 
@@ -69,6 +84,9 @@ The emulator is structured for clarity and testability:
 
 - `SnapshotLoader` / `Z80SnapshotLoader`  
   Snapshot loading support
+
+- `Tape/TapLoader`  
+  `.tap` parsing and staged tape loading
 
 - `MainForm`  
   Thin WinForms UI layer
@@ -119,6 +137,8 @@ Test coverage includes:
 - Renderer correctness
 - ROM boot smoke tests
 - Focused opcode regression tests
+- Snapshot loading
+- Tape parsing and loader behaviour
 
 ZEXDOC is used separately for full CPU validation.
 
@@ -132,7 +152,8 @@ Current snapshot status:
   - 48K loading implemented and verified
 
 - `.z80`
-  - Support in progress (v1 currently being expanded)
+  - v1 loading implemented
+  - v2/v3 page-block support implemented
 
 Snapshots can be loaded via keyboard shortcuts in the UI.
 
@@ -191,14 +212,15 @@ Notes:
 - All instruction groups passing
 - CPU behaviour validated against hardware-derived tests
 
-### Milestone 5 — Snapshots (In Progress)
+### Milestone 5 — Snapshots ✅
 - 48K `.sna` loading complete and verified
-- `.z80` snapshot support started (v1 loader in progress)
-- Further compatibility and compression support to be added
+- `.z80` support implemented (v1 + v2/v3)
+- Real snapshot validated (robocop128k.z80 playable)
 
-### Milestone 6 — Tape Loading
-- Basic `.tap` support
-- Initial implementation via ROM loader path
+### Milestone 6 — Tape Loading (In Progress)
+- `.tap` parsing implemented
+- Fake loader path implemented
+- ROM-assisted loading path started
 
 ### Milestone 7 — Audio
 - AY-3-8912 register emulation
