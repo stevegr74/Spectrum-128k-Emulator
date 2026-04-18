@@ -37,21 +37,55 @@ namespace Spectrum128kEmulator.Tap
         private const ushort RomTapeReturnAddress = 0x053F;
         private const ushort RomLoadBytesTrapAddress = 0x056B;
         private const byte FlagCarry = 0x01;
+        private const byte HeaderFlag = 0x00;
+        private const byte DataFlag = 0xFF;
+
         private readonly IReadOnlyList<TapLoader.TapBlock> blocks;
         private int nextBlockIndex;
         private int earBlockIndex;
         private int earByteIndex;
         private int earBitIndex;
         private int earSubPhase;
+        private TapeState state;
+        private int? expectedDataLength;
+        private string? pendingHeaderName;
+
+        private enum TapeState
+        {
+            Idle,
+            ExpectHeader,
+            ExpectData
+        }
 
         public MountedTape(string displayName, IReadOnlyList<TapLoader.TapBlock> blocks)
         {
             DisplayName = string.IsNullOrWhiteSpace(displayName) ? "unnamed.tap" : displayName;
             this.blocks = blocks ?? throw new ArgumentNullException(nameof(blocks));
+            Reset();
         }
 
         public string DisplayName { get; }
         public bool HasRemainingBlocks => nextBlockIndex < blocks.Count;
+        public bool HasMoreBlocks => HasRemainingBlocks;
+
+        public void Reset()
+        {
+            nextBlockIndex = 0;
+            earBlockIndex = 0;
+            earByteIndex = 0;
+            earBitIndex = 0;
+            earSubPhase = 0;
+            expectedDataLength = null;
+            pendingHeaderName = null;
+
+            if (blocks.Count == 0)
+            {
+                state = TapeState.Idle;
+                return;
+            }
+
+            state = IsHeaderBlock(blocks[0]) ? TapeState.ExpectHeader : TapeState.ExpectData;
+        }
 
         public bool ReadEarBit()
         {
@@ -92,13 +126,32 @@ namespace Spectrum128kEmulator.Tap
                 return false;
 
             bool success = false;
+
             if (HasRemainingBlocks)
             {
                 TapLoader.TapBlock block = blocks[nextBlockIndex];
-                byte expectedFlag = cpu.Regs.A_;
+                byte expectedFlag = cpu.Regs.A;
                 ushort expectedLength = cpu.Regs.DE;
                 ushort destination = cpu.Regs.IX;
-                bool isLoad = (cpu.Regs.F_ & FlagCarry) != 0;
+                bool isLoad = (cpu.Regs.F & FlagCarry) != 0;
+
+                if (state == TapeState.ExpectHeader && !IsHeaderBlock(block))
+                {
+                    throw new InvalidOperationException(
+                        $"Tape sequencing error: expected a header block, found flag 0x{block.Flag:X2}.");
+                }
+
+                if (state == TapeState.ExpectData)
+                {
+                    EnsureDataBlock(block);
+
+                    if (expectedDataLength.HasValue && block.Payload.Length != expectedDataLength.Value)
+                    {
+                        string displayName = pendingHeaderName ?? "unnamed";
+                        throw new InvalidOperationException(
+                            $"Tape data block length mismatch for '{displayName}'. Expected {expectedDataLength.Value} bytes, got {block.Payload.Length}.");
+                    }
+                }
 
                 if (block.Flag == expectedFlag && block.Payload.Length == expectedLength)
                 {
@@ -122,12 +175,49 @@ namespace Spectrum128kEmulator.Tap
                     }
                 }
 
-                nextBlockIndex++;
+                AdvanceBlockState(block);
             }
 
             CompleteTrap(cpu, success);
             return true;
         }
+
+        private void AdvanceBlockState(TapLoader.TapBlock block)
+        {
+            nextBlockIndex++;
+
+            if (nextBlockIndex >= blocks.Count)
+            {
+                state = TapeState.Idle;
+                expectedDataLength = null;
+                pendingHeaderName = null;
+                return;
+            }
+
+            if (IsHeaderBlock(block))
+            {
+                TapLoader.TapHeaderInfo header = TapLoader.ParseHeaderInfo(block);
+                expectedDataLength = header.DataLength;
+                pendingHeaderName = header.FileName;
+                state = TapeState.ExpectData;
+                return;
+            }
+
+            expectedDataLength = null;
+            pendingHeaderName = null;
+            state = IsHeaderBlock(blocks[nextBlockIndex]) ? TapeState.ExpectHeader : TapeState.ExpectData;
+        }
+
+        private static void EnsureDataBlock(TapLoader.TapBlock block)
+        {
+            if (block.Flag != DataFlag)
+            {
+                throw new InvalidOperationException(
+                    $"Tape sequencing error: expected a data block, found flag 0x{block.Flag:X2}.");
+            }
+        }
+
+        private static bool IsHeaderBlock(TapLoader.TapBlock block) => block.Flag == HeaderFlag;
 
         private static void CompleteTrap(Z80Cpu cpu, bool success)
         {
@@ -135,7 +225,12 @@ namespace Spectrum128kEmulator.Tap
             cpu.Regs.PC = RomTapeReturnAddress;
             cpu.Regs.IX += cpu.Regs.DE;
             cpu.Regs.DE = 0;
-            cpu.Regs.F = success ? FlagCarry : (byte)0;
+
+            if (success)
+                cpu.Regs.F = (byte)(cpu.Regs.F | FlagCarry);
+            else
+                cpu.Regs.F = (byte)(cpu.Regs.F & ~FlagCarry);
+
             cpu.AdvanceTStates(32);
         }
     }
@@ -182,7 +277,7 @@ namespace Spectrum128kEmulator.Tap
 
             InitializeMachineForFake48kTapeLoad(machine);
 
-            TapHeader? pendingHeader = null;
+            TapHeaderInfo? pendingHeader = null;
             int loadedBlockCount = 0;
             string? autoStartFileName = null;
 
@@ -190,7 +285,7 @@ namespace Spectrum128kEmulator.Tap
             {
                 if (block.Flag == HeaderFlag)
                 {
-                    pendingHeader = ParseHeader(block);
+                    pendingHeader = ParseHeaderInfo(block);
                     continue;
                 }
 
@@ -233,8 +328,40 @@ namespace Spectrum128kEmulator.Tap
             if (blocks.Count == 0)
                 throw new InvalidOperationException("The .tap file does not contain any blocks.");
 
-            machine.MountTape(new MountedTape(Path.GetFileName(path), blocks));
+            var tape = new MountedTape(Path.GetFileName(path), blocks);
+            machine.MountTape(tape);
+            LogMountedTape(tape, blocks);
             return new TapMountResult(blocks.Count, Path.GetFileName(path));
+        }
+
+        private static void LogMountedTape(MountedTape tape, IReadOnlyList<TapBlock> blocks)
+        {
+            Console.WriteLine($"[TAP] Mounted '{tape.DisplayName}' with {blocks.Count} blocks.");
+            for (int i = 0; i < blocks.Count; i++)
+            {
+                TapBlock block = blocks[i];
+                if (block.Flag == HeaderFlag)
+                {
+                    TapHeaderInfo header = ParseHeaderInfo(block);
+                    Console.WriteLine($"[TAP] Block {i}: HEADER {GetHeaderTypeName(header.Type)} '{header.FileName}' len={header.DataLength}");
+                }
+                else
+                {
+                    Console.WriteLine($"[TAP] Block {i}: DATA flag=0x{block.Flag:X2} len={block.Payload.Length}");
+                }
+            }
+        }
+
+        private static string GetHeaderTypeName(byte type)
+        {
+            return type switch
+            {
+                ProgramType => "BASIC",
+                NumberArrayType => "NUMARRAY",
+                CharacterArrayType => "CHARARRAY",
+                CodeType => "CODE",
+                _ => $"TYPE{type}"
+            };
         }
 
         private static IReadOnlyList<TapBlock> ParseBlocks(byte[] fileData)
@@ -251,7 +378,10 @@ namespace Spectrum128kEmulator.Tap
                 offset += 2;
 
                 if (blockLength < 2)
-                    throw new InvalidOperationException($"Invalid tape block length {blockLength}. Each block must contain at least a flag byte and checksum byte.");
+                {
+                    throw new InvalidOperationException(
+                        $"Invalid tape block length {blockLength}. Each block must contain at least a flag byte and checksum byte.");
+                }
 
                 if (offset + blockLength > fileData.Length)
                     throw new InvalidOperationException("The .tap file ends inside a tape block.");
@@ -299,7 +429,7 @@ namespace Spectrum128kEmulator.Tap
             machine.PokeMemory(BasicProgramStart, 0x0D);
         }
 
-        private static void LoadDataBlock(Spectrum128Machine machine, TapHeader header, byte[] payload)
+        private static void LoadDataBlock(Spectrum128Machine machine, TapHeaderInfo header, byte[] payload)
         {
             switch (header.Type)
             {
@@ -320,7 +450,7 @@ namespace Spectrum128kEmulator.Tap
             }
         }
 
-        private static void LoadBasicProgram(Spectrum128Machine machine, TapHeader header, byte[] payload)
+        private static void LoadBasicProgram(Spectrum128Machine machine, TapHeaderInfo header, byte[] payload)
         {
             ushort programStart = BasicProgramStart;
             ushort programLength = header.ProgramLength;
@@ -373,7 +503,7 @@ namespace Spectrum128kEmulator.Tap
                 machine.PokeMemory(address, payload[i]);
         }
 
-        private static TapHeader ParseHeader(TapBlock block)
+        internal static TapHeaderInfo ParseHeaderInfo(TapBlock block)
         {
             if (block.Payload.Length != TapHeaderPayloadLength)
             {
@@ -387,7 +517,7 @@ namespace Spectrum128kEmulator.Tap
             ushort parameter1 = ReadWord(block.Payload, 13);
             ushort parameter2 = ReadWord(block.Payload, 15);
 
-            return new TapHeader(type, fileName, dataLength, parameter1, parameter2);
+            return new TapHeaderInfo(type, fileName, dataLength, parameter1, parameter2);
         }
 
         private static void ValidateChecksum(byte[] data, int offset, int length)
@@ -435,9 +565,9 @@ namespace Spectrum128kEmulator.Tap
             }
         }
 
-        private sealed class TapHeader
+        internal sealed class TapHeaderInfo
         {
-            public TapHeader(byte type, string fileName, ushort dataLength, ushort parameter1, ushort parameter2)
+            public TapHeaderInfo(byte type, string fileName, ushort dataLength, ushort parameter1, ushort parameter2)
             {
                 Type = type;
                 FileName = string.IsNullOrWhiteSpace(fileName) ? "unnamed" : fileName;
