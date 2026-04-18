@@ -23,6 +23,7 @@ namespace Spectrum128kEmulator
 
         private byte last7ffdValue = 0xFF;
         private MountedTape? mountedTape;
+        public MountedTape? MountedTape => mountedTape;
 
         public Spectrum128Machine(string romFolder)
         {
@@ -144,6 +145,7 @@ namespace Spectrum128kEmulator
         public void MountTape(MountedTape tape)
         {
             mountedTape = tape ?? throw new ArgumentNullException(nameof(tape));
+            mountedTape.Reset();
         }
 
         public void EjectTape()

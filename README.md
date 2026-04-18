@@ -22,10 +22,12 @@ This project focuses on correctness, clean architecture, and incremental develop
 - Frame-based FLASH implementation
 - Frame pacing (~50Hz)
 - Per-frame interrupt scheduling
-- Basic `.tap` support
-  - block parsing
-  - fake loader path
-  - initial ROM-assisted loading path
+- `.tap` tape loading
+  - block parsing implemented
+  - fake loader path available for direct testing/debugging
+  - ROM-driven `LD-BYTES` loading path implemented
+  - VERIFY path implemented
+  - deterministic multi-block sequencing implemented
 - Headless machine core (testable)
 - Renderer separated from emulation
 - Headless Z80 compliance runner (ZEXDOC)
@@ -34,7 +36,7 @@ This project focuses on correctness, clean architecture, and incremental develop
 
 ## Current Status
 
-**Milestone 5 Complete — Snapshot Support Achieved**
+**Milestone 6 Complete Enough — Tape Loading Working**
 
 - Emulator boots into 128K menu
 - Menu navigation works
@@ -44,6 +46,10 @@ This project focuses on correctness, clean architecture, and incremental develop
 - FLASH behaviour implemented correctly
 - Frame pacing stable (~50 FPS baseline)
 - Interrupt cadence implemented
+- 48K `.sna` snapshots load correctly
+- `.z80` snapshots load with v1 and v2/v3 support
+- `robocop128k.z80` has been tested successfully and is playable
+- `.tap` loading now works through the ROM-driven path
 
 ### CPU Compliance
 
@@ -63,9 +69,13 @@ ZEXDOC is used as the authoritative validation source for CPU correctness.
 ### Tape Loading Progress (Milestone 6)
 
 - `.tap` parsing implemented
-- Phase 1 fake loader implemented
-- Phase 2 ROM-assisted loading path started (LD-BYTES trap)
-- Timing still simplified (no pulse-level emulation yet)
+- fake loader path implemented
+- ROM-driven `LD-BYTES` path implemented
+- VERIFY path implemented
+- deterministic header/data sequencing implemented
+- mounted tape rewind and multi-block progression implemented
+
+Timing is still deliberately simplified at this stage. Pulse-level and higher-fidelity tape behaviour remain future work.
 
 ---
 
@@ -77,7 +87,7 @@ The emulator is structured for clarity and testability:
   Instruction decoding, execution, and flag handling
 
 - `Spectrum128Machine`  
-  Memory, paging, keyboard, ROM mapping, interrupts, and frame timing
+  Memory, paging, keyboard, ROM mapping, interrupts, frame timing, and machine-level tape integration
 
 - `SpectrumRenderer`  
   Converts screen memory into pixel output
@@ -86,7 +96,7 @@ The emulator is structured for clarity and testability:
   Snapshot loading support
 
 - `Tape/TapLoader`  
-  `.tap` parsing and staged tape loading
+  `.tap` parsing, fake loading support, mounted tape state, and ROM-driven tape integration
 
 - `MainForm`  
   Thin WinForms UI layer
@@ -138,7 +148,9 @@ Test coverage includes:
 - ROM boot smoke tests
 - Focused opcode regression tests
 - Snapshot loading
-- Tape parsing and loader behaviour
+- Tape parsing
+- VERIFY handling
+- Tape sequencing and reset behaviour
 
 ZEXDOC is used separately for full CPU validation.
 
@@ -217,12 +229,14 @@ Notes:
 - `.z80` support implemented (v1 + v2/v3)
 - Real snapshot validated (robocop128k.z80 playable)
 
-### Milestone 6 — Tape Loading (In Progress)
+### Milestone 6 — Tape Loading ✅
 - `.tap` parsing implemented
-- Fake loader path implemented
-- ROM-assisted loading path started
+- fake loader path available
+- ROM-driven tape loading path implemented
+- VERIFY path implemented
+- deterministic sequencing and rewind implemented
 
-### Milestone 7 — Audio
+### Milestone 7 — Audio (In Progress)
 - AY-3-8912 register emulation
 - Basic audio output
 
@@ -234,7 +248,8 @@ Notes:
 - Scanline-accurate rendering
 - Border effects
 - Demo compatibility improvements
-- Extended snapshot compatibility
+- Higher-fidelity tape timing
+- Extended tape compatibility
 - ZEXALL / deeper compliance validation
 
 ---

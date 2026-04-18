@@ -154,8 +154,8 @@ namespace Spectrum128kEmulator.Tests
                 machine.Cpu.Regs.SP = 0x9000;
                 machine.Cpu.Regs.IX = 0x8000;
                 machine.Cpu.Regs.DE = 17;
-                machine.Cpu.Regs.A_ = 0x00;
-                machine.Cpu.Regs.F_ = 0x01;
+                machine.Cpu.Regs.A = 0x00;
+                machine.Cpu.Regs.F = 0x01;
 
                 bool handled = machine.TryServiceTapeTrap();
 
@@ -193,8 +193,8 @@ namespace Spectrum128kEmulator.Tests
                 machine.Cpu.Regs.SP = 0x9000;
                 machine.Cpu.Regs.IX = 0x8000;
                 machine.Cpu.Regs.DE = 99;
-                machine.Cpu.Regs.A_ = 0x00;
-                machine.Cpu.Regs.F_ = 0x01;
+                machine.Cpu.Regs.A = 0x00;
+                machine.Cpu.Regs.F = 0x01;
 
                 bool handled = machine.TryServiceTapeTrap();
 
@@ -228,6 +228,246 @@ namespace Spectrum128kEmulator.Tests
             }
         }
 
+
+        [Fact]
+        public void MountedTap_RomTrap_Loads_Header_Then_Data_Sequentially()
+        {
+            string tempFolder = CreateTempRoms();
+            string tapePath = Path.Combine(tempFolder, "sequence.tap");
+
+            try
+            {
+                byte[] tap = BuildTap(
+                    BuildHeaderBlock(type: 3, fileName: "ONE", dataLength: 3, parameter1: 0x8000, parameter2: 0),
+                    BuildDataBlock(new byte[] { 1, 2, 3 }),
+                    BuildHeaderBlock(type: 3, fileName: "TWO", dataLength: 2, parameter1: 0x8100, parameter2: 0),
+                    BuildDataBlock(new byte[] { 4, 5 }));
+
+                File.WriteAllBytes(tapePath, tap);
+
+                var machine = new Spectrum128Machine(tempFolder);
+                TapLoader.Mount(machine, tapePath);
+
+                machine.PokeMemory(0x9000, 0x3F);
+                machine.PokeMemory(0x9001, 0x05);
+
+                machine.Cpu.Regs.PC = 0x056B;
+                machine.Cpu.Regs.SP = 0x9000;
+                machine.Cpu.Regs.IX = 0x8000;
+                machine.Cpu.Regs.DE = 17;
+                machine.Cpu.Regs.A = 0x00;
+                machine.Cpu.Regs.F = 0x01;
+                Assert.True(machine.TryServiceTapeTrap());
+
+                machine.Cpu.Regs.PC = 0x056B;
+                machine.Cpu.Regs.SP = 0x9000;
+                machine.Cpu.Regs.IX = 0x8100;
+                machine.Cpu.Regs.DE = 3;
+                machine.Cpu.Regs.A = 0xFF;
+                machine.Cpu.Regs.F = 0x01;
+                Assert.True(machine.TryServiceTapeTrap());
+
+                machine.Cpu.Regs.PC = 0x056B;
+                machine.Cpu.Regs.SP = 0x9000;
+                machine.Cpu.Regs.IX = 0x8200;
+                machine.Cpu.Regs.DE = 17;
+                machine.Cpu.Regs.A = 0x00;
+                machine.Cpu.Regs.F = 0x01;
+                Assert.True(machine.TryServiceTapeTrap());
+
+                machine.Cpu.Regs.PC = 0x056B;
+                machine.Cpu.Regs.SP = 0x9000;
+                machine.Cpu.Regs.IX = 0x8300;
+                machine.Cpu.Regs.DE = 2;
+                machine.Cpu.Regs.A = 0xFF;
+                machine.Cpu.Regs.F = 0x01;
+                Assert.True(machine.TryServiceTapeTrap());
+
+                Assert.Equal((byte)1, machine.PeekMemory(0x8100));
+                Assert.Equal((byte)3, machine.PeekMemory(0x8102));
+                Assert.Equal((byte)4, machine.PeekMemory(0x8300));
+                Assert.Equal((byte)5, machine.PeekMemory(0x8301));
+                Assert.False(machine.HasMountedTape && machine.MountedTape!.HasRemainingBlocks);
+            }
+            finally
+            {
+                Directory.Delete(tempFolder, true);
+            }
+        }
+
+        [Fact]
+        public void MountedTap_Reset_Rewinds_Block_Sequence()
+        {
+            string tempFolder = CreateTempRoms();
+            string tapePath = Path.Combine(tempFolder, "reset.tap");
+
+            try
+            {
+                byte[] tap = BuildTap(
+                    BuildDataBlock(new byte[] { 9, 8, 7 }));
+
+                File.WriteAllBytes(tapePath, tap);
+
+                var machine = new Spectrum128Machine(tempFolder);
+                TapLoader.Mount(machine, tapePath);
+
+                machine.PokeMemory(0x9000, 0x3F);
+                machine.PokeMemory(0x9001, 0x05);
+                machine.Cpu.Regs.PC = 0x056B;
+                machine.Cpu.Regs.SP = 0x9000;
+                machine.Cpu.Regs.IX = 0x8000;
+                machine.Cpu.Regs.DE = 3;
+                machine.Cpu.Regs.A = 0xFF;
+                machine.Cpu.Regs.F = 0x01;
+                Assert.True(machine.TryServiceTapeTrap());
+                Assert.False(machine.MountedTape!.HasRemainingBlocks);
+
+                machine.MountedTape!.Reset();
+                Assert.True(machine.MountedTape!.HasRemainingBlocks);
+
+                machine.Cpu.Regs.PC = 0x056B;
+                machine.Cpu.Regs.SP = 0x9000;
+                machine.Cpu.Regs.IX = 0x8100;
+                machine.Cpu.Regs.DE = 3;
+                machine.Cpu.Regs.A = 0xFF;
+                machine.Cpu.Regs.F = 0x01;
+                Assert.True(machine.TryServiceTapeTrap());
+
+                Assert.Equal((byte)9, machine.PeekMemory(0x8100));
+                Assert.Equal((byte)7, machine.PeekMemory(0x8102));
+            }
+            finally
+            {
+                Directory.Delete(tempFolder, true);
+            }
+        }
+
+        [Fact]
+        public void MountedTap_Header_With_Mismatched_Data_Length_Throws()
+        {
+            string tempFolder = CreateTempRoms();
+            string tapePath = Path.Combine(tempFolder, "badsequence.tap");
+
+            try
+            {
+                byte[] tap = BuildTap(
+                    BuildHeaderBlock(type: 3, fileName: "BAD", dataLength: 5, parameter1: 0x8000, parameter2: 0),
+                    BuildDataBlock(new byte[] { 1, 2, 3, 4 }));
+
+                File.WriteAllBytes(tapePath, tap);
+
+                var machine = new Spectrum128Machine(tempFolder);
+                TapLoader.Mount(machine, tapePath);
+
+                machine.PokeMemory(0x9000, 0x3F);
+                machine.PokeMemory(0x9001, 0x05);
+
+                machine.Cpu.Regs.PC = 0x056B;
+                machine.Cpu.Regs.SP = 0x9000;
+                machine.Cpu.Regs.IX = 0x8000;
+                machine.Cpu.Regs.DE = 17;
+                machine.Cpu.Regs.A = 0x00;
+                machine.Cpu.Regs.F = 0x01;
+                Assert.True(machine.TryServiceTapeTrap());
+
+                machine.Cpu.Regs.PC = 0x056B;
+                machine.Cpu.Regs.SP = 0x9000;
+                machine.Cpu.Regs.IX = 0x8100;
+                machine.Cpu.Regs.DE = 4;
+                machine.Cpu.Regs.A = 0xFF;
+                machine.Cpu.Regs.F = 0x01;
+
+                Assert.Throws<InvalidOperationException>(() => machine.TryServiceTapeTrap());
+            }
+            finally
+            {
+                Directory.Delete(tempFolder, true);
+            }
+        }
+
+
+
+        [Fact]
+        public void MountedTap_RomTrap_Verify_Match_Sets_Carry_Without_Writing()
+        {
+            string tempFolder = CreateTempRoms();
+            string tapePath = Path.Combine(tempFolder, "verifymatch.tap");
+
+            try
+            {
+                byte[] tap = BuildTap(BuildDataBlock(new byte[] { 0x10, 0x20, 0x30, 0x40 }));
+                File.WriteAllBytes(tapePath, tap);
+
+                var machine = new Spectrum128Machine(tempFolder);
+                TapLoader.Mount(machine, tapePath);
+
+                machine.PokeMemory(0x9000, 0x3F);
+                machine.PokeMemory(0x9001, 0x05);
+                machine.PokeMemory(0x8000, 0x10);
+                machine.PokeMemory(0x8001, 0x20);
+                machine.PokeMemory(0x8002, 0x30);
+                machine.PokeMemory(0x8003, 0x40);
+
+                machine.Cpu.Regs.PC = 0x056B;
+                machine.Cpu.Regs.SP = 0x9000;
+                machine.Cpu.Regs.IX = 0x8000;
+                machine.Cpu.Regs.DE = 4;
+                machine.Cpu.Regs.A = 0xFF;
+                machine.Cpu.Regs.F = 0x00;
+
+                bool handled = machine.TryServiceTapeTrap();
+
+                Assert.True(handled);
+                Assert.Equal((ushort)0x053F, machine.Cpu.Regs.PC);
+                Assert.Equal((byte)0x01, (byte)(machine.Cpu.Regs.F & 0x01));
+                Assert.Equal((byte)0x10, machine.PeekMemory(0x8000));
+                Assert.Equal((byte)0x40, machine.PeekMemory(0x8003));
+            }
+            finally
+            {
+                Directory.Delete(tempFolder, true);
+            }
+        }
+
+        [Fact]
+        public void MountedTap_RomTrap_Verify_Mismatch_Resets_Carry()
+        {
+            string tempFolder = CreateTempRoms();
+            string tapePath = Path.Combine(tempFolder, "verifymismatch.tap");
+
+            try
+            {
+                byte[] tap = BuildTap(BuildDataBlock(new byte[] { 0x10, 0x20, 0x30, 0x40 }));
+                File.WriteAllBytes(tapePath, tap);
+
+                var machine = new Spectrum128Machine(tempFolder);
+                TapLoader.Mount(machine, tapePath);
+
+                machine.PokeMemory(0x9000, 0x3F);
+                machine.PokeMemory(0x9001, 0x05);
+                machine.PokeMemory(0x8000, 0x10);
+                machine.PokeMemory(0x8001, 0x20);
+                machine.PokeMemory(0x8002, 0x31);
+                machine.PokeMemory(0x8003, 0x40);
+
+                machine.Cpu.Regs.PC = 0x056B;
+                machine.Cpu.Regs.SP = 0x9000;
+                machine.Cpu.Regs.IX = 0x8000;
+                machine.Cpu.Regs.DE = 4;
+                machine.Cpu.Regs.A = 0xFF;
+                machine.Cpu.Regs.F = 0x00;
+
+                bool handled = machine.TryServiceTapeTrap();
+
+                Assert.True(handled);
+                Assert.Equal((ushort)0x053F, machine.Cpu.Regs.PC);
+                Assert.Equal((byte)0x00, (byte)(machine.Cpu.Regs.F & 0x01));
+            }
+            finally
+            {
+                Directory.Delete(tempFolder, true);
+            }
+        }
         private static ushort ReadWord(Spectrum128Machine machine, ushort address)
         {
             return (ushort)(machine.PeekMemory(address) | (machine.PeekMemory((ushort)(address + 1)) << 8));
