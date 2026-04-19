@@ -9,6 +9,7 @@ namespace Spectrum128kEmulator
     public sealed class Spectrum128Machine
     {
         public const int FrameTStates128 = 70908;
+        public const int CpuClockHz = 3546900;
         public const int ScreenWidth = 256;
         public const int ScreenHeight = 192;
 
@@ -28,6 +29,9 @@ namespace Spectrum128kEmulator
 
         private byte lastAyRegister;
         private bool speakerHigh;
+        private bool frameStartSpeakerHigh;
+        private ulong frameStartTStates;
+        private readonly List<Audio.BeeperEvent> beeperEvents = new List<Audio.BeeperEvent>();
 
         public bool SpeakerHigh => speakerHigh;
         public bool SpeakerEdge { get; private set; }
@@ -74,6 +78,9 @@ namespace Spectrum128kEmulator
             cpu.WritePort = WritePort;
             cpu.BeforeInstruction = HandleBeforeInstruction;
             cpu.Reset();
+            frameStartTStates = cpu.TStates;
+            frameStartSpeakerHigh = speakerHigh;
+            beeperEvents.Clear();
         }
 
         public Z80Cpu Cpu => cpu;
@@ -109,19 +116,34 @@ namespace Spectrum128kEmulator
             LastAboveWriteFrame = -1;
             last7ffdValue = 0xFF;
             mountedTape = null;
+            speakerHigh = false;
+            SpeakerEdge = false;
 
             ClearLogs();
             ClearKeyboard();
             ClearRam();
             InitializeScreenRam();
             cpu.Reset();
+            frameStartTStates = cpu.TStates;
+            frameStartSpeakerHigh = speakerHigh;
         }
 
         public void ExecuteFrame()
         {
+            BeginFrameAudioCapture();
             TriggerFrameInterrupt();
             cpu.ExecuteCycles(FrameTStates128);
             FrameCount++;
+        }
+
+        public Audio.AudioFrame DrainAudioFrame()
+        {
+            return new Audio.AudioFrame(
+                FrameTStates128,
+                frameStartSpeakerHigh,
+                speakerHigh,
+                beeperEvents,
+                ay.CaptureAudioState());
         }
 
         public void ClearLogs()
@@ -356,6 +378,7 @@ namespace Spectrum128kEmulator
                 {
                     speakerHigh = newSpeakerHigh;
                     SpeakerEdge = true;
+                    RecordBeeperEvent(newSpeakerHigh);
                 }
 
                 HandleAyPortWrite(port, value);
@@ -393,6 +416,20 @@ namespace Spectrum128kEmulator
         private void TriggerFrameInterrupt()
         {
             cpu.InterruptPending = true;
-        }        
+        }
+
+        private void BeginFrameAudioCapture()
+        {
+            frameStartTStates = cpu.TStates;
+            frameStartSpeakerHigh = speakerHigh;
+            beeperEvents.Clear();
+        }
+
+        private void RecordBeeperEvent(bool newSpeakerHigh)
+        {
+            ulong elapsed = cpu.TStates - frameStartTStates;
+            int offset = (int)Math.Min((ulong)FrameTStates128, elapsed);
+            beeperEvents.Add(new Audio.BeeperEvent(offset, newSpeakerHigh));
+        }
     }
 }

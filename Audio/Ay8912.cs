@@ -21,5 +21,10 @@ namespace Spectrum128kEmulator.Audio
         }
 
         public byte CurrentRegister => (byte)selectedRegister;
+
+        public AyAudioState CaptureAudioState()
+        {
+            return new AyAudioState(registers);
+        }
     }
 }
