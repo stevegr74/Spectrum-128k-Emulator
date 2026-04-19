@@ -36,7 +36,7 @@ This project focuses on correctness, clean architecture, and incremental develop
 
 ## Current Status
 
-**Milestone 6 Complete Enough — Tape Loading Working**
+Milestone 7 In Progress — Audio Pipeline Started
 
 - Emulator boots into 128K menu
 - Menu navigation works
@@ -46,36 +46,41 @@ This project focuses on correctness, clean architecture, and incremental develop
 - FLASH behaviour implemented correctly
 - Frame pacing stable (~50 FPS baseline)
 - Interrupt cadence implemented
-- 48K `.sna` snapshots load correctly
-- `.z80` snapshots load with v1 and v2/v3 support
-- `robocop128k.z80` has been tested successfully and is playable
-- `.tap` loading now works through the ROM-driven path
+- 48K .sna snapshots load correctly
+- .z80 snapshots load with v1 and v2/v3 support
+- robocop128k.z80 has been tested successfully and is playable
+- .tap loading works through the ROM-driven path
+- AY register model implemented and wired to ports
+- 48K beeper implemented via port 0xFE (speaker state + edge detection)
 
-### CPU Compliance
-
+CPU Compliance
 - ZEXDOC runs to completion in a headless runner
 - All instruction groups pass
 - DAA implementation fixed and validated
 
 ZEXDOC is used as the authoritative validation source for CPU correctness.
 
-### Snapshot Support Progress (Milestone 5)
-
-- 48K `.sna` loading implemented and verified (real game runs)
-- `.z80` snapshot support implemented (v1 + v2/v3)
+Snapshot Support Progress (Milestone 5)
+- 4-8K .sna loading implemented and verified (real game runs)
+- .z80 snapshot support implemented (v1 + v2/v3)
 - 128K paging and memory restoration working
 - robocop128k.z80 verified working and playable
 
-### Tape Loading Progress (Milestone 6)
-
-- `.tap` parsing implemented
+Tape Loading Progress (Milestone 6)
+- .tap parsing implemented
 - fake loader path implemented
-- ROM-driven `LD-BYTES` path implemented
+- ROM-driven LD-BYTES path implemented
 - VERIFY path implemented
 - deterministic header/data sequencing implemented
 - mounted tape rewind and multi-block progression implemented
 
 Timing is still deliberately simplified at this stage. Pulse-level and higher-fidelity tape behaviour remain future work.
+
+Audio Progress (Milestone 7)
+- AY register model implemented
+- AY port wiring implemented (0xFFFD / 0xBFFD)
+- 48K beeper signal implemented via port 0xFE
+- Audio output pipeline not yet implemented
 
 ---
 
