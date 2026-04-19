@@ -2128,11 +2128,12 @@ namespace Spectrum128kEmulator.Z80
             return value;
         }
 
+        // Operand and prefix fetches do not add T-states here.
+        // Instruction handlers own the full documented timing for the instruction.
         private byte FetchByte()
         {
             byte b = ReadMemory(Regs.PC);
             Regs.PC = (ushort)(Regs.PC + 1);
-            TStates += 4;
             Regs.R = (byte)((Regs.R & 0x80) | ((Regs.R + 1) & 0x7F));
             return b;
         }

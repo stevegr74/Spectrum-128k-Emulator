@@ -1,4 +1,6 @@
+
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using Spectrum128kEmulator.Audio;
 using Xunit;
@@ -67,10 +69,7 @@ namespace Spectrum128kEmulator.Tests
             var frame = new AudioFrame(Spectrum128Machine.FrameTStates128, false, false, Array.Empty<BeeperEvent>(), ayState);
 
             short[] samples = generator.GenerateFrameSamples(frame);
-            int distinctLevels = samples
-                .Where(static sample => sample > 0)
-                .Distinct()
-                .Count();
+            int distinctLevels = samples.Where(sample => sample > 0).Distinct().Count();
 
             Assert.True(distinctLevels > 4);
         }
@@ -143,6 +142,52 @@ namespace Spectrum128kEmulator.Tests
         }
 
         [Fact]
+        public void GenerateFrameSamples_AppliesMidFrameToneWrite()
+        {
+            var generator = new AySampleGenerator(44100);
+            var initialState = new AyAudioState(new byte[16]
+            {
+                0x40, 0x00,
+                0x00, 0x00,
+                0x00, 0x00,
+                0x00,
+                0b00111110,
+                0x0F, 0x00, 0x00,
+                0x00, 0x00, 0x00, 0x00, 0x00
+            });
+            var endState = new AyAudioState(new byte[16]
+            {
+                0x08, 0x00,
+                0x00, 0x00,
+                0x00, 0x00,
+                0x00,
+                0b00111110,
+                0x0F, 0x00, 0x00,
+                0x00, 0x00, 0x00, 0x00, 0x00
+            });
+            var writes = new List<AyRegisterWrite>
+            {
+                new AyRegisterWrite(Spectrum128Machine.FrameTStates128 / 2, 0, 0x08)
+            };
+            var frame = new AudioFrame(
+                Spectrum128Machine.FrameTStates128,
+                false,
+                false,
+                Array.Empty<BeeperEvent>(),
+                endState,
+                initialState,
+                writes);
+
+            short[] samples = generator.GenerateFrameSamples(frame);
+            int halfway = samples.Length / 2;
+
+            int firstHalfTransitions = CountTransitions(samples.Take(halfway));
+            int secondHalfTransitions = CountTransitions(samples.Skip(halfway));
+
+            Assert.True(secondHalfTransitions > firstHalfTransitions);
+        }
+
+        [Fact]
         public void AyAudioState_IsImmutable_FromSourceArray()
         {
             byte[] registers = new byte[16];
@@ -152,6 +197,22 @@ namespace Spectrum128kEmulator.Tests
             registers[0] = 0x12;
 
             Assert.Equal((byte)0x34, state.ReadRegister(0));
+        }
+
+        private static int CountTransitions(IEnumerable<short> samples)
+        {
+            int transitions = 0;
+            short? previous = null;
+
+            foreach (short sample in samples)
+            {
+                if (previous.HasValue && previous.Value != sample)
+                    transitions++;
+
+                previous = sample;
+            }
+
+            return transitions;
         }
     }
 }
