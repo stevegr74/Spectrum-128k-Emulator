@@ -14,7 +14,8 @@ namespace Spectrum128kEmulator
         private int framesRenderedThisSecond;
         private long lastStatsTicks;
         private readonly System.Diagnostics.Stopwatch frameClock = System.Diagnostics.Stopwatch.StartNew();
-        private long nextFrameTicks;
+        private long lastSchedulerTicks;
+        private long accumulatedTicks;
         private readonly long ticksPerFrame = System.Diagnostics.Stopwatch.Frequency / 50;
         private const int MaxCatchUpFramesPerTick = 2;
         private readonly Bitmap screenBitmap = new Bitmap(Spectrum128Machine.ScreenWidth, Spectrum128Machine.ScreenHeight, PixelFormat.Format32bppArgb);
@@ -58,10 +59,12 @@ namespace Spectrum128kEmulator
                 }
             };
             InitializeKeyboard();
-            nextFrameTicks = frameClock.ElapsedTicks + ticksPerFrame;
+            long now = frameClock.ElapsedTicks;
+            lastSchedulerTicks = now;
+            accumulatedTicks = 0;
             frameTimer.Tick += FrameTimer_Tick;
             frameTimer.Start();
-            lastStatsTicks = frameClock.ElapsedTicks;
+            lastStatsTicks = now;
             Console.WriteLine("=== Emulator started - ROM loaded - CPU Reset ===");
         }
 
@@ -375,27 +378,30 @@ namespace Spectrum128kEmulator
         private void FrameTimer_Tick(object? sender, EventArgs e)
         {
             long now = frameClock.ElapsedTicks;
-            long ticksBehind = now - nextFrameTicks;
+            long elapsedTicks = now - lastSchedulerTicks;
+            if (elapsedTicks < 0)
+                elapsedTicks = 0;
 
-            if (ticksBehind < 0)
-            {
-                UpdateStats(now);
-                return;
-            }
+            lastSchedulerTicks = now;
+            accumulatedTicks += elapsedTicks;
 
-            int dueFrames = 1 + (int)(ticksBehind / ticksPerFrame);
-            int executedFrames = Math.Min(dueFrames, MaxCatchUpFramesPerTick);
+            long maxAccumulatedTicks = ticksPerFrame * MaxCatchUpFramesPerTick;
+            if (accumulatedTicks > maxAccumulatedTicks)
+                accumulatedTicks = maxAccumulatedTicks;
 
-            for (int i = 0; i < executedFrames; i++)
+            int executedFrames = 0;
+            while (accumulatedTicks >= ticksPerFrame && executedFrames < MaxCatchUpFramesPerTick)
             {
                 machine.ExecuteFrame();
                 audioPipeline.SubmitFrame(machine.DrainAudioFrame());
-                nextFrameTicks += ticksPerFrame;
+                accumulatedTicks -= ticksPerFrame;
+                executedFrames++;
             }
 
-            if (dueFrames > MaxCatchUpFramesPerTick)
+            if (executedFrames == 0)
             {
-                nextFrameTicks = now + ticksPerFrame;
+                UpdateStats(now);
+                return;
             }
 
             SpectrumRenderer.RenderToBitmap(
@@ -407,7 +413,7 @@ namespace Spectrum128kEmulator
             screenBox.Image = screenBitmap;
             framesRenderedThisSecond++;
 
-            UpdateStats(frameClock.ElapsedTicks);
+            UpdateStats(now);
 
             if (LogFrameDiagnostics && machine.FrameCount % 20 == 0)
             {
@@ -438,7 +444,8 @@ namespace Spectrum128kEmulator
         private void ResetFrameScheduler()
         {
             long now = frameClock.ElapsedTicks;
-            nextFrameTicks = now + ticksPerFrame;
+            lastSchedulerTicks = now;
+            accumulatedTicks = 0;
             lastStatsTicks = now;
             framesRenderedThisSecond = 0;
         }
