@@ -243,7 +243,15 @@ Notes:
 
 ### Milestone 7 — Audio (In Progress)
 - AY-3-8912 register emulation
-- Basic audio output
+- AY port wiring implemented
+- 48K beeper implemented
+- Shared audio output pipeline implemented
+- Basic audio output working
+- AY tone generation implemented
+- AY envelope support implemented
+- AY noise support implemented
+- Basic mixing implemented
+- Timing/performance polish still in progress
 
 ---
 
