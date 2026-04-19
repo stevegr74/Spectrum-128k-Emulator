@@ -28,6 +28,15 @@ This project focuses on correctness, clean architecture, and incremental develop
   - ROM-driven `LD-BYTES` loading path implemented
   - VERIFY path implemented
   - deterministic multi-block sequencing implemented
+- Shared audio output pipeline
+- 48K beeper audio output
+- AY-3-8912 audio support
+  - register model implemented
+  - port wiring implemented
+  - tone generation implemented
+  - envelope support implemented
+  - noise support implemented
+  - basic mixing implemented
 - Headless machine core (testable)
 - Renderer separated from emulation
 - Headless Z80 compliance runner (ZEXDOC)
@@ -52,6 +61,9 @@ Milestone 7 In Progress — Audio Pipeline Started
 - .tap loading works through the ROM-driven path
 - AY register model implemented and wired to ports
 - 48K beeper implemented via port 0xFE (speaker state + edge detection)
+- AY tone, envelope, and noise output implemented
+- Basic audio mixing implemented
+- CPU/frame timing and interrupt handling improved through real-game testing
 
 CPU Compliance
 - ZEXDOC runs to completion in a headless runner
@@ -80,7 +92,13 @@ Audio Progress (Milestone 7)
 - AY register model implemented
 - AY port wiring implemented (0xFFFD / 0xBFFD)
 - 48K beeper signal implemented via port 0xFE
-- Audio output pipeline not yet implemented
+- Shared audio output pipeline implemented
+- PCM audio output implemented using Windows APIs only
+- AY tone generation implemented
+- AY envelope support implemented
+- AY noise support implemented
+- Basic beeper + AY mixing implemented
+- Timing/performance polish still in progress
 
 ---
 
@@ -92,7 +110,7 @@ The emulator is structured for clarity and testability:
   Instruction decoding, execution, and flag handling
 
 - `Spectrum128Machine`  
-  Memory, paging, keyboard, ROM mapping, interrupts, frame timing, and machine-level tape integration
+  Memory, paging, keyboard, ROM mapping, interrupts, frame timing, machine-level tape integration, and audio state capture
 
 - `SpectrumRenderer`  
   Converts screen memory into pixel output
@@ -156,6 +174,9 @@ Test coverage includes:
 - Tape parsing
 - VERIFY handling
 - Tape sequencing and reset behaviour
+- AY register behaviour
+- Audio sample generation
+- Audio pipeline behaviour
 
 ZEXDOC is used separately for full CPU validation.
 
