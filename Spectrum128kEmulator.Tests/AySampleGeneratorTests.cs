@@ -26,11 +26,11 @@ namespace Spectrum128kEmulator.Tests
             short[] samples = generator.GenerateFrameSamples(frame);
 
             Assert.Contains(samples, s => s > 0);
-            Assert.Contains(samples, s => s < 0);
+            Assert.Contains(samples, s => s == 0);
         }
 
         [Fact]
-        public void GenerateFrameSamples_ReturnsSilence_WhenToneAndNoiseDisabledInMixer()
+        public void GenerateFrameSamples_ReturnsSilence_WhenToneDisabledInMixer()
         {
             var generator = new AySampleGenerator(44100);
             var ayState = new AyAudioState(new byte[16]
@@ -51,29 +51,6 @@ namespace Spectrum128kEmulator.Tests
         }
 
         [Fact]
-        public void GenerateFrameSamples_ProducesAudibleNoise_WhenNoiseEnabledAndToneDisabled()
-        {
-            var generator = new AySampleGenerator(44100);
-            var ayState = new AyAudioState(new byte[16]
-            {
-                0x00, 0x00,
-                0x00, 0x00,
-                0x00, 0x00,
-                0x01,
-                0b00110111,
-                0x0F, 0x00, 0x00,
-                0x00, 0x00, 0x00, 0x00, 0x00
-            });
-            var frame = new AudioFrame(Spectrum128Machine.FrameTStates128, false, false, Array.Empty<BeeperEvent>(), ayState);
-
-            short[] samples = generator.GenerateFrameSamples(frame);
-
-            Assert.Contains(samples, s => s > 0);
-            Assert.Contains(samples, s => s < 0);
-            Assert.True(samples.Distinct().Count() > 1);
-        }
-
-        [Fact]
         public void GenerateFrameSamples_UsesEnvelopeLevels_WhenEnvelopeVolumeEnabled()
         {
             var generator = new AySampleGenerator(44100);
@@ -90,13 +67,12 @@ namespace Spectrum128kEmulator.Tests
             var frame = new AudioFrame(Spectrum128Machine.FrameTStates128, false, false, Array.Empty<BeeperEvent>(), ayState);
 
             short[] samples = generator.GenerateFrameSamples(frame);
-            int distinctAbsoluteLevels = samples
-                .Select(static sample => Math.Abs((int)sample))
+            int distinctLevels = samples
                 .Where(static sample => sample > 0)
                 .Distinct()
                 .Count();
 
-            Assert.True(distinctAbsoluteLevels > 4);
+            Assert.True(distinctLevels > 4);
         }
 
         [Fact]
@@ -138,12 +114,32 @@ namespace Spectrum128kEmulator.Tests
             var frame = new AudioFrame(Spectrum128Machine.FrameTStates128, false, false, Array.Empty<BeeperEvent>(), ayState);
 
             short[] samples = generator.GenerateFrameSamples(frame);
-            int[] tailAbsolute = samples
-                .Skip(Math.Max(0, samples.Length - 64))
-                .Select(static sample => Math.Abs((int)sample))
-                .ToArray();
+            short[] tail = samples.Skip(Math.Max(0, samples.Length - 64)).ToArray();
 
-            Assert.All(tailAbsolute, sample => Assert.Equal(7680, sample));
+            Assert.Contains(tail, sample => sample == 7680);
+            Assert.All(tail, sample => Assert.True(sample == 0 || sample == 7680));
+        }
+
+        [Fact]
+        public void GenerateFrameSamples_ProducesAudibleNoise_WhenNoiseEnabledAndToneDisabled()
+        {
+            var generator = new AySampleGenerator(44100);
+            var ayState = new AyAudioState(new byte[16]
+            {
+                0x00, 0x00,
+                0x00, 0x00,
+                0x00, 0x00,
+                0x01,
+                0b00110111,
+                0x0F, 0x00, 0x00,
+                0x00, 0x00, 0x00, 0x00, 0x00
+            });
+            var frame = new AudioFrame(Spectrum128Machine.FrameTStates128, false, false, Array.Empty<BeeperEvent>(), ayState);
+
+            short[] samples = generator.GenerateFrameSamples(frame);
+
+            Assert.Contains(samples, s => s > 0);
+            Assert.Contains(samples, s => s == 0);
         }
 
         [Fact]

@@ -32,6 +32,8 @@ namespace Spectrum128kEmulator
         private bool frameStartSpeakerHigh;
         private ulong frameStartTStates;
         private readonly List<Audio.BeeperEvent> beeperEvents = new List<Audio.BeeperEvent>();
+        private readonly List<Audio.AyRegisterWrite> ayWrites = new List<Audio.AyRegisterWrite>();
+        private Audio.AyAudioState? frameStartAyState;
 
         public bool SpeakerHigh => speakerHigh;
         public bool SpeakerEdge { get; private set; }
@@ -50,6 +52,7 @@ namespace Spectrum128kEmulator
             if ((port & 0xC002) == 0x8000)
             {
                 ay.WriteRegister(value);
+                RecordAyWrite(lastAyRegister, value);
             }
         }
 
@@ -80,7 +83,9 @@ namespace Spectrum128kEmulator
             cpu.Reset();
             frameStartTStates = cpu.TStates;
             frameStartSpeakerHigh = speakerHigh;
+            frameStartAyState = ay.CaptureAudioState();
             beeperEvents.Clear();
+            ayWrites.Clear();
         }
 
         public Z80Cpu Cpu => cpu;
@@ -123,9 +128,14 @@ namespace Spectrum128kEmulator
             ClearKeyboard();
             ClearRam();
             InitializeScreenRam();
+            ay.Reset();
+            lastAyRegister = 0;
             cpu.Reset();
             frameStartTStates = cpu.TStates;
             frameStartSpeakerHigh = speakerHigh;
+            frameStartAyState = ay.CaptureAudioState();
+            beeperEvents.Clear();
+            ayWrites.Clear();
         }
 
         public void ExecuteFrame()
@@ -143,7 +153,9 @@ namespace Spectrum128kEmulator
                 frameStartSpeakerHigh,
                 speakerHigh,
                 beeperEvents,
-                ay.CaptureAudioState());
+                ay.CaptureAudioState(),
+                frameStartAyState,
+                ayWrites);
         }
 
         public void ClearLogs()
@@ -422,7 +434,9 @@ namespace Spectrum128kEmulator
         {
             frameStartTStates = cpu.TStates;
             frameStartSpeakerHigh = speakerHigh;
+            frameStartAyState = ay.CaptureAudioState();
             beeperEvents.Clear();
+            ayWrites.Clear();
         }
 
         private void RecordBeeperEvent(bool newSpeakerHigh)
@@ -430,6 +444,13 @@ namespace Spectrum128kEmulator
             ulong elapsed = cpu.TStates - frameStartTStates;
             int offset = (int)Math.Min((ulong)FrameTStates128, elapsed);
             beeperEvents.Add(new Audio.BeeperEvent(offset, newSpeakerHigh));
+        }
+
+        private void RecordAyWrite(byte register, byte value)
+        {
+            ulong elapsed = cpu.TStates - frameStartTStates;
+            int offset = (int)Math.Min((ulong)FrameTStates128, elapsed);
+            ayWrites.Add(new Audio.AyRegisterWrite(offset, register, value));
         }
     }
 }

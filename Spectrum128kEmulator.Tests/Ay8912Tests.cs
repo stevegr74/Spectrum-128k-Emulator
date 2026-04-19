@@ -27,5 +27,18 @@ namespace Spectrum128kEmulator.Tests
             Assert.Equal((byte)3, ay.CurrentRegister);
             Assert.Equal((byte)0x55, ay.ReadRegister(3));
         }
+
+        [Fact]
+        public void Reset_Clears_Registers_And_Selected_Register()
+        {
+            var ay = new Ay8912();
+
+            ay.SelectRegister(5);
+            ay.WriteRegister(0x7A);
+            ay.Reset();
+
+            Assert.Equal((byte)0, ay.CurrentRegister);
+            Assert.Equal((byte)0, ay.ReadRegister(5));
+        }
     }
 }
