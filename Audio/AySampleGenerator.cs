@@ -1,3 +1,4 @@
+
 using System;
 
 namespace Spectrum128kEmulator.Audio
@@ -6,13 +7,21 @@ namespace Spectrum128kEmulator.Audio
     {
         private const double AyClockHz = Spectrum128Machine.CpuClockHz / 2.0;
 
-        private readonly double[] phase = new double[3];
-        private double noisePhase;
+        private readonly byte[] currentRegisters = new byte[16];
+        private readonly int[] toneCounters = new int[3];
+        private readonly bool[] toneOutputs = { true, true, true };
+
+        private bool stateInitialized;
+        private double ayClockAccumulator;
+        private int toneNoisePrescaler;
+        private int envelopePrescaler;
+
+        private int noiseCounter = 1;
         private uint noiseShiftRegister = 0x1FFFF;
-        private bool noiseHigh = true;
-        private double envelopePhase;
-        private int currentEnvelopePeriod = 1;
+        private bool noiseOutput = true;
+
         private int currentEnvelopeShape = -1;
+        private int envelopeCounter = 1;
         private int envelopeStep = 15;
         private int envelopeAttackMask;
         private bool envelopeHold;
@@ -51,162 +60,167 @@ namespace Spectrum128kEmulator.Audio
             if (destination.Length < sampleCount)
                 throw new ArgumentException("Destination buffer is too small.", nameof(destination));
 
-            AyAudioState? ay = frame.AyState;
-            if (ay == null)
+            AyAudioState? startState = frame.InitialAyState ?? frame.AyState;
+            if (startState == null)
                 return;
 
-            byte mixer = ay.ReadRegister(7);
-            UpdateEnvelopeConfiguration(ay);
+            LoadFrameStartState(startState);
 
-            int noisePeriod = ay.ReadRegister(6) & 0x1F;
-            if (noisePeriod <= 0)
-                noisePeriod = 1;
-
-            ChannelConfig channelA = CreateChannelConfig(ay, mixer, 0);
-            ChannelConfig channelB = CreateChannelConfig(ay, mixer, 1);
-            ChannelConfig channelC = CreateChannelConfig(ay, mixer, 2);
-
-            bool anyAudibleChannel = channelA.CanProduceSound || channelB.CanProduceSound || channelC.CanProduceSound;
-            if (!anyAudibleChannel)
+            int nextWriteIndex = 0;
+            var writes = frame.AyWrites;
+            while (nextWriteIndex < writes.Count && MapWriteToSampleIndex(writes[nextWriteIndex].TState, frame.FrameTStates, sampleCount) <= 0)
             {
-                AdvanceQuietFrame(channelA, channelB, channelC, noisePeriod, sampleCount);
-                return;
+                ApplyRegisterWrite(writes[nextWriteIndex].Register, writes[nextWriteIndex].Value);
+                nextWriteIndex++;
             }
-
-            double phaseA = phase[0];
-            double phaseB = phase[1];
-            double phaseC = phase[2];
-            double phaseStepA = GetTonePhaseStep(channelA.Period, SampleRate);
-            double phaseStepB = GetTonePhaseStep(channelB.Period, SampleRate);
-            double phaseStepC = GetTonePhaseStep(channelC.Period, SampleRate);
-            double noisePhaseStep = GetNoisePhaseStep(noisePeriod, SampleRate);
-            double envelopePhaseStep = GetEnvelopePhaseStep(currentEnvelopePeriod, SampleRate);
-            bool usesEnvelope = channelA.UseEnvelope || channelB.UseEnvelope || channelC.UseEnvelope;
 
             for (int i = 0; i < sampleCount; i++)
             {
-                short envelopeAmplitude = usesEnvelope
-                    ? VolumeTables.GetAyAmplitudeFromLevel(GetCurrentEnvelopeLevel())
-                    : (short)0;
+                while (nextWriteIndex < writes.Count && MapWriteToSampleIndex(writes[nextWriteIndex].TState, frame.FrameTStates, sampleCount) == i)
+                {
+                    ApplyRegisterWrite(writes[nextWriteIndex].Register, writes[nextWriteIndex].Value);
+                    nextWriteIndex++;
+                }
 
-                int mixedSample = 0;
-                mixedSample += GetChannelSample(ref phaseA, phaseStepA, channelA, envelopeAmplitude, noiseHigh);
-                mixedSample += GetChannelSample(ref phaseB, phaseStepB, channelB, envelopeAmplitude, noiseHigh);
-                mixedSample += GetChannelSample(ref phaseC, phaseStepC, channelC, envelopeAmplitude, noiseHigh);
-
-                if (mixedSample > short.MaxValue)
-                    mixedSample = short.MaxValue;
-                else if (mixedSample < short.MinValue)
-                    mixedSample = short.MinValue;
-
-                destination[i] = (short)(destination[i] + mixedSample);
-                AdvanceNoise(noisePhaseStep);
-                AdvanceEnvelope(envelopePhaseStep);
+                StepForOneSample();
+                destination[i] = AddClamped(destination[i], MixCurrentSample());
             }
 
-            phase[0] = phaseA;
-            phase[1] = phaseB;
-            phase[2] = phaseC;
-        }
-
-        private static int GetSampleCount(int frameTStates, uint sampleRate)
-        {
-            long numerator = (long)frameTStates * sampleRate + (Spectrum128Machine.CpuClockHz / 2);
-            int sampleCount = (int)(numerator / Spectrum128Machine.CpuClockHz);
-            return sampleCount > 0 ? sampleCount : 1;
-        }
-
-        private static ChannelConfig CreateChannelConfig(AyAudioState ay, byte mixer, int channel)
-        {
-            bool toneEnabled = (mixer & (1 << channel)) == 0;
-            bool noiseEnabled = (mixer & (1 << (channel + 3))) == 0;
-            int period = GetTonePeriod(ay, channel);
-            if (period <= 0)
-                period = 1;
-
-            byte volumeRegister = ay.ReadRegister(8 + channel);
-            bool useEnvelope = (volumeRegister & 0x10) != 0;
-            short fixedAmplitude = VolumeTables.GetAyAmplitude(volumeRegister);
-            bool canProduceSound = useEnvelope || fixedAmplitude > 0;
-
-            return new ChannelConfig(toneEnabled, noiseEnabled, period, useEnvelope, fixedAmplitude, canProduceSound);
-        }
-
-        private void AdvanceQuietFrame(ChannelConfig channelA, ChannelConfig channelB, ChannelConfig channelC, int noisePeriod, int sampleCount)
-        {
-            phase[0] = AdvanceWrappedPhase(phase[0], GetTonePhaseStep(channelA.Period, SampleRate) * sampleCount);
-            phase[1] = AdvanceWrappedPhase(phase[1], GetTonePhaseStep(channelB.Period, SampleRate) * sampleCount);
-            phase[2] = AdvanceWrappedPhase(phase[2], GetTonePhaseStep(channelC.Period, SampleRate) * sampleCount);
-
-            AdvanceNoise(GetNoisePhaseStep(noisePeriod, SampleRate) * sampleCount);
-            AdvanceEnvelope(GetEnvelopePhaseStep(currentEnvelopePeriod, SampleRate) * sampleCount);
-        }
-
-        private static int GetChannelSample(ref double channelPhase, double phaseStep, ChannelConfig config, short envelopeAmplitude, bool currentNoiseHigh)
-        {
-            short amplitude = config.UseEnvelope ? envelopeAmplitude : config.FixedAmplitude;
-            if (amplitude <= 0)
+            while (nextWriteIndex < writes.Count)
             {
-                channelPhase = AdvanceWrappedPhase(channelPhase, phaseStep);
-                return 0;
+                ApplyRegisterWrite(writes[nextWriteIndex].Register, writes[nextWriteIndex].Value);
+                nextWriteIndex++;
             }
 
-            if (!config.ToneEnabled && !config.NoiseEnabled)
-            {
-                channelPhase = AdvanceWrappedPhase(channelPhase, phaseStep);
-                return 0;
-            }
-
-            bool toneGate = !config.ToneEnabled || channelPhase < 0.5;
-            bool noiseGate = !config.NoiseEnabled || currentNoiseHigh;
-            bool channelHigh = toneGate && noiseGate;
-
-            channelPhase = AdvanceWrappedPhase(channelPhase, phaseStep);
-            return channelHigh ? amplitude : 0;
+            if (frame.AyState != null)
+                CopyRegisters(frame.AyState.GetRegistersCopy(), restartEnvelopeIfShapeChanged: false);
         }
 
-        private void UpdateEnvelopeConfiguration(AyAudioState ay)
+        private void LoadFrameStartState(AyAudioState state)
         {
-            int envelopePeriod = ay.ReadRegister(11) | (ay.ReadRegister(12) << 8);
-            if (envelopePeriod <= 0)
-                envelopePeriod = 1;
+            byte[] registers = state.GetRegistersCopy();
 
-            int envelopeShape = ay.ReadRegister(13) & 0x0F;
-            currentEnvelopePeriod = envelopePeriod;
+            if (!stateInitialized)
+            {
+                CopyRegisters(registers, restartEnvelopeIfShapeChanged: true);
+                for (int channel = 0; channel < 3; channel++)
+                    toneCounters[channel] = GetTonePeriod(channel);
 
-            if (envelopeShape != currentEnvelopeShape)
-                RestartEnvelope(envelopeShape);
+                noiseCounter = GetNoisePeriod();
+                envelopeCounter = GetEnvelopePeriod();
+                stateInitialized = true;
+                return;
+            }
+
+            bool restartEnvelope = (currentRegisters[13] & 0x0F) != (registers[13] & 0x0F);
+            CopyRegisters(registers, restartEnvelope);
         }
 
-        private void RestartEnvelope(int envelopeShape)
+        private void CopyRegisters(byte[] registers, bool restartEnvelopeIfShapeChanged)
         {
-            currentEnvelopeShape = envelopeShape;
-            envelopePhase = 0.0;
-            envelopeStep = 15;
-            envelopeAttackMask = (envelopeShape & 0x04) != 0 ? 0x0F : 0x00;
-            envelopeAlternate = (envelopeShape & 0x02) != 0;
-            envelopeHold = (envelopeShape & 0x01) != 0;
-            envelopeHolding = false;
+            if (registers.Length != 16)
+                throw new ArgumentException("AY state must contain exactly 16 registers.", nameof(registers));
 
-            if ((envelopeShape & 0x08) == 0)
+            byte previousShape = currentRegisters[13];
+            Buffer.BlockCopy(registers, 0, currentRegisters, 0, 16);
+
+            if (restartEnvelopeIfShapeChanged || previousShape != currentRegisters[13])
+                RestartEnvelope(currentRegisters[13] & 0x0F);
+        }
+
+        private void ApplyRegisterWrite(byte register, byte value)
+        {
+            register &= 0x0F;
+            currentRegisters[register] = value;
+
+            switch (register)
             {
-                envelopeHold = true;
-                envelopeAlternate = envelopeAttackMask != 0;
+                case 13:
+                    RestartEnvelope(value & 0x0F);
+                    break;
+                default:
+                    break;
             }
         }
 
-        private void AdvanceEnvelope(double envelopePhaseStep)
+        private void StepForOneSample()
+        {
+            ayClockAccumulator += AyClockHz / SampleRate;
+            int wholeAyClocks = (int)ayClockAccumulator;
+            ayClockAccumulator -= wholeAyClocks;
+
+            for (int i = 0; i < wholeAyClocks; i++)
+                StepOneAyClock();
+        }
+
+        private void StepOneAyClock()
+        {
+            toneNoisePrescaler++;
+            if (toneNoisePrescaler >= 8)
+            {
+                toneNoisePrescaler = 0;
+                ClockToneAndNoise();
+            }
+
+            envelopePrescaler++;
+            if (envelopePrescaler >= 16)
+            {
+                envelopePrescaler = 0;
+                ClockEnvelope();
+            }
+        }
+
+        private void ClockToneAndNoise()
+        {
+            for (int channel = 0; channel < 3; channel++)
+            {
+                if (--toneCounters[channel] <= 0)
+                {
+                    toneCounters[channel] = GetTonePeriod(channel);
+                    toneOutputs[channel] = !toneOutputs[channel];
+                }
+            }
+
+            if (--noiseCounter <= 0)
+            {
+                noiseCounter = GetNoisePeriod();
+                ClockNoiseShiftRegister();
+            }
+        }
+
+        private void ClockNoiseShiftRegister()
+        {
+            uint feedback = ((noiseShiftRegister ^ (noiseShiftRegister >> 3)) & 0x01u);
+            noiseShiftRegister = (noiseShiftRegister >> 1) | (feedback << 16);
+            noiseOutput = (noiseShiftRegister & 0x01u) != 0;
+        }
+
+        private void ClockEnvelope()
         {
             if (envelopeHolding)
                 return;
 
-            envelopePhase += envelopePhaseStep;
-            while (envelopePhase >= 1.0)
+            if (--envelopeCounter <= 0)
             {
-                envelopePhase -= 1.0;
+                envelopeCounter = GetEnvelopePeriod();
                 ClockEnvelopeStep();
-                if (envelopeHolding)
-                    break;
+            }
+        }
+
+        private void RestartEnvelope(int envelopeShape)
+        {
+            currentEnvelopeShape = envelopeShape & 0x0F;
+            envelopeCounter = GetEnvelopePeriod();
+            envelopeStep = 15;
+            envelopeAttackMask = (currentEnvelopeShape & 0x04) != 0 ? 0x0F : 0x00;
+            envelopeHold = (currentEnvelopeShape & 0x01) != 0;
+            envelopeAlternate = (currentEnvelopeShape & 0x02) != 0;
+            envelopeHolding = false;
+
+            if ((currentEnvelopeShape & 0x08) == 0)
+            {
+                envelopeHold = true;
+                envelopeAlternate = envelopeAttackMask != 0;
             }
         }
 
@@ -229,79 +243,122 @@ namespace Spectrum128kEmulator.Audio
             envelopeStep = 15;
         }
 
+        private short MixCurrentSample()
+        {
+            int mixed = 0;
+            short envelopeAmplitude = GetEnvelopeAmplitude();
+
+            for (int channel = 0; channel < 3; channel++)
+            {
+                short channelSample = GetChannelSample(channel, envelopeAmplitude);
+                mixed += channelSample;
+            }
+
+            if (mixed > short.MaxValue)
+                return short.MaxValue;
+            if (mixed < short.MinValue)
+                return short.MinValue;
+
+            return (short)mixed;
+        }
+
+        private short GetChannelSample(int channel, short envelopeAmplitude)
+        {
+            byte mixer = currentRegisters[7];
+            bool toneEnabled = (mixer & (1 << channel)) == 0;
+            bool noiseEnabled = (mixer & (1 << (channel + 3))) == 0;
+
+            if (!toneEnabled && !noiseEnabled)
+                return 0;
+
+            byte volumeRegister = currentRegisters[8 + channel];
+            short amplitude = (volumeRegister & 0x10) != 0
+                ? envelopeAmplitude
+                : VolumeTables.GetAyAmplitude(volumeRegister);
+
+            if (amplitude <= 0)
+                return 0;
+
+            if (toneEnabled && !toneOutputs[channel])
+                return 0;
+
+            if (noiseEnabled && !noiseOutput)
+                return 0;
+
+            return amplitude;
+        }
+
+        private short GetEnvelopeAmplitude()
+        {
+            bool anyChannelUsesEnvelope =
+                (currentRegisters[8] & 0x10) != 0 ||
+                (currentRegisters[9] & 0x10) != 0 ||
+                (currentRegisters[10] & 0x10) != 0;
+
+            if (!anyChannelUsesEnvelope)
+                return 0;
+
+            return VolumeTables.GetAyAmplitudeFromLevel(GetCurrentEnvelopeLevel());
+        }
+
         private int GetCurrentEnvelopeLevel()
         {
             return envelopeStep ^ envelopeAttackMask;
         }
 
-        private void AdvanceNoise(double noisePhaseStep)
-        {
-            noisePhase += noisePhaseStep;
-            while (noisePhase >= 1.0)
-            {
-                noisePhase -= 1.0;
-                ClockNoiseStep();
-            }
-        }
-
-        private void ClockNoiseStep()
-        {
-            uint feedback = ((noiseShiftRegister ^ (noiseShiftRegister >> 3)) & 0x01u);
-            noiseShiftRegister = (noiseShiftRegister >> 1) | (feedback << 16);
-            noiseHigh = (noiseShiftRegister & 0x01u) != 0;
-        }
-
-        private static double GetTonePhaseStep(int period, uint sampleRate)
-        {
-            double frequency = AyClockHz / (16.0 * period);
-            return frequency / sampleRate;
-        }
-
-        private static double GetEnvelopePhaseStep(int period, uint sampleRate)
-        {
-            double frequency = AyClockHz / (256.0 * period);
-            return frequency / sampleRate;
-        }
-
-        private static double GetNoisePhaseStep(int period, uint sampleRate)
-        {
-            double frequency = AyClockHz / (16.0 * period);
-            return frequency / sampleRate;
-        }
-
-        private static double AdvanceWrappedPhase(double currentPhase, double phaseStep)
-        {
-            double nextPhase = currentPhase + phaseStep;
-            return nextPhase - Math.Floor(nextPhase);
-        }
-
-        private static int GetTonePeriod(AyAudioState ay, int channel)
+        private int GetTonePeriod(int channel)
         {
             int fineRegister = channel * 2;
             int coarseRegister = fineRegister + 1;
-            int fine = ay.ReadRegister(fineRegister);
-            int coarse = ay.ReadRegister(coarseRegister) & 0x0F;
-            return fine | (coarse << 8);
+            int fine = currentRegisters[fineRegister];
+            int coarse = currentRegisters[coarseRegister] & 0x0F;
+            int period = fine | (coarse << 8);
+            return period <= 0 ? 1 : period;
         }
 
-        private readonly struct ChannelConfig
+        private int GetNoisePeriod()
         {
-            public ChannelConfig(bool toneEnabled, bool noiseEnabled, int period, bool useEnvelope, short fixedAmplitude, bool canProduceSound)
-            {
-                ToneEnabled = toneEnabled;
-                NoiseEnabled = noiseEnabled;
-                Period = period;
-                UseEnvelope = useEnvelope;
-                FixedAmplitude = fixedAmplitude;
-                CanProduceSound = canProduceSound;
-            }
+            int period = currentRegisters[6] & 0x1F;
+            return period <= 0 ? 1 : period;
+        }
 
-            public bool ToneEnabled { get; }
-            public bool NoiseEnabled { get; }
-            public int Period { get; }
-            public bool UseEnvelope { get; }
-            public short FixedAmplitude { get; }
-            public bool CanProduceSound { get; }
+        private int GetEnvelopePeriod()
+        {
+            int period = currentRegisters[11] | (currentRegisters[12] << 8);
+            return period <= 0 ? 1 : period;
+        }
+
+        private static int GetSampleCount(int frameTStates, uint sampleRate)
+        {
+            long numerator = (long)frameTStates * sampleRate + (Spectrum128Machine.CpuClockHz / 2);
+            int sampleCount = (int)(numerator / Spectrum128Machine.CpuClockHz);
+            return sampleCount > 0 ? sampleCount : 1;
+        }
+
+        private static int MapWriteToSampleIndex(int writeTState, int frameTStates, int sampleCount)
+        {
+            if (writeTState <= 0)
+                return 0;
+            if (writeTState >= frameTStates)
+                return sampleCount;
+
+            long mapped = (long)writeTState * sampleCount / frameTStates;
+            if (mapped < 0)
+                return 0;
+            if (mapped > sampleCount)
+                return sampleCount;
+
+            return (int)mapped;
+        }
+
+        private static short AddClamped(short existing, short addition)
+        {
+            int mixed = existing + addition;
+            if (mixed > short.MaxValue)
+                return short.MaxValue;
+            if (mixed < short.MinValue)
+                return short.MinValue;
+            return (short)mixed;
         }
     }
 }
