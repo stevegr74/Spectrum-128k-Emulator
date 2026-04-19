@@ -123,6 +123,47 @@ namespace Spectrum128kEmulator.Tests
             }
         }
 
+
+        [Fact]
+        public void Ay_Register_Select_And_Write_Via_Ports_Works()
+        {
+            string romFolder = CreateTempRoms();
+            try
+            {
+                var machine = new Spectrum128Machine(romFolder);
+
+                machine.DebugWritePort(0xFFFD, 0x07);
+                machine.DebugWritePort(0xBFFD, 0xAB);
+
+                Assert.Equal((byte)0x07, machine.Ay.CurrentRegister);
+                Assert.Equal((byte)0xAB, machine.Ay.ReadRegister(7));
+            }
+            finally
+            {
+                Directory.Delete(romFolder, true);
+            }
+        }
+
+        [Fact]
+        public void Ay_Register_Select_Is_Masked_To_Low_4_Bits_Via_Ports()
+        {
+            string romFolder = CreateTempRoms();
+            try
+            {
+                var machine = new Spectrum128Machine(romFolder);
+
+                machine.DebugWritePort(0xFFFD, 0x1F);
+                machine.DebugWritePort(0xBFFD, 0x66);
+
+                Assert.Equal((byte)0x0F, machine.Ay.CurrentRegister);
+                Assert.Equal((byte)0x66, machine.Ay.ReadRegister(0x0F));
+            }
+            finally
+            {
+                Directory.Delete(romFolder, true);
+            }
+        }
+
         [Fact]
         public void ExecuteFrame_Advances_FrameCount_Predictably()
         {
@@ -135,6 +176,54 @@ namespace Spectrum128kEmulator.Tests
                     machine.ExecuteFrame();
 
                 Assert.Equal(10, machine.FrameCount);
+            }
+            finally
+            {
+                Directory.Delete(romFolder, true);
+            }
+        }
+
+        [Fact]
+        public void Speaker_High_Follows_Port_0xFE_Bit_4()
+        {
+            string romFolder = CreateTempRoms();
+            try
+            {
+                var machine = new Spectrum128Machine(romFolder);
+
+                machine.Cpu.WritePort!(0x00FE, 0x00);
+                Assert.False(machine.SpeakerHigh);
+                Assert.False(machine.SpeakerEdge);
+
+                machine.Cpu.WritePort!(0x00FE, 0x10);
+                Assert.True(machine.SpeakerHigh);
+                Assert.True(machine.SpeakerEdge);
+            }
+            finally
+            {
+                Directory.Delete(romFolder, true);
+            }
+        }
+
+        [Fact]
+        public void Speaker_Edge_Only_Sets_When_Bit_4_Changes()
+        {
+            string romFolder = CreateTempRoms();
+            try
+            {
+                var machine = new Spectrum128Machine(romFolder);
+
+                machine.Cpu.WritePort!(0x00FE, 0x10);
+                Assert.True(machine.SpeakerHigh);
+                Assert.True(machine.SpeakerEdge);
+
+                machine.Cpu.WritePort!(0x00FE, 0x10);
+                Assert.True(machine.SpeakerHigh);
+                Assert.False(machine.SpeakerEdge);
+
+                machine.Cpu.WritePort!(0x00FE, 0x00);
+                Assert.False(machine.SpeakerHigh);
+                Assert.True(machine.SpeakerEdge);
             }
             finally
             {
