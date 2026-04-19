@@ -20,6 +20,34 @@ namespace Spectrum128kEmulator
             0xFF, 0xFF, 0xFF, 0xFF,
             0xFF, 0xFF, 0xFF, 0xFF
         };
+        
+        // AY-3-8912
+        private readonly Audio.Ay8912 ay = new Audio.Ay8912();
+
+        public Audio.Ay8912 Ay => ay;
+
+        private byte lastAyRegister;
+        private bool speakerHigh;
+
+        public bool SpeakerHigh => speakerHigh;
+        public bool SpeakerEdge { get; private set; }
+
+        private void HandleAyPortWrite(ushort port, byte value)
+        {
+            // 128K AY ports:
+            // 0xFFFD selects AY register, 0xBFFD writes the selected register.
+            if ((port & 0xC002) == 0xC000)
+            {
+                lastAyRegister = (byte)(value & 0x0F);
+                ay.SelectRegister(lastAyRegister);
+                return;
+            }
+
+            if ((port & 0xC002) == 0x8000)
+            {
+                ay.WriteRegister(value);
+            }
+        }
 
         private byte last7ffdValue = 0xFF;
         private MountedTape? mountedTape;
@@ -317,11 +345,24 @@ namespace Spectrum128kEmulator
 
         private void WritePort(ushort port, byte value)
         {
+            SpeakerEdge = false;
+
             if ((port & 0x0001) == 0)
             {
                 BorderColor = value & 0x07;
+
+                bool newSpeakerHigh = (value & 0x10) != 0;
+                if (newSpeakerHigh != speakerHigh)
+                {
+                    speakerHigh = newSpeakerHigh;
+                    SpeakerEdge = true;
+                }
+
+                HandleAyPortWrite(port, value);
                 return;
             }
+
+            HandleAyPortWrite(port, value);
 
             if ((port & 0x8002) == 0 && (port & 0x00FF) == 0xFD)
             {
