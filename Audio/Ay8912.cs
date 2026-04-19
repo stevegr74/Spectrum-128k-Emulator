@@ -26,5 +26,11 @@ namespace Spectrum128kEmulator.Audio
         {
             return new AyAudioState(registers);
         }
+
+        public void Reset()
+        {
+            System.Array.Clear(registers, 0, registers.Length);
+            selectedRegister = 0;
+        }
     }
 }

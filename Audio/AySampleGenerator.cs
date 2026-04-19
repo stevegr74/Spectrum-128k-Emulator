@@ -94,17 +94,12 @@ namespace Spectrum128kEmulator.Audio
                 mixedSample += GetChannelSample(ref phaseB, phaseStepB, channelB, envelopeAmplitude, noiseHigh);
                 mixedSample += GetChannelSample(ref phaseC, phaseStepC, channelC, envelopeAmplitude, noiseHigh);
 
-                if (mixedSample != 0)
-                {
-                    int combined = destination[i] + mixedSample;
-                    if (combined > short.MaxValue)
-                        destination[i] = short.MaxValue;
-                    else if (combined < short.MinValue)
-                        destination[i] = short.MinValue;
-                    else
-                        destination[i] = (short)combined;
-                }
+                if (mixedSample > short.MaxValue)
+                    mixedSample = short.MaxValue;
+                else if (mixedSample < short.MinValue)
+                    mixedSample = short.MinValue;
 
+                destination[i] = (short)(destination[i] + mixedSample);
                 AdvanceNoise(noisePhaseStep);
                 AdvanceEnvelope(envelopePhaseStep);
             }
@@ -147,7 +142,7 @@ namespace Spectrum128kEmulator.Audio
             AdvanceEnvelope(GetEnvelopePhaseStep(currentEnvelopePeriod, SampleRate) * sampleCount);
         }
 
-        private int GetChannelSample(ref double channelPhase, double phaseStep, ChannelConfig config, short envelopeAmplitude, bool currentNoiseHigh)
+        private static int GetChannelSample(ref double channelPhase, double phaseStep, ChannelConfig config, short envelopeAmplitude, bool currentNoiseHigh)
         {
             short amplitude = config.UseEnvelope ? envelopeAmplitude : config.FixedAmplitude;
             if (amplitude <= 0)
@@ -167,7 +162,7 @@ namespace Spectrum128kEmulator.Audio
             bool channelHigh = toneGate && noiseGate;
 
             channelPhase = AdvanceWrappedPhase(channelPhase, phaseStep);
-            return channelHigh ? amplitude : -amplitude;
+            return channelHigh ? amplitude : 0;
         }
 
         private void UpdateEnvelopeConfiguration(AyAudioState ay)

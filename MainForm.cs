@@ -15,10 +15,10 @@ namespace Spectrum128kEmulator
         private long lastStatsTicks;
         private readonly System.Diagnostics.Stopwatch frameClock = System.Diagnostics.Stopwatch.StartNew();
         private long nextFrameTicks;
-        private readonly double ticksPerFrame = (double)System.Diagnostics.Stopwatch.Frequency / 50.0;
-        private const int MaxCatchUpFramesPerTick = 3;
+        private readonly long ticksPerFrame = System.Diagnostics.Stopwatch.Frequency / 50;
+        private const int MaxCatchUpFramesPerTick = 2;
         private readonly Bitmap screenBitmap = new Bitmap(Spectrum128Machine.ScreenWidth, Spectrum128Machine.ScreenHeight, PixelFormat.Format32bppArgb);
-        private readonly System.Windows.Forms.Timer frameTimer = new System.Windows.Forms.Timer { Interval = 5 };
+        private readonly System.Windows.Forms.Timer frameTimer = new System.Windows.Forms.Timer { Interval = 1 };
         private readonly PictureBox screenBox = new PictureBox
         {
             Dock = DockStyle.Fill,
@@ -58,7 +58,7 @@ namespace Spectrum128kEmulator
                 }
             };
             InitializeKeyboard();
-            nextFrameTicks = frameClock.ElapsedTicks + (long)ticksPerFrame;
+            nextFrameTicks = frameClock.ElapsedTicks + ticksPerFrame;
             frameTimer.Tick += FrameTimer_Tick;
             frameTimer.Start();
             lastStatsTicks = frameClock.ElapsedTicks;
@@ -288,6 +288,7 @@ namespace Spectrum128kEmulator
 
                 screenBox.Image = screenBitmap;
                 fpsLabel.Text = $"Loaded: {Path.GetFileName(dialog.FileName)}";
+                ResetFrameScheduler();
                 screenBox.Focus();
             }
             catch (Exception ex)
@@ -318,6 +319,7 @@ namespace Spectrum128kEmulator
             {
                 Tap.TapMountResult result = Tap.TapLoader.Mount(machine, dialog.FileName);
                 fpsLabel.Text = $"TAP mounted: {Path.GetFileName(dialog.FileName)} ({result.TotalBlockCount} blocks)";
+                ResetFrameScheduler();
                 screenBox.Focus();
             }
             catch (Exception ex)
@@ -356,6 +358,7 @@ namespace Spectrum128kEmulator
 
                 screenBox.Image = screenBitmap;
                 fpsLabel.Text = $"Loaded: {Path.GetFileName(dialog.FileName)}";
+                ResetFrameScheduler();
                 screenBox.Focus();
             }
             catch (Exception ex)
@@ -371,47 +374,40 @@ namespace Spectrum128kEmulator
 
         private void FrameTimer_Tick(object? sender, EventArgs e)
         {
-            int executedFrames = 0;
             long now = frameClock.ElapsedTicks;
+            long ticksBehind = now - nextFrameTicks;
 
-            while (now >= nextFrameTicks && executedFrames < MaxCatchUpFramesPerTick)
+            if (ticksBehind < 0)
+            {
+                UpdateStats(now);
+                return;
+            }
+
+            int dueFrames = 1 + (int)(ticksBehind / ticksPerFrame);
+            int executedFrames = Math.Min(dueFrames, MaxCatchUpFramesPerTick);
+
+            for (int i = 0; i < executedFrames; i++)
             {
                 machine.ExecuteFrame();
                 audioPipeline.SubmitFrame(machine.DrainAudioFrame());
-                nextFrameTicks += (long)ticksPerFrame;
-                executedFrames++;
-                now = frameClock.ElapsedTicks;
+                nextFrameTicks += ticksPerFrame;
             }
 
-            // If we fell badly behind, resync gently instead of spiralling forever.
-            if (executedFrames == MaxCatchUpFramesPerTick && now >= nextFrameTicks)
+            if (dueFrames > MaxCatchUpFramesPerTick)
             {
-                nextFrameTicks = now + (long)ticksPerFrame;
+                nextFrameTicks = now + ticksPerFrame;
             }
 
-            if (executedFrames > 0)
-            {
-                SpectrumRenderer.RenderToBitmap(
-                    screenBitmap,
-                    machine.GetScreenBankData(),
-                    machine.BorderColor,
-                    machine.FlashPhase);
+            SpectrumRenderer.RenderToBitmap(
+                screenBitmap,
+                machine.GetScreenBankData(),
+                machine.BorderColor,
+                machine.FlashPhase);
 
-                screenBox.Image = screenBitmap;
+            screenBox.Image = screenBitmap;
+            framesRenderedThisSecond++;
 
-                framesRenderedThisSecond++;
-            }
-
-            long nowTicks = frameClock.ElapsedTicks;
-            long ticksPerSecond = System.Diagnostics.Stopwatch.Frequency;
-
-            if (nowTicks - lastStatsTicks >= ticksPerSecond)
-            {
-                fpsLabel.Text = $"FPS={framesRenderedThisSecond} Frame={machine.FrameCount}";
-
-                framesRenderedThisSecond = 0;
-                lastStatsTicks = nowTicks;
-            }     
+            UpdateStats(frameClock.ElapsedTicks);
 
             if (LogFrameDiagnostics && machine.FrameCount % 20 == 0)
             {
@@ -436,6 +432,26 @@ namespace Spectrum128kEmulator
                     $"Frame {machine.FrameCount}: PC=0x{machine.Cpu.Regs.PC:X4} SP=0x{machine.Cpu.Regs.SP:X4} IFF1={machine.Cpu.IFF1} Pixels={nonZeroPixels} Attrs={nonZeroAttrs} | ScreenAddr writes={screenWrites} AboveAddr writes={aboveWrites} LastWrite@Frame{machine.LastAboveWriteFrame}{writeNote}");
 
                 Console.Out.Flush();
+            }
+        }
+
+        private void ResetFrameScheduler()
+        {
+            long now = frameClock.ElapsedTicks;
+            nextFrameTicks = now + ticksPerFrame;
+            lastStatsTicks = now;
+            framesRenderedThisSecond = 0;
+        }
+
+        private void UpdateStats(long nowTicks)
+        {
+            long ticksPerSecond = System.Diagnostics.Stopwatch.Frequency;
+
+            if (nowTicks - lastStatsTicks >= ticksPerSecond)
+            {
+                fpsLabel.Text = $"FPS={framesRenderedThisSecond} Frame={machine.FrameCount}";
+                framesRenderedThisSecond = 0;
+                lastStatsTicks = nowTicks;
             }
         }
 
