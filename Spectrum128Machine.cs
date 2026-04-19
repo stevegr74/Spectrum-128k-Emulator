@@ -141,8 +141,14 @@ namespace Spectrum128kEmulator
         public void ExecuteFrame()
         {
             BeginFrameAudioCapture();
+
+            const int interruptPulseTStates = 32;
+
             TriggerFrameInterrupt();
-            cpu.ExecuteCycles(FrameTStates128);
+            cpu.ExecuteCycles((ulong)interruptPulseTStates);
+            cpu.InterruptPending = false;
+
+            cpu.ExecuteCycles((ulong)(FrameTStates128 - interruptPulseTStates));
             FrameCount++;
         }
 

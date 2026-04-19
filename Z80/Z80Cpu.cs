@@ -793,8 +793,7 @@ namespace Spectrum128kEmulator.Z80
             {
                 byte low = FetchByte();
                 ushort port = (ushort)((Regs.A << 8) | low);
-                WritePort(port, Regs.A);
-                TStates += 11;
+                WritePortTimed(port, Regs.A, 11);
             };
 
             opcodeTable[0xDB] = () => // IN A,(n)
@@ -921,14 +920,14 @@ namespace Spectrum128kEmulator.Z80
             // =========================
             // OUT (C),r
             // =========================
-            edOpcodeTable[0x41] = () => { WritePort(Regs.BC, Regs.B); TStates += 12; };
-            edOpcodeTable[0x49] = () => { WritePort(Regs.BC, Regs.C); TStates += 12; };
-            edOpcodeTable[0x51] = () => { WritePort(Regs.BC, Regs.D); TStates += 12; };
-            edOpcodeTable[0x59] = () => { WritePort(Regs.BC, Regs.E); TStates += 12; };
-            edOpcodeTable[0x61] = () => { WritePort(Regs.BC, Regs.H); TStates += 12; };
-            edOpcodeTable[0x69] = () => { WritePort(Regs.BC, Regs.L); TStates += 12; };
-            edOpcodeTable[0x71] = () => { WritePort(Regs.BC, 0); TStates += 12; };
-            edOpcodeTable[0x79] = () => { WritePort(Regs.BC, Regs.A); TStates += 12; };
+            edOpcodeTable[0x41] = () => { WritePortTimed(Regs.BC, Regs.B, 12); };
+            edOpcodeTable[0x49] = () => { WritePortTimed(Regs.BC, Regs.C, 12); };
+            edOpcodeTable[0x51] = () => { WritePortTimed(Regs.BC, Regs.D, 12); };
+            edOpcodeTable[0x59] = () => { WritePortTimed(Regs.BC, Regs.E, 12); };
+            edOpcodeTable[0x61] = () => { WritePortTimed(Regs.BC, Regs.H, 12); };
+            edOpcodeTable[0x69] = () => { WritePortTimed(Regs.BC, Regs.L, 12); };
+            edOpcodeTable[0x71] = () => { WritePortTimed(Regs.BC, 0, 12); };
+            edOpcodeTable[0x79] = () => { WritePortTimed(Regs.BC, Regs.A, 12); };
 
             // =========================
             // Transfer A <-> I/R
@@ -1181,7 +1180,6 @@ namespace Spectrum128kEmulator.Z80
         private void BlockOut(bool increment, bool repeat)
         {
             byte value = ReadMemory(Regs.HL);
-            WritePort(Regs.BC, value);
 
             Regs.HL = increment ? (ushort)(Regs.HL + 1) : (ushort)(Regs.HL - 1);
             Regs.B = (byte)(Regs.B - 1);
@@ -1189,15 +1187,24 @@ namespace Spectrum128kEmulator.Z80
             SetFlag(Flag.N, true);
             SetFlag(Flag.Z, Regs.B == 0);
 
+            int instructionTStates;
             if (repeat && Regs.B != 0)
             {
                 Regs.PC = (ushort)(Regs.PC - 2);
-                TStates += 21;
+                instructionTStates = 21;
             }
             else
             {
-                TStates += 16;
+                instructionTStates = 16;
             }
+
+            WritePortTimed(Regs.BC, value, instructionTStates);
+        }
+
+        private void WritePortTimed(ushort port, byte value, int instructionTStates)
+        {
+            TStates += (ulong)instructionTStates;
+            WritePort(port, value);
         }
 
         private void CopyUndocumentedFlagsFrom(byte value)
