@@ -1,5 +1,6 @@
 //#define EXTENDED_DEBUG
 using System.Drawing.Imaging;
+using Spectrum128kEmulator.Audio;
 
 namespace Spectrum128kEmulator
 {
@@ -27,6 +28,7 @@ namespace Spectrum128kEmulator
         private readonly Label fpsLabel = new Label();
 
         private readonly Spectrum128Machine machine;
+        private readonly AudioPipeline audioPipeline;
 
         public MainForm()
         {
@@ -45,6 +47,7 @@ namespace Spectrum128kEmulator
 
             string romFolder = Path.Combine(AppContext.BaseDirectory, "ROMs");
             machine = new Spectrum128Machine(romFolder);
+            audioPipeline = CreateAudioPipeline();
             machine.Trace = s =>
             {
                 if ((LogUnimplementedOpcodes && s.StartsWith("UNIMPL")) ||
@@ -60,6 +63,18 @@ namespace Spectrum128kEmulator
             frameTimer.Start();
             lastStatsTicks = frameClock.ElapsedTicks;
             Console.WriteLine("=== Emulator started - ROM loaded - CPU Reset ===");
+        }
+
+        private static AudioPipeline CreateAudioPipeline()
+        {
+            try
+            {
+                return new AudioPipeline(new WaveOutAudioOutput());
+            }
+            catch
+            {
+                return new AudioPipeline(new NullAudioOutput(44100));
+            }
         }
 
         private void InitializeKeyboard()
@@ -362,6 +377,7 @@ namespace Spectrum128kEmulator
             while (now >= nextFrameTicks && executedFrames < MaxCatchUpFramesPerTick)
             {
                 machine.ExecuteFrame();
+                audioPipeline.SubmitFrame(machine.DrainAudioFrame());
                 nextFrameTicks += (long)ticksPerFrame;
                 executedFrames++;
                 now = frameClock.ElapsedTicks;
@@ -421,6 +437,18 @@ namespace Spectrum128kEmulator
 
                 Console.Out.Flush();
             }
-        }        
+        }
+
+        protected override void Dispose(bool disposing)
+        {
+            if (disposing)
+            {
+                audioPipeline.Dispose();
+                screenBitmap.Dispose();
+                frameTimer.Dispose();
+            }
+
+            base.Dispose(disposing);
+        }
     }
 }
