@@ -175,9 +175,12 @@ namespace Spectrum128kEmulator.Z80
                 Regs.HL++;
                 Regs.DE++;
                 Regs.BC--;
+                byte sum = (byte)(Regs.A + value);
                 SetFlag(Flag.H, false);
                 SetFlag(Flag.N, false);
                 SetFlag(Flag.P, Regs.BC != 0);
+                SetFlag(Flag.F3, (sum & 0x08) != 0);
+                SetFlag(Flag.F5, (sum & 0x02) != 0);
 
                 TStates += 16;
             };
@@ -189,9 +192,12 @@ namespace Spectrum128kEmulator.Z80
                 Regs.HL++;
                 Regs.DE++;
                 Regs.BC--;
+                byte sum = (byte)(Regs.A + value);
                 SetFlag(Flag.H, false);
                 SetFlag(Flag.N, false);
                 SetFlag(Flag.P, Regs.BC != 0);
+                SetFlag(Flag.F3, (sum & 0x08) != 0);
+                SetFlag(Flag.F5, (sum & 0x02) != 0);
 
                 if (Regs.BC != 0)
                 {
@@ -211,9 +217,12 @@ namespace Spectrum128kEmulator.Z80
                 Regs.HL--;
                 Regs.DE--;
                 Regs.BC--;
+                byte sum = (byte)(Regs.A + value);
                 SetFlag(Flag.H, false);
                 SetFlag(Flag.N, false);
                 SetFlag(Flag.P, Regs.BC != 0);
+                SetFlag(Flag.F3, (sum & 0x08) != 0);
+                SetFlag(Flag.F5, (sum & 0x02) != 0);
 
                 TStates += 16;
             };
@@ -225,9 +234,12 @@ namespace Spectrum128kEmulator.Z80
                 Regs.HL--;
                 Regs.DE--;
                 Regs.BC--;
+                byte sum = (byte)(Regs.A + value);
                 SetFlag(Flag.H, false);
                 SetFlag(Flag.N, false);
                 SetFlag(Flag.P, Regs.BC != 0);
+                SetFlag(Flag.F3, (sum & 0x08) != 0);
+                SetFlag(Flag.F5, (sum & 0x02) != 0);
 
                 if (Regs.BC != 0)
                 {
@@ -345,7 +357,7 @@ namespace Spectrum128kEmulator.Z80
 
             byte n = (byte)(r - (halfBorrow ? 1 : 0));
             SetFlag(Flag.F3, (n & 0x08) != 0);
-            SetFlag(Flag.F5, (n & 0x20) != 0);
+            SetFlag(Flag.F5, (n & 0x02) != 0);
 
             SetFlag(Flag.C, oldCarry);
 

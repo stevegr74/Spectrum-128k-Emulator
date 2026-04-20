@@ -274,7 +274,9 @@ namespace Spectrum128kEmulator.Z80
             SetFlag(Flag.P, OverflowSub(a, value, r));
             SetFlag(Flag.N, true);
             SetFlag(Flag.C, result < 0);
-            CopyUndocumentedFlagsFrom(r);
+
+            // CP is special: undocumented flags come from the operand, not the result
+            CopyUndocumentedFlagsFrom(value);
 
             TStates += (ulong)baseT;
         }

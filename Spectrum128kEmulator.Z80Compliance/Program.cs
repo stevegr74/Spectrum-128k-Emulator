@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Text;
 using Spectrum128kEmulator.Z80;
@@ -12,7 +13,7 @@ if (args.Length == 1 && string.Equals(args[0], "fast-daa-group", StringCompariso
 
 if (args.Length < 1 || args.Length > 2)
 {
-    Console.WriteLine("Usage: Spectrum128kEmulator.Z80Compliance <path-to-zexdoc.com> [max-steps]");
+    Console.WriteLine("Usage: Spectrum128kEmulator.Z80Compliance <path-to-com> [max-steps]");
     Console.WriteLine("   or: Spectrum128kEmulator.Z80Compliance fast-daa-group");
     return 1;
 }
@@ -24,7 +25,11 @@ if (!File.Exists(comPath))
     return 1;
 }
 
-long maxSteps = 2_000_000_000;
+long defaultMaxSteps = Path.GetFileName(comPath).Contains("zexall", StringComparison.OrdinalIgnoreCase)
+    ? 7_000_000_000
+    : 2_000_000_000;
+
+long maxSteps = defaultMaxSteps;
 if (args.Length == 2 && !long.TryParse(args[1], out maxSteps))
 {
     Console.WriteLine($"Invalid max-steps value: {args[1]}");
@@ -57,7 +62,7 @@ cpu.Reset();
 cpu.Regs.PC = 0x0100;
 cpu.Regs.SP = 0xF000;
 
-var output = new StringBuilder();
+var output = new ComplianceOutputTracker();
 bool finished = false;
 long steps = 0;
 
@@ -68,9 +73,12 @@ ushort lastObservedPc = cpu.Regs.PC;
 long repeatedPcCount = 0;
 int bdosCallCount = 0;
 int bdosStringCallCount = 0;
-int outputCharCount = 0;
 
 var wallClock = System.Diagnostics.Stopwatch.StartNew();
+
+Console.WriteLine(
+    $"[start] program={Path.GetFileName(comPath)} maxSteps={maxSteps:N0} " +
+    $"defaultMaxSteps={defaultMaxSteps:N0}");
 
 while (!finished && steps < maxSteps)
 {
@@ -78,7 +86,7 @@ while (!finished && steps < maxSteps)
 
     if (pcBeforeStep == 0x0005)
     {
-        finished = HandleBdos(cpu, memory, output, ref bdosCallCount, ref bdosStringCallCount, ref outputCharCount);
+        finished = HandleBdos(cpu, memory, output, ref bdosCallCount, ref bdosStringCallCount);
         continue;
     }
 
@@ -106,7 +114,9 @@ while (!finished && steps < maxSteps)
         Console.WriteLine(
             $"[warn] PC repeated for a long time: PC=0x{cpu.Regs.PC:X4} " +
             $"steps={steps:N0} tstates={cpu.TStates:N0} " +
-            $"AF=0x{cpu.Regs.AF:X4} BC=0x{cpu.Regs.BC:X4} DE=0x{cpu.Regs.DE:X4} HL=0x{cpu.Regs.HL:X4} SP=0x{cpu.Regs.SP:X4}");
+            $"AF=0x{cpu.Regs.AF:X4} BC=0x{cpu.Regs.BC:X4} DE=0x{cpu.Regs.DE:X4} HL=0x{cpu.Regs.HL:X4} SP=0x{cpu.Regs.SP:X4} " +
+            $"current=\"{output.CurrentSection}\"");
+        Console.WriteLine($"[warn] recent-output: {output.GetRecentOutputSummary()}");
     }
 
     if (steps % progressInterval == 0)
@@ -115,9 +125,12 @@ while (!finished && steps < maxSteps)
             $"[progress] steps={steps:N0} tstates={cpu.TStates:N0} elapsed={wallClock.Elapsed} " +
             $"PC=0x{cpu.Regs.PC:X4} SP=0x{cpu.Regs.SP:X4} " +
             $"AF=0x{cpu.Regs.AF:X4} BC=0x{cpu.Regs.BC:X4} DE=0x{cpu.Regs.DE:X4} HL=0x{cpu.Regs.HL:X4} " +
-            $"BDOS={bdosCallCount} BDOS9={bdosStringCallCount} outChars={outputCharCount}");
+            $"BDOS={bdosCallCount} BDOS9={bdosStringCallCount} outChars={output.OutputCharCount} " +
+            $"current=\"{output.CurrentSection}\"");
     }
 }
+
+output.FlushPendingSegment();
 
 Console.WriteLine(output.ToString());
 
@@ -125,11 +138,13 @@ Console.WriteLine(
     $"[summary] finished={finished} steps={steps:N0} tstates={cpu.TStates:N0} elapsed={wallClock.Elapsed} " +
     $"PC=0x{cpu.Regs.PC:X4} SP=0x{cpu.Regs.SP:X4} " +
     $"AF=0x{cpu.Regs.AF:X4} BC=0x{cpu.Regs.BC:X4} DE=0x{cpu.Regs.DE:X4} HL=0x{cpu.Regs.HL:X4} " +
-    $"BDOS={bdosCallCount} BDOS9={bdosStringCallCount} outChars={outputCharCount}");
+    $"BDOS={bdosCallCount} BDOS9={bdosStringCallCount} outChars={output.OutputCharCount} " +
+    $"current=\"{output.CurrentSection}\"");
 
 if (steps >= maxSteps)
 {
     Console.WriteLine("Execution stopped: step limit reached.");
+    Console.WriteLine($"[summary] recent-output: {output.GetRecentOutputSummary()}");
     return 2;
 }
 
@@ -138,10 +153,9 @@ return 0;
 static bool HandleBdos(
     Z80Cpu cpu,
     byte[] memory,
-    StringBuilder output,
+    ComplianceOutputTracker output,
     ref int bdosCallCount,
-    ref int bdosStringCallCount,
-    ref int outputCharCount)
+    ref int bdosStringCallCount)
 {
     byte function = cpu.Regs.C;
     bool shouldExit = false;
@@ -155,7 +169,6 @@ static bool HandleBdos(
 
         case 2:
             output.Append((char)cpu.Regs.E);
-            outputCharCount++;
             break;
 
         case 9:
@@ -164,7 +177,6 @@ static bool HandleBdos(
             while (memory[addr] != (byte)'$')
             {
                 output.Append((char)memory[addr]);
-                outputCharCount++;
                 addr++;
             }
             break;
@@ -187,4 +199,81 @@ static ushort Pop(Z80Cpu cpu, byte[] memory)
     byte high = memory[(ushort)(sp + 1)];
     cpu.Regs.SP += 2;
     return (ushort)(low | (high << 8));
+}
+
+internal sealed class ComplianceOutputTracker
+{
+    private readonly StringBuilder fullOutput = new();
+    private readonly StringBuilder currentSegment = new();
+    private readonly Queue<string> recentSegments = new();
+
+    public int OutputCharCount { get; private set; }
+
+    public string CurrentSection { get; private set; } = "(none)";
+
+    public void Append(char ch)
+    {
+        fullOutput.Append(ch);
+        OutputCharCount++;
+
+        if (ch == '\r' || ch == '\n')
+        {
+            FlushPendingSegment();
+            return;
+        }
+
+        currentSegment.Append(ch);
+    }
+
+    public void FlushPendingSegment()
+    {
+        if (currentSegment.Length == 0)
+            return;
+
+        string segment = currentSegment.ToString().Trim();
+        currentSegment.Clear();
+
+        if (segment.Length == 0)
+            return;
+
+        if (recentSegments.Count == 8)
+            recentSegments.Dequeue();
+
+        recentSegments.Enqueue(segment);
+
+        if (LooksLikeSectionLabel(segment))
+            CurrentSection = segment;
+    }
+
+    public string GetRecentOutputSummary()
+    {
+        FlushPendingSegment();
+
+        if (recentSegments.Count == 0)
+            return "(none)";
+
+        return string.Join(" | ", recentSegments);
+    }
+
+    public override string ToString()
+    {
+        return fullOutput.ToString();
+    }
+
+    private static bool LooksLikeSectionLabel(string segment)
+    {
+        bool hasLetter = false;
+        bool hasNonDotContent = false;
+
+        foreach (char ch in segment)
+        {
+            if (char.IsLetter(ch))
+                hasLetter = true;
+
+            if (!char.IsWhiteSpace(ch) && ch != '.')
+                hasNonDotContent = true;
+        }
+
+        return hasLetter && hasNonDotContent;
+    }
 }

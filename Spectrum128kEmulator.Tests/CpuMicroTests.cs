@@ -268,6 +268,129 @@ namespace Spectrum128kEmulator.Tests
             Assert.True(FlagSet(cpu.Regs.F, 7));  // S
         }
 
+        [Fact]
+        public void BitB_CopiesUndocumentedFlagsFromOperand()
+        {
+            var memory = new byte[65536];
+            var cpu = new Z80Cpu
+            {
+                ReadMemory = addr => memory[addr],
+                WriteMemory = (addr, value) => memory[addr] = value
+            };
+
+            // LD B,28h ; BIT 0,B
+            memory[0x0000] = 0x06;
+            memory[0x0001] = 0x28;
+            memory[0x0002] = 0xCB;
+            memory[0x0003] = 0x40;
+
+            cpu.Reset();
+            cpu.Step();
+            cpu.Step();
+
+            Assert.True(FlagSet(cpu.Regs.F, 3));
+            Assert.True(FlagSet(cpu.Regs.F, 5));
+        }
+
+        [Fact]
+        public void BitHlm_CopiesUndocumentedFlagsFromAddressHighByte()
+        {
+            var memory = new byte[65536];
+            var cpu = new Z80Cpu
+            {
+                ReadMemory = addr => memory[addr],
+                WriteMemory = (addr, value) => memory[addr] = value
+            };
+
+            // LD HL,2810h ; BIT 0,(HL)
+            memory[0x0000] = 0x21;
+            memory[0x0001] = 0x10;
+            memory[0x0002] = 0x28;
+            memory[0x0003] = 0xCB;
+            memory[0x0004] = 0x46;
+            memory[0x2810] = 0x01;
+
+            cpu.Reset();
+            cpu.Step();
+            cpu.Step();
+
+            Assert.True(FlagSet(cpu.Regs.F, 3));
+            Assert.True(FlagSet(cpu.Regs.F, 5));
+        }
+
+        [Fact]
+        public void Ldi_SetsUndocumentedFlagsFromAPlusCopiedValue()
+        {
+            var memory = new byte[65536];
+            var cpu = new Z80Cpu
+            {
+                ReadMemory = addr => memory[addr],
+                WriteMemory = (addr, value) => memory[addr] = value
+            };
+
+            // LD A,01 ; LD HL,4000 ; LD DE,5000 ; LD BC,0001 ; LDI
+            memory[0x0000] = 0x3E; memory[0x0001] = 0x01;
+            memory[0x0002] = 0x21; memory[0x0003] = 0x00; memory[0x0004] = 0x40;
+            memory[0x0005] = 0x11; memory[0x0006] = 0x00; memory[0x0007] = 0x50;
+            memory[0x0008] = 0x01; memory[0x0009] = 0x01; memory[0x000A] = 0x00;
+            memory[0x000B] = 0xED; memory[0x000C] = 0xA0;
+            memory[0x4000] = 0x07; // A+value = 08h => F3 set, F5 clear because bit1 is 0
+
+            cpu.Reset();
+            for (int i = 0; i < 5; i++) cpu.Step();
+
+            Assert.True(FlagSet(cpu.Regs.F, 3));
+            Assert.False(FlagSet(cpu.Regs.F, 5));
+        }
+
+        [Fact]
+        public void Cpi_SetsF5FromBit1OfIntermediateValue()
+        {
+            var memory = new byte[65536];
+            var cpu = new Z80Cpu
+            {
+                ReadMemory = addr => memory[addr],
+                WriteMemory = (addr, value) => memory[addr] = value
+            };
+
+            // Choose values so r = A - (HL) = 03, H clear, so n = 03.
+            // F3 should come from bit 3 of n (clear), F5 from bit 1 of n (set).
+            memory[0x0000] = 0x3E; memory[0x0001] = 0x05; // LD A,05
+            memory[0x0002] = 0x21; memory[0x0003] = 0x00; memory[0x0004] = 0x40; // LD HL,4000
+            memory[0x0005] = 0x01; memory[0x0006] = 0x01; memory[0x0007] = 0x00; // LD BC,0001
+            memory[0x0008] = 0xED; memory[0x0009] = 0xA1; // CPI
+            memory[0x4000] = 0x02;
+
+            cpu.Reset();
+            for (int i = 0; i < 4; i++) cpu.Step();
+
+            Assert.False(FlagSet(cpu.Regs.F, 3));
+            Assert.True(FlagSet(cpu.Regs.F, 5));
+        }
+
+        [Fact]
+        public void IncIxd_CopiesUndocumentedFlagsFromResult()
+        {
+            var memory = new byte[65536];
+            var cpu = new Z80Cpu
+            {
+                ReadMemory = addr => memory[addr],
+                WriteMemory = (addr, value) => memory[addr] = value
+            };
+
+            // LD IX,4000 ; INC (IX+1)
+            memory[0x0000] = 0xDD; memory[0x0001] = 0x21; memory[0x0002] = 0x00; memory[0x0003] = 0x40;
+            memory[0x0004] = 0xDD; memory[0x0005] = 0x34; memory[0x0006] = 0x01;
+            memory[0x4001] = 0x27; // result 28h -> F3 and F5 set
+
+            cpu.Reset();
+            cpu.Step();
+            cpu.Step();
+
+            Assert.True(FlagSet(cpu.Regs.F, 3));
+            Assert.True(FlagSet(cpu.Regs.F, 5));
+        }
+
         [Theory]
         [InlineData(0x8E, 0x04, 0x94, 0x90)]
         [InlineData(0x8E, 0x05, 0xF4, 0x91)]
