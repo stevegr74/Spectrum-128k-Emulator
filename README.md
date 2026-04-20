@@ -106,8 +106,36 @@ Audio Progress (Milestone 7)
 
 The emulator is structured for clarity and testability:
 
-- `Z80Cpu`  
-  Instruction decoding, execution, and flag handling
+  
+- `Z80C` / `Z80Cpu.c`  
+  Main CPU execution/orchestration layer, including the execution loop, interrupt handling, dispatch entry points, and core CPU state
+  
+- `Z80/` / `Z80Registers.cs`  
+  Z80 register model, including main and shadow registers plus byte/word access helpers
+
+- `Z80/` / `Z80Flags.cs`  
+  Flag definitions and flag-related helpers, including parity and undocumented flag handling
+
+- `Z80/` / `Z80AluHelpers.cs`  
+  8-bit and 16-bit ALU helpers, overflow handling, NEG, and DAA support
+
+- `Z80/` / `Z80BaseOperations.cs`  
+  Non-prefixed opcode table setup and base instruction flow helpers
+
+- `Z80/` / `Z80BitOperations.cs`  
+  CB-prefixed rotate, shift, BIT, SET, and RES operations
+
+- `Z80/` / `Z80ExtendedOperations.cs`  
+  ED-prefixed instructions, including block operations and extended I/O behaviour
+
+- `Z80/` / `Z80IndexedOperations.cs`  
+  DD/FD-prefixed IX/IY operations and indexed opcode handling
+
+- `Z80/` / `Z80CoreHelpers.cs`  
+  Shared CPU helpers such as fetch, stack, register, and other core internal utilities
+
+- `Z80/` / `Z80Disassembler.cs`  
+  Trace/disassembly scaffolding, separated to allow future expansion into a fuller disassembler
 
 - `Spectrum128Machine`  
   Memory, paging, keyboard, ROM mapping, interrupts, frame timing, machine-level tape integration, and audio state capture
