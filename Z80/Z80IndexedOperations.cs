@@ -49,13 +49,8 @@ namespace Spectrum128kEmulator.Z80
                 sbyte d = (sbyte)FetchByte();
                 ushort addr = (ushort)(Regs.IX + d);
                 byte old = ReadMemory(addr);
-                byte value = (byte)(old + 1);
+                byte value = Inc8(old);
                 WriteMemory(addr, value);
-                SetFlag(Flag.S, (value & 0x80) != 0);
-                SetFlag(Flag.Z, value == 0);
-                SetFlag(Flag.H, (old & 0x0F) == 0x0F);
-                SetFlag(Flag.P, old == 0x7F);
-                SetFlag(Flag.N, false);
                 TStates += 23;
             };
             ddOpcodeTable[0x35] = () =>
@@ -63,13 +58,8 @@ namespace Spectrum128kEmulator.Z80
                 sbyte d = (sbyte)FetchByte();
                 ushort addr = (ushort)(Regs.IX + d);
                 byte old = ReadMemory(addr);
-                byte value = (byte)(old - 1);
+                byte value = Dec8(old);
                 WriteMemory(addr, value);
-                SetFlag(Flag.S, (value & 0x80) != 0);
-                SetFlag(Flag.Z, value == 0);
-                SetFlag(Flag.H, (old & 0x0F) == 0x00);
-                SetFlag(Flag.P, old == 0x80);
-                SetFlag(Flag.N, true);
                 TStates += 23;
             };
             ddOpcodeTable[0x36] = () =>
@@ -239,13 +229,8 @@ namespace Spectrum128kEmulator.Z80
                 sbyte d = (sbyte)FetchByte();
                 ushort addr = (ushort)(Regs.IY + d);
                 byte old = ReadMemory(addr);
-                byte value = (byte)(old + 1);
+                byte value = Inc8(old);
                 WriteMemory(addr, value);
-                SetFlag(Flag.S, (value & 0x80) != 0);
-                SetFlag(Flag.Z, value == 0);
-                SetFlag(Flag.H, (old & 0x0F) == 0x0F);
-                SetFlag(Flag.P, old == 0x7F);
-                SetFlag(Flag.N, false);
                 TStates += 23;
             };
             fdOpcodeTable[0x35] = () =>
@@ -253,13 +238,8 @@ namespace Spectrum128kEmulator.Z80
                 sbyte d = (sbyte)FetchByte();
                 ushort addr = (ushort)(Regs.IY + d);
                 byte old = ReadMemory(addr);
-                byte value = (byte)(old - 1);
+                byte value = Dec8(old);
                 WriteMemory(addr, value);
-                SetFlag(Flag.S, (value & 0x80) != 0);
-                SetFlag(Flag.Z, value == 0);
-                SetFlag(Flag.H, (old & 0x0F) == 0x00);
-                SetFlag(Flag.P, old == 0x80);
-                SetFlag(Flag.N, true);
                 TStates += 23;
             };
             fdOpcodeTable[0x36] = () =>

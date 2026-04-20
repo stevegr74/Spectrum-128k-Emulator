@@ -46,6 +46,17 @@ namespace Spectrum128kEmulator.Z80
                     SetFlag(Flag.H, true);
                     SetFlag(Flag.S, b == 7 && set);
                     SetFlag(Flag.P, !set);
+
+                    if (r == 6)
+                    {
+                        SetFlag(Flag.F3, (Regs.H & 0x08) != 0);
+                        SetFlag(Flag.F5, (Regs.H & 0x20) != 0);
+                    }
+                    else
+                    {
+                        CopyUndocumentedFlagsFrom(val);
+                    }
+
                     TStates += (r == 6 ? 12UL : 8UL);
                 };
             }
@@ -139,6 +150,8 @@ namespace Spectrum128kEmulator.Z80
                     SetFlag(Flag.H, true);
                     SetFlag(Flag.P, !bitSet);
                     SetFlag(Flag.S, y == 7 && bitSet);
+                    SetFlag(Flag.F3, (((byte)(addr >> 8)) & 0x08) != 0);
+                    SetFlag(Flag.F5, (((byte)(addr >> 8)) & 0x20) != 0);
                     TStates += 20;
                     break;
                 }
