@@ -9,7 +9,7 @@ This project focuses on correctness, clean architecture, and incremental develop
 ## Features
 
 - Z80 CPU emulation
-- Full ZEXDOC CPU compliance (all instruction groups passing)
+- Full ZEXDOC and ZEXALL CPU compliance (all instruction groups passing)
 - 128K memory paging (port `0x7FFD`)
 - ROM loading (128K + 48K modes)
 - 48K `.sna` snapshot loading (verified)
@@ -39,13 +39,13 @@ This project focuses on correctness, clean architecture, and incremental develop
   - basic mixing implemented
 - Headless machine core (testable)
 - Renderer separated from emulation
-- Headless Z80 compliance runner (ZEXDOC)
+- Headless Z80 compliance runner (ZEXDOC / ZEXALL)
 
 ---
 
 ## Current Status
 
-Milestone 7 In Progress — Audio Pipeline Started
+Milestone 7 In Progress — Audio Output Working, Timing Improved
 
 - Emulator boots into 128K menu
 - Menu navigation works
@@ -64,16 +64,18 @@ Milestone 7 In Progress — Audio Pipeline Started
 - AY tone, envelope, and noise output implemented
 - Basic audio mixing implemented
 - CPU/frame timing and interrupt handling improved through real-game testing
+- Z80 core refactored into focused partial files without intended behaviour changes
 
 CPU Compliance
 - ZEXDOC runs to completion in a headless runner
+- ZEXALL runs to completion in a headless runner
 - All instruction groups pass
 - DAA implementation fixed and validated
 
-ZEXDOC is used as the authoritative validation source for CPU correctness.
+ZEXDOC and ZEXALL are used as the authoritative validation sources for CPU correctness.
 
 Snapshot Support Progress (Milestone 5)
-- 4-8K .sna loading implemented and verified (real game runs)
+- 48K .sna loading implemented and verified (real game runs)
 - .z80 snapshot support implemented (v1 + v2/v3)
 - 128K paging and memory restoration working
 - robocop128k.z80 verified working and playable
@@ -106,10 +108,10 @@ Audio Progress (Milestone 7)
 
 The emulator is structured for clarity and testability:
 
-  
-- `Z80C` / `Z80Cpu.c`  
+
+- `Z80/` / `Z80Cpu.cs`  
   Main CPU execution/orchestration layer, including the execution loop, interrupt handling, dispatch entry points, and core CPU state
-  
+
 - `Z80/` / `Z80Registers.cs`  
   Z80 register model, including main and shadow registers plus byte/word access helpers
 
@@ -153,10 +155,10 @@ The emulator is structured for clarity and testability:
   Thin WinForms UI layer
 
 - Test projects  
-  CPU correctness, machine behaviour, rendering, and regression tests
+  CPU correctness, machine behaviour, rendering, audio behaviour, and regression tests
 
 - `Spectrum128kEmulator.Z80Compliance`  
-  Headless CPU validation using ZEXDOC
+  Headless CPU validation using ZEXDOC and ZEXALL
 
 ---
 
@@ -205,8 +207,9 @@ Test coverage includes:
 - AY register behaviour
 - Audio sample generation
 - Audio pipeline behaviour
+- ZEXDOC and ZEXALL compliance validation via the dedicated runner
 
-ZEXDOC is used separately for full CPU validation.
+ZEXDOC and ZEXALL are used separately for full CPU validation.
 
 ---
 
@@ -249,7 +252,7 @@ dotnet run -c Release --project Spectrum128kEmulator.Z80Compliance -- test-asset
 
 Notes:
 
-- Runs ZEXDOC in a minimal CP/M-style environment
+- Runs ZEXDOC and ZEXALL in a minimal CP/M-style environment
 - Fully uncapped execution
 - Used for correctness validation, not timing accuracy
 - All instruction groups currently pass
@@ -275,6 +278,7 @@ Notes:
 
 ### Milestone 4 — Z80 Compliance ✅
 - ZEXDOC runs to completion
+- ZEXALL runs to completion
 - All instruction groups passing
 - CPU behaviour validated against hardware-derived tests
 
@@ -312,7 +316,7 @@ Notes:
 - Demo compatibility improvements
 - Higher-fidelity tape timing
 - Extended tape compatibility
-- ZEXALL / deeper compliance validation
+- Exolon compatibility and broader real-game validation
 
 ---
 
@@ -320,7 +324,7 @@ Notes:
 
 - Standard library only (no external dependencies)
 - Incremental development (no large rewrites)
-- Behaviour verified with tests and ZEXDOC
+- Behaviour verified with tests, ZEXDOC, and ZEXALL
 - Clear separation between emulation and UI
 - Headless tooling for reproducible debugging
 
