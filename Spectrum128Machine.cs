@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Text;
 using Spectrum128kEmulator.Tap;
 using Spectrum128kEmulator.Z80;
 
@@ -34,6 +35,10 @@ namespace Spectrum128kEmulator
         private readonly List<Audio.BeeperEvent> beeperEvents = new List<Audio.BeeperEvent>();
         private readonly List<Audio.AyRegisterWrite> ayWrites = new List<Audio.AyRegisterWrite>();
         private Audio.AyAudioState? frameStartAyState;
+
+        private const int DebugHistoryCapacity = 128;
+        private readonly Queue<string> recentMemoryEvents = new Queue<string>();
+        private readonly Queue<string> recentPortEvents = new Queue<string>();
 
         public bool SpeakerHigh => speakerHigh;
         public bool SpeakerEdge { get; private set; }
@@ -86,6 +91,8 @@ namespace Spectrum128kEmulator
             frameStartAyState = ay.CaptureAudioState();
             beeperEvents.Clear();
             ayWrites.Clear();
+            recentMemoryEvents.Clear();
+            recentPortEvents.Clear();
         }
 
         public Z80Cpu Cpu => cpu;
@@ -136,6 +143,9 @@ namespace Spectrum128kEmulator
             frameStartAyState = ay.CaptureAudioState();
             beeperEvents.Clear();
             ayWrites.Clear();
+            recentMemoryEvents.Clear();
+            recentPortEvents.Clear();
+            cpu.ClearRecentTrace();
         }
 
         public void ExecuteFrame()
@@ -162,6 +172,73 @@ namespace Spectrum128kEmulator
                 ay.CaptureAudioState(),
                 frameStartAyState,
                 ayWrites);
+        }
+
+        public void ClearDebugHistory()
+        {
+            recentMemoryEvents.Clear();
+            recentPortEvents.Clear();
+            cpu.ClearRecentTrace();
+        }
+
+        public string BuildDebugDump()
+        {
+            var sb = new StringBuilder();
+            sb.AppendLine("=== MACHINE STATE ===");
+            sb.AppendLine($"Frame={FrameCount} Border={BorderColor} PagedRamBank={PagedRamBank} ScreenBank={ScreenBank} RomBank={CurrentRomBank} PagingLocked={PagingLocked}");
+            sb.AppendLine($"SpeakerHigh={speakerHigh} SpeakerEdge={SpeakerEdge} FlashPhase={FlashPhase} MountedTape={mountedTape?.DisplayName ?? "(none)"}");
+            sb.AppendLine();
+
+            sb.AppendLine("=== CPU STATE ===");
+            sb.AppendLine($"TStates={cpu.TStates}");
+            sb.AppendLine($"PC={cpu.Regs.PC:X4} SP={cpu.Regs.SP:X4} AF={cpu.Regs.AF:X4} BC={cpu.Regs.BC:X4} DE={cpu.Regs.DE:X4} HL={cpu.Regs.HL:X4} IX={cpu.Regs.IX:X4} IY={cpu.Regs.IY:X4}");
+            sb.AppendLine($"I={cpu.Regs.I:X2} R={cpu.Regs.R:X2} IM={cpu.InterruptMode} IFF1={(cpu.IFF1 ? 1 : 0)} IFF2={(cpu.IFF2 ? 1 : 0)} HALT={(cpu.IsHalted ? 1 : 0)} INTP={(cpu.InterruptPending ? 1 : 0)}");
+            sb.AppendLine();
+
+            sb.AppendLine("=== STACK BYTES ===");
+            ushort sp = cpu.Regs.SP;
+            for (int i = 0; i < 32; i += 8)
+            {
+                ushort addr = (ushort)(sp + i);
+                sb.Append($"{addr:X4}: ");
+                for (int j = 0; j < 8; j++)
+                {
+                    ushort a = (ushort)(addr + j);
+                    sb.Append($"{PeekMemory(a):X2} ");
+                }
+                sb.AppendLine();
+            }
+            sb.AppendLine();
+
+            sb.AppendLine("=== RECENT CPU TRACE ===");
+            foreach (string line in cpu.GetRecentTraceSnapshot())
+                sb.AppendLine(line);
+            sb.AppendLine();
+
+            sb.AppendLine("=== RECENT MEMORY EVENTS ===");
+            foreach (string line in recentMemoryEvents)
+                sb.AppendLine(line);
+            sb.AppendLine();
+
+            sb.AppendLine("=== RECENT PORT EVENTS ===");
+            foreach (string line in recentPortEvents)
+                sb.AppendLine(line);
+
+            return sb.ToString();
+        }
+
+        private void RecordMemoryEvent(string line)
+        {
+            recentMemoryEvents.Enqueue(line);
+            while (recentMemoryEvents.Count > DebugHistoryCapacity)
+                recentMemoryEvents.Dequeue();
+        }
+
+        private void RecordPortEvent(string line)
+        {
+            recentPortEvents.Enqueue(line);
+            while (recentPortEvents.Count > DebugHistoryCapacity)
+                recentPortEvents.Dequeue();
         }
 
         public void ClearLogs()
@@ -305,6 +382,7 @@ namespace Spectrum128kEmulator
             }
 
             ramBanks[bank][addr & 0x3FFF] = value;
+            RecordMemoryEvent($"T={cpu.TStates,10} W {addr:X4}={value:X2} bank={bank} PC={cpu.Regs.PC:X4}");
         }
 
         public byte ReadPort(ushort port)
@@ -386,6 +464,7 @@ namespace Spectrum128kEmulator
         private void WritePort(ushort port, byte value)
         {
             SpeakerEdge = false;
+            RecordPortEvent($"T={cpu.TStates,10} OUT {port:X4}={value:X2} PC={cpu.Regs.PC:X4}");
 
             if ((port & 0x0001) == 0)
             {
