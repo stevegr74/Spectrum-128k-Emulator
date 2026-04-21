@@ -21,6 +21,7 @@ namespace Spectrum128kEmulator.Z80
         public bool InterruptPending { get; set; } = false;
         public bool IFF1 { get; private set; } = false;
         public bool IFF2 { get; private set; } = false;
+        public int InterruptMode => interruptMode;
 
         private int eiDelay = 0;
         private int interruptMode = 1;
@@ -32,6 +33,7 @@ namespace Spectrum128kEmulator.Z80
         private readonly Action[] fdOpcodeTable = new Action[256];
 
         private readonly Queue<string> recentTrace = new Queue<string>();
+        private const int RecentTraceCapacity = 512;
         private bool reportedHighRamEntry = false;
         private bool flagsChangedLastInstruction = false;
         private byte lastFlagsBeforeInstruction = 0;
@@ -243,6 +245,13 @@ namespace Spectrum128kEmulator.Z80
             lastFlagsBeforeInstruction = fBefore;
             flagsChangedLastInstruction = Regs.F != fBefore;
             qFlags = (Regs.F != fBefore) ? Regs.F : (byte)0;
+        }
+
+        public string[] GetRecentTraceSnapshot() => recentTrace.ToArray();
+
+        public void ClearRecentTrace()
+        {
+            recentTrace.Clear();
         }
 
         public void RestoreInterruptState(bool iff1, bool iff2, int interruptMode)

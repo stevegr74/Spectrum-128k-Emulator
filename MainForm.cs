@@ -129,6 +129,12 @@ namespace Spectrum128kEmulator
                 return;
             }
 
+            if (pressed && key == Keys.F12)
+            {
+                DumpMachineDebugState();
+                return;
+            }
+
             switch (key)
             {
                 case Keys.Left:
@@ -292,6 +298,7 @@ namespace Spectrum128kEmulator
                 screenBox.Image = screenBitmap;
                 fpsLabel.Text = $"Loaded: {Path.GetFileName(dialog.FileName)}";
                 ResetFrameScheduler();
+                machine.ClearDebugHistory();
                 screenBox.Focus();
             }
             catch (Exception ex)
@@ -323,6 +330,7 @@ namespace Spectrum128kEmulator
                 Tap.TapMountResult result = Tap.TapLoader.Mount(machine, dialog.FileName);
                 fpsLabel.Text = $"TAP mounted: {Path.GetFileName(dialog.FileName)} ({result.TotalBlockCount} blocks)";
                 ResetFrameScheduler();
+                machine.ClearDebugHistory();
                 screenBox.Focus();
             }
             catch (Exception ex)
@@ -362,6 +370,7 @@ namespace Spectrum128kEmulator
                 screenBox.Image = screenBitmap;
                 fpsLabel.Text = $"Loaded: {Path.GetFileName(dialog.FileName)}";
                 ResetFrameScheduler();
+                machine.ClearDebugHistory();
                 screenBox.Focus();
             }
             catch (Exception ex)
@@ -370,6 +379,28 @@ namespace Spectrum128kEmulator
                     this,
                     $"Failed to load snapshot:\n{ex.Message}",
                     "Snapshot Load Error",
+                    MessageBoxButtons.OK,
+                    MessageBoxIcon.Error);
+            }
+        }
+
+        private void DumpMachineDebugState()
+        {
+            try
+            {
+                string debugFolder = Path.Combine(AppContext.BaseDirectory, "debug");
+                Directory.CreateDirectory(debugFolder);
+                string fileName = $"machine-debug-{DateTime.Now:yyyyMMdd-HHmmss}.txt";
+                string path = Path.Combine(debugFolder, fileName);
+                File.WriteAllText(path, machine.BuildDebugDump());
+                fpsLabel.Text = $"Debug dump written: {fileName}";
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show(
+                    this,
+                    $"Failed to write debug dump: {ex.Message}",
+                    "Debug Dump Error",
                     MessageBoxButtons.OK,
                     MessageBoxIcon.Error);
             }
