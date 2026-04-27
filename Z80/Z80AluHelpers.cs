@@ -291,7 +291,7 @@ namespace Spectrum128kEmulator.Z80
             SetFlag(Flag.C, result > 0xFFFF);
             CopyUndocumentedFlagsFrom((byte)(r >> 8));
 
-            return (ushort)result;
+            return r;
         }
 
         private ushort Add16WithCarry(ushort a, ushort b, bool carry)
@@ -303,7 +303,7 @@ namespace Spectrum128kEmulator.Z80
             SetFlag(Flag.S, (r & 0x8000) != 0);
             SetFlag(Flag.Z, r == 0);
             SetFlag(Flag.H, ((a & 0x0FFF) + (b & 0x0FFF) + c) > 0x0FFF);
-            SetFlag(Flag.P, (((a ^ ~b) & (a ^ r)) & 0x8000) != 0);
+            SetFlag(Flag.P, (~(a ^ b) & (a ^ r) & 0x8000) != 0);
             SetFlag(Flag.N, false);
             SetFlag(Flag.C, result > 0xFFFF);
             CopyUndocumentedFlagsFrom((byte)(r >> 8));

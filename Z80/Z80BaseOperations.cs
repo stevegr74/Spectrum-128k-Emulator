@@ -368,16 +368,43 @@ namespace Spectrum128kEmulator.Z80
             opcodeTable[0xE1] = () => { Regs.HL = Pop(); TStates += 10; };
             opcodeTable[0xF1] = () => { Regs.AF = Pop(); TStates += 10; };
 
-            opcodeTable[0xF3] = () => // DI
+/*            opcodeTable[0xF3] = () => // DI
             {
+                RecordInterruptEvent("DI_EXEC", true);
+
+                foreach (var line in recentTrace)
+                    RecordInterruptEvent("TRACE_BEFORE_DI " + line, true);
+
                 IFF1 = false;
                 IFF2 = false;
                 eiDelay = 0;
+
+                RecordInterruptEvent("DI_EFFECT", true);
+                TStates += 4;
+            };*/
+            opcodeTable[0xF3] = () => // DI
+            {
+                RecordInterruptEvent(
+                    $"DI_EXEC PC={lastPcBeforeStep:X4} T={TStates} " +
+                    $"SP={Regs.SP:X4} AF={Regs.AF:X4} BC={Regs.BC:X4} DE={Regs.DE:X4} HL={Regs.HL:X4} " +
+                    $"IX={Regs.IX:X4} IY={Regs.IY:X4} " +
+                    $"IFF1={(IFF1 ? 1 : 0)} IFF2={(IFF2 ? 1 : 0)}",
+                    true);
+
+                foreach (var line in recentTrace)
+                    RecordInterruptEvent("TRACE_BEFORE_DI " + line, true);
+
+                IFF1 = false;
+                IFF2 = false;
+                eiDelay = 0;
+
+                RecordInterruptEvent("DI_EFFECT", true);
                 TStates += 4;
             };
 
             opcodeTable[0xFB] = () => // EI
             {
+                RecordInterruptEvent("EI_EXEC", true);
                 eiDelay = 2;
                 TStates += 4;
             };
