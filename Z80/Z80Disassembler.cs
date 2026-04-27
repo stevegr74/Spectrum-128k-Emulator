@@ -22,7 +22,7 @@ namespace Spectrum128kEmulator.Z80
                 $"HALT={(IsHalted ? 1 : 0)} INTP={(InterruptPending ? 1 : 0)}";
 
             recentTrace.Enqueue(line);
-            while (recentTrace.Count > RecentTraceCapacity)
+            while (recentTrace.Count > RecentInterruptEventCapacity)
                 recentTrace.Dequeue();
         }
     }

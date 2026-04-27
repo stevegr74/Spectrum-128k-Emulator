@@ -1,5 +1,6 @@
 //#define EXTENDED_DEBUG
 using System.Drawing.Imaging;
+using System.IO;
 using Spectrum128kEmulator.Audio;
 
 namespace Spectrum128kEmulator
@@ -388,22 +389,28 @@ namespace Spectrum128kEmulator
         {
             try
             {
-                string debugFolder = Path.Combine(AppContext.BaseDirectory, "debug");
-                Directory.CreateDirectory(debugFolder);
-                string fileName = $"machine-debug-{DateTime.Now:yyyyMMdd-HHmmss}.txt";
-                string path = Path.Combine(debugFolder, fileName);
-                File.WriteAllText(path, machine.BuildDebugDump());
-                fpsLabel.Text = $"Debug dump written: {fileName}";
+                string dump = machine.BuildDebugDump("Manual F12 debug dump.");
+                WriteDebugDumpToFile(dump, "Manual F12");
             }
             catch (Exception ex)
             {
                 MessageBox.Show(
                     this,
-                    $"Failed to write debug dump: {ex.Message}",
+                    $"Failed to write debug dump:\n{ex.Message}",
                     "Debug Dump Error",
                     MessageBoxButtons.OK,
                     MessageBoxIcon.Error);
             }
+        }
+
+        private void WriteDebugDumpToFile(string dump, string reason)
+        {
+            string debugFolder = Path.Combine(AppContext.BaseDirectory, "debug");
+            Directory.CreateDirectory(debugFolder);
+            string fileName = $"machine-debug-{DateTime.Now:yyyyMMdd-HHmmssfff}.txt";
+            string path = Path.Combine(debugFolder, fileName);
+            File.WriteAllText(path, dump);
+            fpsLabel.Text = $"{reason}: {fileName}";
         }
 
         private void FrameTimer_Tick(object? sender, EventArgs e)
@@ -425,6 +432,10 @@ namespace Spectrum128kEmulator
             {
                 machine.ExecuteFrame();
                 audioPipeline.SubmitFrame(machine.DrainAudioFrame());
+
+                if (machine.TryConsumeAutoDebugDump(out string autoReason, out string autoDump))
+                    WriteDebugDumpToFile(autoDump, autoReason);
+
                 accumulatedTicks -= ticksPerFrame;
                 executedFrames++;
             }

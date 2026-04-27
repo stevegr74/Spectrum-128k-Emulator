@@ -75,27 +75,56 @@ namespace Spectrum128kEmulator.Z80
         // Stack and fetch helpers
         // =========================================================
 
-        private void Push(ushort value)
+/*        private void Push(ushort value)
         {
             Regs.SP -= 2;
             WriteMemory(Regs.SP, (byte)value);
             WriteMemory((ushort)(Regs.SP + 1), (byte)(value >> 8));
+        }*/
+        private void Push(ushort value)
+        {
+            Regs.SP--;
+            WriteMemory(Regs.SP, (byte)(value >> 8)); // high
+
+            Regs.SP--;
+            WriteMemory(Regs.SP, (byte)(value & 0xFF)); // low
         }
 
-        private ushort Pop()
+        /*private ushort Pop()
         {
             ushort value = (ushort)(ReadMemory(Regs.SP) | (ReadMemory((ushort)(Regs.SP + 1)) << 8));
             Regs.SP += 2;
             return value;
+        }*/
+
+        private ushort Pop()
+        {
+            byte low = ReadMemory(Regs.SP);
+            Regs.SP++;
+
+            byte high = ReadMemory(Regs.SP);
+            Regs.SP++;
+
+            return (ushort)(low | (high << 8));
         }
 
-        // Operand and prefix fetches do not add T-states here.
+        // Fetch helpers do not add T-states here.
         // Instruction handlers own the full documented timing for the instruction.
-        private byte FetchByte()
+        //
+        // The Z80 refresh register increments on opcode fetch/M1 cycles, including
+        // prefix bytes, but not on ordinary operand bytes.
+        private byte FetchOpcodeByte()
         {
             byte b = ReadMemory(Regs.PC);
             Regs.PC = (ushort)(Regs.PC + 1);
             Regs.R = (byte)((Regs.R & 0x80) | ((Regs.R + 1) & 0x7F));
+            return b;
+        }
+
+        private byte FetchByte()
+        {
+            byte b = ReadMemory(Regs.PC);
+            Regs.PC = (ushort)(Regs.PC + 1);
             return b;
         }
 

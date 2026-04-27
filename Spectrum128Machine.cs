@@ -36,9 +36,15 @@ namespace Spectrum128kEmulator
         private readonly List<Audio.AyRegisterWrite> ayWrites = new List<Audio.AyRegisterWrite>();
         private Audio.AyAudioState? frameStartAyState;
 
-        private const int DebugHistoryCapacity = 128;
+        private const int DebugHistoryCapacity = 256;
         private readonly Queue<string> recentMemoryEvents = new Queue<string>();
         private readonly Queue<string> recentPortEvents = new Queue<string>();
+        private readonly Queue<string> watchedWrites = new Queue<string>();
+        private bool autoDebugDumpPending;
+        private string? autoDebugDumpReason;
+        private bool autoDebugDumpSuppressed;
+        private bool interruptStallTrapArmed;
+        private ushort lastLoopPc;
 
         public bool SpeakerHigh => speakerHigh;
         public bool SpeakerEdge { get; private set; }
@@ -91,8 +97,7 @@ namespace Spectrum128kEmulator
             frameStartAyState = ay.CaptureAudioState();
             beeperEvents.Clear();
             ayWrites.Clear();
-            recentMemoryEvents.Clear();
-            recentPortEvents.Clear();
+            ClearDebugHistory();
         }
 
         public Z80Cpu Cpu => cpu;
@@ -143,22 +148,15 @@ namespace Spectrum128kEmulator
             frameStartAyState = ay.CaptureAudioState();
             beeperEvents.Clear();
             ayWrites.Clear();
-            recentMemoryEvents.Clear();
-            recentPortEvents.Clear();
-            cpu.ClearRecentTrace();
+            ClearDebugHistory();
+            interruptStallTrapArmed = false;
         }
 
         public void ExecuteFrame()
         {
             BeginFrameAudioCapture();
-
-            const int interruptPulseTStates = 32;
-
             TriggerFrameInterrupt();
-            cpu.ExecuteCycles((ulong)interruptPulseTStates);
-            cpu.InterruptPending = false;
-
-            cpu.ExecuteCycles((ulong)(FrameTStates128 - interruptPulseTStates));
+            cpu.ExecuteCycles(FrameTStates128);
             FrameCount++;
         }
 
@@ -178,12 +176,41 @@ namespace Spectrum128kEmulator
         {
             recentMemoryEvents.Clear();
             recentPortEvents.Clear();
+            watchedWrites.Clear();
+            autoDebugDumpPending = false;
+            autoDebugDumpReason = null;
+            autoDebugDumpSuppressed = false;
+            lastLoopPc = 0;
             cpu.ClearRecentTrace();
         }
 
-        public string BuildDebugDump()
+        public bool TryConsumeAutoDebugDump(out string reason, out string dump)
+        {
+            if (!autoDebugDumpPending)
+            {
+                reason = string.Empty;
+                dump = string.Empty;
+                return false;
+            }
+
+            reason = autoDebugDumpReason ?? "Auto trap";
+            dump = BuildDebugDump(reason);
+            autoDebugDumpPending = false;
+            autoDebugDumpReason = null;
+            return true;
+        }
+
+        public string BuildDebugDump(string? reason = null)
         {
             var sb = new StringBuilder();
+
+            if (!string.IsNullOrWhiteSpace(reason))
+            {
+                sb.AppendLine("=== REASON ===");
+                sb.AppendLine(reason);
+                sb.AppendLine();
+            }
+
             sb.AppendLine("=== MACHINE STATE ===");
             sb.AppendLine($"Frame={FrameCount} Border={BorderColor} PagedRamBank={PagedRamBank} ScreenBank={ScreenBank} RomBank={CurrentRomBank} PagingLocked={PagingLocked}");
             sb.AppendLine($"SpeakerHigh={speakerHigh} SpeakerEdge={SpeakerEdge} FlashPhase={FlashPhase} MountedTape={mountedTape?.DisplayName ?? "(none)"}");
@@ -215,6 +242,16 @@ namespace Spectrum128kEmulator
                 sb.AppendLine(line);
             sb.AppendLine();
 
+            sb.AppendLine("=== INTERRUPT EVENTS ===");
+            foreach (string line in cpu.GetRecentInterruptEventsSnapshot())
+                sb.AppendLine(line);
+            sb.AppendLine();
+
+            sb.AppendLine("=== WATCHED WRITES ===");
+            foreach (string line in watchedWrites)
+                sb.AppendLine(line);
+            sb.AppendLine();
+
             sb.AppendLine("=== RECENT MEMORY EVENTS ===");
             foreach (string line in recentMemoryEvents)
                 sb.AppendLine(line);
@@ -239,6 +276,34 @@ namespace Spectrum128kEmulator
             recentPortEvents.Enqueue(line);
             while (recentPortEvents.Count > DebugHistoryCapacity)
                 recentPortEvents.Dequeue();
+        }
+
+        private void RecordWatchedWrite(ushort addr, byte value)
+        {
+            bool inPrimaryRange = addr >= 0x52ED && addr <= 0x52F9;
+            bool inSecondaryRange = addr >= 0xC5DB && addr <= 0xC5FA;
+            bool inLegacyRange = addr == 0x5C74 || addr == 0x5C3D || addr == 0x5C3E;
+            bool inStackWindow = addr >= 0x17C7 && addr <= 0x17D3;
+
+            if (!inPrimaryRange && !inSecondaryRange && !inLegacyRange && !inStackWindow)
+                return;
+
+            string line =
+                $"T={cpu.TStates,10} WATCH {addr:X4} <- {value:X2} PC={cpu.Regs.PC:X4} SP={cpu.Regs.SP:X4} " +
+                $"AF={cpu.Regs.AF:X4} BC={cpu.Regs.BC:X4} DE={cpu.Regs.DE:X4} HL={cpu.Regs.HL:X4} IX={cpu.Regs.IX:X4} IY={cpu.Regs.IY:X4}";
+            watchedWrites.Enqueue(line);
+            while (watchedWrites.Count > DebugHistoryCapacity)
+                watchedWrites.Dequeue();
+        }
+
+        private void RequestAutoDebugDump(string reason)
+        {
+            if (autoDebugDumpPending || autoDebugDumpSuppressed)
+                return;
+
+            autoDebugDumpPending = true;
+            autoDebugDumpReason = reason;
+            autoDebugDumpSuppressed = true;
         }
 
         public void ClearLogs()
@@ -305,6 +370,24 @@ namespace Spectrum128kEmulator
 
         private bool HandleBeforeInstruction(Z80Cpu z80)
         {
+            if (interruptStallTrapArmed && !autoDebugDumpPending && !autoDebugDumpSuppressed)
+            {
+                bool inLoopWindow = z80.Regs.PC >= 0xB8CD && z80.Regs.PC <= 0xC217;
+                bool stalledInterruptState = !z80.IFF1 && z80.InterruptPending;
+
+                if (inLoopWindow && stalledInterruptState)
+                {
+                    if (z80.TStates - z80.LastInterruptProgressTStates >= 100000UL)
+                    {
+                        interruptStallTrapArmed = false;
+                        RequestAutoDebugDump(
+                            $"Exolon interrupt-stall trap: IFF1=0 and INTP=1 with no INT_ACCEPT/EI_EFFECT for {z80.TStates - z80.LastInterruptProgressTStates} T-states. LastPC={lastLoopPc:X4} CurrentPC={z80.Regs.PC:X4}");
+                    }
+                }
+
+                lastLoopPc = z80.Regs.PC;
+            }
+
             return mountedTape != null && mountedTape.TryHandleRomLoadTrap(this, z80);
         }
 
@@ -382,7 +465,8 @@ namespace Spectrum128kEmulator
             }
 
             ramBanks[bank][addr & 0x3FFF] = value;
-            RecordMemoryEvent($"T={cpu.TStates,10} W {addr:X4}={value:X2} bank={bank} PC={cpu.Regs.PC:X4}");
+            RecordMemoryEvent($"T={cpu.TStates,10} W {addr:X4}={value:X2} bank={bank} PC={cpu.Regs.PC:X4} SP={cpu.Regs.SP:X4}");
+            RecordWatchedWrite(addr, value);
         }
 
         public byte ReadPort(ushort port)
@@ -418,6 +502,11 @@ namespace Spectrum128kEmulator
             PagingLocked = true;
             BorderColor = borderColor & 0x07;
             FrameCount = 0;
+            interruptStallTrapArmed = true;
+            lastLoopPc = 0;
+            autoDebugDumpPending = false;
+            autoDebugDumpReason = null;
+            autoDebugDumpSuppressed = false;
         }
 
         public void Load48kSnapshotRam(byte[] ram48)
@@ -459,12 +548,17 @@ namespace Spectrum128kEmulator
             BorderColor = borderColor & 0x07;
             FrameCount = 0;
             this.last7ffdValue = (byte)(last7ffdValue & 0x3F);
+            interruptStallTrapArmed = false;
+            lastLoopPc = 0;
+            autoDebugDumpPending = false;
+            autoDebugDumpReason = null;
+            autoDebugDumpSuppressed = false;
         }
 
         private void WritePort(ushort port, byte value)
         {
+            RecordPortEvent($"T={cpu.TStates,10} OUT {port:X4}={value:X2} PC={cpu.Regs.PC:X4} SP={cpu.Regs.SP:X4}");
             SpeakerEdge = false;
-            RecordPortEvent($"T={cpu.TStates,10} OUT {port:X4}={value:X2} PC={cpu.Regs.PC:X4}");
 
             if ((port & 0x0001) == 0)
             {
