@@ -47,9 +47,6 @@ namespace Spectrum128kEmulator.Audio
                 samples[sampleIndex] = speakerHigh ? highAmplitude : lowAmplitude;
             }
 
-            if (samples.Length > 0)
-                samples[^1] = frame.FinalSpeakerHigh ? highAmplitude : lowAmplitude;
-
             return samples;
         }
     }
