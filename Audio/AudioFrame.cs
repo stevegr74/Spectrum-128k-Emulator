@@ -27,6 +27,7 @@ namespace Spectrum128kEmulator.Audio
 
         public AudioFrame(
             int frameTStates,
+            int cpuClockHz,
             bool initialSpeakerHigh,
             bool finalSpeakerHigh,
             IReadOnlyList<BeeperEvent> beeperEvents,
@@ -36,6 +37,8 @@ namespace Spectrum128kEmulator.Audio
         {
             if (frameTStates <= 0)
                 throw new ArgumentOutOfRangeException(nameof(frameTStates));
+            if (cpuClockHz <= 0)
+                throw new ArgumentOutOfRangeException(nameof(cpuClockHz));
 
             this.beeperEvents = beeperEvents == null
                 ? throw new ArgumentNullException(nameof(beeperEvents))
@@ -46,6 +49,7 @@ namespace Spectrum128kEmulator.Audio
                 : CopyWrites(ayWrites);
 
             FrameTStates = frameTStates;
+            CpuClockHz = cpuClockHz;
             InitialSpeakerHigh = initialSpeakerHigh;
             FinalSpeakerHigh = finalSpeakerHigh;
             AyState = ayState;
@@ -53,6 +57,7 @@ namespace Spectrum128kEmulator.Audio
         }
 
         public int FrameTStates { get; }
+        public int CpuClockHz { get; }
         public bool InitialSpeakerHigh { get; }
         public bool FinalSpeakerHigh { get; }
         public IReadOnlyList<BeeperEvent> BeeperEvents => beeperEvents;

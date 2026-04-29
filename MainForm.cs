@@ -30,7 +30,7 @@ namespace Spectrum128kEmulator
         private readonly Label fpsLabel = new Label();
 
         private readonly Spectrum128Machine machine;
-        private readonly AudioPipeline audioPipeline;
+        private AudioPipeline audioPipeline;
 
         public MainForm()
         {
@@ -299,6 +299,7 @@ namespace Spectrum128kEmulator
                 screenBox.Image = screenBitmap;
                 fpsLabel.Text = $"Loaded: {Path.GetFileName(dialog.FileName)}";
                 ResetFrameScheduler();
+                RecreateAudioPipeline();
                 machine.ClearDebugHistory();
                 screenBox.Focus();
             }
@@ -371,6 +372,7 @@ namespace Spectrum128kEmulator
                 screenBox.Image = screenBitmap;
                 fpsLabel.Text = $"Loaded: {Path.GetFileName(dialog.FileName)}";
                 ResetFrameScheduler();
+                RecreateAudioPipeline();
                 machine.ClearDebugHistory();
                 screenBox.Focus();
             }
@@ -413,73 +415,122 @@ namespace Spectrum128kEmulator
             fpsLabel.Text = $"{reason}: {fileName}";
         }
 
+        private void WriteCrashReport(Exception ex, string context)
+        {
+            string debugFolder = Path.Combine(AppContext.BaseDirectory, "debug");
+            Directory.CreateDirectory(debugFolder);
+            string fileName = $"crash-{DateTime.Now:yyyyMMdd-HHmmssfff}.txt";
+            string path = Path.Combine(debugFolder, fileName);
+
+            string report =
+                $"Context: {context}{Environment.NewLine}" +
+                $"Exception: {ex}{Environment.NewLine}{Environment.NewLine}" +
+                BuildCrashDiagnosticDump(context);
+
+            File.WriteAllText(path, report);
+            fpsLabel.Text = $"Crash: {fileName}";
+        }
+
+        public string BuildCrashDiagnosticDump(string context)
+        {
+            try
+            {
+                return machine.BuildDebugDump($"Crash context: {context}");
+            }
+            catch (Exception dumpEx)
+            {
+                return $"Failed to build machine dump: {dumpEx}";
+            }
+        }
+
         private void FrameTimer_Tick(object? sender, EventArgs e)
         {
-            long now = frameClock.ElapsedTicks;
-            long elapsedTicks = now - lastSchedulerTicks;
-            if (elapsedTicks < 0)
-                elapsedTicks = 0;
-
-            lastSchedulerTicks = now;
-            accumulatedTicks += elapsedTicks;
-
-            long maxAccumulatedTicks = ticksPerFrame * MaxCatchUpFramesPerTick;
-            if (accumulatedTicks > maxAccumulatedTicks)
-                accumulatedTicks = maxAccumulatedTicks;
-
-            int executedFrames = 0;
-            while (accumulatedTicks >= ticksPerFrame && executedFrames < MaxCatchUpFramesPerTick)
+            try
             {
-                machine.ExecuteFrame();
-                audioPipeline.SubmitFrame(machine.DrainAudioFrame());
+                long now = frameClock.ElapsedTicks;
+                long elapsedTicks = now - lastSchedulerTicks;
+                if (elapsedTicks < 0)
+                    elapsedTicks = 0;
 
-                if (machine.TryConsumeAutoDebugDump(out string autoReason, out string autoDump))
-                    WriteDebugDumpToFile(autoDump, autoReason);
+                lastSchedulerTicks = now;
+                accumulatedTicks += elapsedTicks;
 
-                accumulatedTicks -= ticksPerFrame;
-                executedFrames++;
-            }
+                long maxAccumulatedTicks = ticksPerFrame * MaxCatchUpFramesPerTick;
+                if (accumulatedTicks > maxAccumulatedTicks)
+                    accumulatedTicks = maxAccumulatedTicks;
 
-            if (executedFrames == 0)
-            {
+                int executedFrames = 0;
+                while (accumulatedTicks >= ticksPerFrame && executedFrames < MaxCatchUpFramesPerTick)
+                {
+                    machine.ExecuteFrame();
+                    audioPipeline.SubmitFrame(machine.DrainAudioFrame());
+
+                    if (machine.TryConsumeAutoDebugDump(out string autoReason, out string autoDump))
+                        WriteDebugDumpToFile(autoDump, autoReason);
+
+                    accumulatedTicks -= ticksPerFrame;
+                    executedFrames++;
+                }
+
+                if (executedFrames == 0)
+                {
+                    UpdateStats(now);
+                    return;
+                }
+
+                SpectrumRenderer.RenderToBitmap(
+                    screenBitmap,
+                    machine.GetScreenBankData(),
+                    machine.BorderColor,
+                    machine.FlashPhase);
+
+                screenBox.Image = screenBitmap;
+                framesRenderedThisSecond++;
+
                 UpdateStats(now);
-                return;
+
+                if (LogFrameDiagnostics && machine.FrameCount % 20 == 0)
+                {
+                    byte[] bank = machine.GetScreenBankData();
+                    int nonZeroPixels = 0;
+                    int nonZeroAttrs = 0;
+
+                    for (int i = 0; i < 0x1800; i++)
+                        if (bank[i] != 0) nonZeroPixels++;
+
+                    for (int i = 0x1800; i < 0x1B00; i++)
+                        if (bank[i] != 0x38) nonZeroAttrs++;
+
+                    int screenWrites = machine.ScreenWriteLog.Values.Sum();
+                    int aboveWrites = machine.AboveScreenWriteLog.Values.Sum();
+
+                    string writeNote = machine.LastAboveWriteFrame < machine.FrameCount - 20
+                        ? " [WRITES STOPPED]"
+                        : string.Empty;
+
+                    Console.WriteLine(
+                        $"Frame {machine.FrameCount}: PC=0x{machine.Cpu.Regs.PC:X4} SP=0x{machine.Cpu.Regs.SP:X4} IFF1={machine.Cpu.IFF1} Pixels={nonZeroPixels} Attrs={nonZeroAttrs} | ScreenAddr writes={screenWrites} AboveAddr writes={aboveWrites} LastWrite@Frame{machine.LastAboveWriteFrame}{writeNote}");
+
+                    Console.Out.Flush();
+                }
             }
-
-            SpectrumRenderer.RenderToBitmap(
-                screenBitmap,
-                machine.GetScreenBankData(),
-                machine.BorderColor,
-                machine.FlashPhase);
-
-            screenBox.Image = screenBitmap;
-            framesRenderedThisSecond++;
-
-            UpdateStats(now);
-
-            if (LogFrameDiagnostics && machine.FrameCount % 20 == 0)
+            catch (Exception ex)
             {
-                byte[] bank = machine.GetScreenBankData();
-                int nonZeroPixels = 0;
-                int nonZeroAttrs = 0;
+                frameTimer.Stop();
+                try
+                {
+                    WriteCrashReport(ex, "FrameTimer_Tick");
+                }
+                catch
+                {
+                }
 
-                for (int i = 0; i < 0x1800; i++)
-                    if (bank[i] != 0) nonZeroPixels++;
-
-                for (int i = 0x1800; i < 0x1B00; i++)
-                    if (bank[i] != 0x38) nonZeroAttrs++;
-
-                int screenWrites = machine.ScreenWriteLog.Values.Sum();
-                int aboveWrites = machine.AboveScreenWriteLog.Values.Sum();
-
-                string writeNote = machine.LastAboveWriteFrame < machine.FrameCount - 20
-                    ? " [WRITES STOPPED]"
-                    : string.Empty;
-
-                Console.WriteLine(
-                    $"Frame {machine.FrameCount}: PC=0x{machine.Cpu.Regs.PC:X4} SP=0x{machine.Cpu.Regs.SP:X4} IFF1={machine.Cpu.IFF1} Pixels={nonZeroPixels} Attrs={nonZeroAttrs} | ScreenAddr writes={screenWrites} AboveAddr writes={aboveWrites} LastWrite@Frame{machine.LastAboveWriteFrame}{writeNote}");
-
-                Console.Out.Flush();
+                MessageBox.Show(
+                    this,
+                    $"Unhandled emulator error:\n{ex.Message}",
+                    "Emulator Crash",
+                    MessageBoxButtons.OK,
+                    MessageBoxIcon.Error);
             }
         }
 
@@ -490,6 +541,19 @@ namespace Spectrum128kEmulator
             accumulatedTicks = 0;
             lastStatsTicks = now;
             framesRenderedThisSecond = 0;
+        }
+
+        private void RecreateAudioPipeline()
+        {
+            try
+            {
+                audioPipeline.Dispose();
+            }
+            catch
+            {
+            }
+
+            audioPipeline = CreateAudioPipeline();
         }
 
         private void UpdateStats(long nowTicks)

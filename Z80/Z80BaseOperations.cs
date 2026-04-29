@@ -329,9 +329,9 @@ namespace Spectrum128kEmulator.Z80
             opcodeTable[0xCD] = () => // CALL nn
             {
                 ushort addr = FetchWord();
+                TStates += 11;
                 Push(Regs.PC);
                 Regs.PC = addr;
-                TStates += 17;
             };
 
             opcodeTable[0xC4] = () => CALLcc((Regs.F & 0x40) == 0);
@@ -345,8 +345,8 @@ namespace Spectrum128kEmulator.Z80
 
             opcodeTable[0xC9] = () => // RET
             {
+                TStates += 4;
                 Regs.PC = Pop();
-                TStates += 10;
             };
 
             opcodeTable[0xC0] = () => RETcc((Regs.F & 0x40) == 0);
@@ -358,15 +358,15 @@ namespace Spectrum128kEmulator.Z80
             opcodeTable[0xF0] = () => RETcc((Regs.F & 0x80) == 0);
             opcodeTable[0xF8] = () => RETcc((Regs.F & 0x80) != 0);
 
-            opcodeTable[0xC5] = () => { Push(Regs.BC); TStates += 11; };
-            opcodeTable[0xD5] = () => { Push(Regs.DE); TStates += 11; };
-            opcodeTable[0xE5] = () => { Push(Regs.HL); TStates += 11; };
-            opcodeTable[0xF5] = () => { Push(Regs.AF); TStates += 11; };
+            opcodeTable[0xC5] = () => { TStates += 5; Push(Regs.BC); };
+            opcodeTable[0xD5] = () => { TStates += 5; Push(Regs.DE); };
+            opcodeTable[0xE5] = () => { TStates += 5; Push(Regs.HL); };
+            opcodeTable[0xF5] = () => { TStates += 5; Push(Regs.AF); };
 
-            opcodeTable[0xC1] = () => { Regs.BC = Pop(); TStates += 10; };
-            opcodeTable[0xD1] = () => { Regs.DE = Pop(); TStates += 10; };
-            opcodeTable[0xE1] = () => { Regs.HL = Pop(); TStates += 10; };
-            opcodeTable[0xF1] = () => { Regs.AF = Pop(); TStates += 10; };
+            opcodeTable[0xC1] = () => { TStates += 4; Regs.BC = Pop(); };
+            opcodeTable[0xD1] = () => { TStates += 4; Regs.DE = Pop(); };
+            opcodeTable[0xE1] = () => { TStates += 4; Regs.HL = Pop(); };
+            opcodeTable[0xF1] = () => { TStates += 4; Regs.AF = Pop(); };
 
 /*            opcodeTable[0xF3] = () => // DI
             {
@@ -420,7 +420,7 @@ namespace Spectrum128kEmulator.Z80
             {
                 byte low = FetchByte();
                 ushort port = (ushort)((Regs.A << 8) | low);
-                Regs.A = ReadPort(port);
+                Regs.A = ReadPortTimed?.Invoke(port, 11) ?? ReadPort(port);
                 TStates += 11;
             };
 
@@ -429,9 +429,9 @@ namespace Spectrum128kEmulator.Z80
                 int addr = i * 8;
                 opcodeTable[0xC7 + i * 8] = () =>
                 {
+                    TStates += 5;
                     Push(Regs.PC);
                     Regs.PC = (ushort)addr;
-                    TStates += 11;
                 };
             }
         }
@@ -444,8 +444,8 @@ namespace Spectrum128kEmulator.Z80
         {
             if (condition)
             {
+                TStates += 5;
                 Regs.PC = Pop();
-                TStates += 11;
             }
             else
             {
@@ -458,9 +458,9 @@ namespace Spectrum128kEmulator.Z80
             ushort addr = FetchWord();
             if (condition)
             {
+                TStates += 11;
                 Push(Regs.PC);
                 Regs.PC = addr;
-                TStates += 17;
             }
             else
             {

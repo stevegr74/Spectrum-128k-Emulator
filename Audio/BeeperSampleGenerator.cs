@@ -27,7 +27,7 @@ namespace Spectrum128kEmulator.Audio
             if (frame == null)
                 throw new ArgumentNullException(nameof(frame));
 
-            int sampleCount = Math.Max(1, (int)Math.Round((double)frame.FrameTStates * SampleRate / Spectrum128Machine.CpuClockHz));
+            int sampleCount = Math.Max(1, (int)Math.Round((double)frame.FrameTStates * SampleRate / frame.CpuClockHz));
             short[] samples = new short[sampleCount];
 
             bool speakerHigh = frame.InitialSpeakerHigh;

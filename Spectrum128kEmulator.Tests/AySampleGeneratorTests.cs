@@ -23,7 +23,7 @@ namespace Spectrum128kEmulator.Tests
                 0x0F, 0x00, 0x00,
                 0x00, 0x00, 0x00, 0x00, 0x00
             });
-            var frame = new AudioFrame(Spectrum128Machine.FrameTStates128, false, false, Array.Empty<BeeperEvent>(), ayState);
+            var frame = new AudioFrame(Spectrum128Machine.FrameTStates128, Spectrum128Machine.CpuClockHz128, false, false, Array.Empty<BeeperEvent>(), ayState);
 
             short[] samples = generator.GenerateFrameSamples(frame);
 
@@ -45,7 +45,7 @@ namespace Spectrum128kEmulator.Tests
                 0x0F, 0x00, 0x00,
                 0x00, 0x00, 0x00, 0x00, 0x00
             });
-            var frame = new AudioFrame(Spectrum128Machine.FrameTStates128, false, false, Array.Empty<BeeperEvent>(), ayState);
+            var frame = new AudioFrame(Spectrum128Machine.FrameTStates128, Spectrum128Machine.CpuClockHz128, false, false, Array.Empty<BeeperEvent>(), ayState);
 
             short[] samples = generator.GenerateFrameSamples(frame);
 
@@ -66,7 +66,7 @@ namespace Spectrum128kEmulator.Tests
                 0x10, 0x00, 0x00,
                 0x01, 0x00, 0x0C, 0x00, 0x00
             });
-            var frame = new AudioFrame(Spectrum128Machine.FrameTStates128, false, false, Array.Empty<BeeperEvent>(), ayState);
+            var frame = new AudioFrame(Spectrum128Machine.FrameTStates128, Spectrum128Machine.CpuClockHz128, false, false, Array.Empty<BeeperEvent>(), ayState);
 
             short[] samples = generator.GenerateFrameSamples(frame);
             int distinctLevels = samples.Where(sample => sample > 0).Distinct().Count();
@@ -88,7 +88,7 @@ namespace Spectrum128kEmulator.Tests
                 0x10, 0x00, 0x00,
                 0x01, 0x00, 0x00, 0x00, 0x00
             });
-            var frame = new AudioFrame(Spectrum128Machine.FrameTStates128, false, false, Array.Empty<BeeperEvent>(), ayState);
+            var frame = new AudioFrame(Spectrum128Machine.FrameTStates128, Spectrum128Machine.CpuClockHz128, false, false, Array.Empty<BeeperEvent>(), ayState);
 
             short[] samples = generator.GenerateFrameSamples(frame);
             short[] tail = samples.Skip(Math.Max(0, samples.Length - 64)).ToArray();
@@ -110,7 +110,7 @@ namespace Spectrum128kEmulator.Tests
                 0x10, 0x00, 0x00,
                 0x01, 0x00, 0x04, 0x00, 0x00
             });
-            var frame = new AudioFrame(Spectrum128Machine.FrameTStates128, false, false, Array.Empty<BeeperEvent>(), ayState);
+            var frame = new AudioFrame(Spectrum128Machine.FrameTStates128, Spectrum128Machine.CpuClockHz128, false, false, Array.Empty<BeeperEvent>(), ayState);
 
             short[] samples = generator.GenerateFrameSamples(frame);
             short[] tail = samples.Skip(Math.Max(0, samples.Length - 64)).ToArray();
@@ -133,7 +133,7 @@ namespace Spectrum128kEmulator.Tests
                 0x0F, 0x00, 0x00,
                 0x00, 0x00, 0x00, 0x00, 0x00
             });
-            var frame = new AudioFrame(Spectrum128Machine.FrameTStates128, false, false, Array.Empty<BeeperEvent>(), ayState);
+            var frame = new AudioFrame(Spectrum128Machine.FrameTStates128, Spectrum128Machine.CpuClockHz128, false, false, Array.Empty<BeeperEvent>(), ayState);
 
             short[] samples = generator.GenerateFrameSamples(frame);
 
@@ -171,6 +171,7 @@ namespace Spectrum128kEmulator.Tests
             };
             var frame = new AudioFrame(
                 Spectrum128Machine.FrameTStates128,
+                Spectrum128Machine.CpuClockHz128,
                 false,
                 false,
                 Array.Empty<BeeperEvent>(),
