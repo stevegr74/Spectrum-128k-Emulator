@@ -25,6 +25,7 @@ namespace Spectrum128kEmulator.Tests
 
             var frame = new AudioFrame(
                 Spectrum128Machine.FrameTStates128,
+                Spectrum128Machine.CpuClockHz128,
                 false,
                 true,
                 new[] { new BeeperEvent(Spectrum128Machine.FrameTStates128 / 2, true) },
@@ -35,6 +36,25 @@ namespace Spectrum128kEmulator.Tests
             Assert.NotNull(output.LastSamples);
             Assert.NotEmpty(output.LastSamples!);
             Assert.Contains(output.LastSamples!, sample => sample != 0);
+        }
+
+        [Fact]
+        public void SubmitFrame_Uses48kCpuClock_For48kAudioFrames()
+        {
+            var output = new RecordingAudioOutput(44100);
+            using var pipeline = new AudioPipeline(output);
+
+            var frame = new AudioFrame(
+                Spectrum128Machine.FrameTStates48,
+                Spectrum128Machine.CpuClockHz48,
+                false,
+                false,
+                Array.Empty<BeeperEvent>());
+
+            pipeline.SubmitFrame(frame);
+
+            Assert.NotNull(output.LastSamples);
+            Assert.Equal(881, output.LastSamples!.Length);
         }
 
         private sealed class RecordingAudioOutput : IAudioOutput

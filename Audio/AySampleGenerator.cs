@@ -5,8 +5,6 @@ namespace Spectrum128kEmulator.Audio
 {
     public sealed class AySampleGenerator
     {
-        private const double AyClockHz = Spectrum128Machine.CpuClockHz / 2.0;
-
         private readonly byte[] currentRegisters = new byte[16];
         private readonly int[] toneCounters = new int[3];
         private readonly bool[] toneOutputs = { true, true, true };
@@ -43,7 +41,7 @@ namespace Spectrum128kEmulator.Audio
             if (frame == null)
                 throw new ArgumentNullException(nameof(frame));
 
-            int sampleCount = GetSampleCount(frame.FrameTStates, SampleRate);
+            int sampleCount = GetSampleCount(frame.FrameTStates, SampleRate, frame.CpuClockHz);
             short[] samples = new short[sampleCount];
             MixFrameSamples(frame, samples);
             return samples;
@@ -56,7 +54,7 @@ namespace Spectrum128kEmulator.Audio
             if (destination == null)
                 throw new ArgumentNullException(nameof(destination));
 
-            int sampleCount = GetSampleCount(frame.FrameTStates, SampleRate);
+            int sampleCount = GetSampleCount(frame.FrameTStates, SampleRate, frame.CpuClockHz);
             if (destination.Length < sampleCount)
                 throw new ArgumentException("Destination buffer is too small.", nameof(destination));
 
@@ -74,6 +72,8 @@ namespace Spectrum128kEmulator.Audio
                 nextWriteIndex++;
             }
 
+            double ayClockHz = frame.CpuClockHz / 2.0;
+
             for (int i = 0; i < sampleCount; i++)
             {
                 while (nextWriteIndex < writes.Count && MapWriteToSampleIndex(writes[nextWriteIndex].TState, frame.FrameTStates, sampleCount) == i)
@@ -82,7 +82,7 @@ namespace Spectrum128kEmulator.Audio
                     nextWriteIndex++;
                 }
 
-                StepForOneSample();
+                StepForOneSample(ayClockHz);
                 destination[i] = AddClamped(destination[i], MixCurrentSample());
             }
 
@@ -143,9 +143,9 @@ namespace Spectrum128kEmulator.Audio
             }
         }
 
-        private void StepForOneSample()
+        private void StepForOneSample(double ayClockHz)
         {
-            ayClockAccumulator += AyClockHz / SampleRate;
+            ayClockAccumulator += ayClockHz / SampleRate;
             int wholeAyClocks = (int)ayClockAccumulator;
             ayClockAccumulator -= wholeAyClocks;
 
@@ -328,10 +328,10 @@ namespace Spectrum128kEmulator.Audio
             return period <= 0 ? 1 : period;
         }
 
-        private static int GetSampleCount(int frameTStates, uint sampleRate)
+        private static int GetSampleCount(int frameTStates, uint sampleRate, int cpuClockHz)
         {
-            long numerator = (long)frameTStates * sampleRate + (Spectrum128Machine.CpuClockHz / 2);
-            int sampleCount = (int)(numerator / Spectrum128Machine.CpuClockHz);
+            long numerator = (long)frameTStates * sampleRate + (cpuClockHz / 2);
+            int sampleCount = (int)(numerator / cpuClockHz);
             return sampleCount > 0 ? sampleCount : 1;
         }
 

@@ -169,7 +169,7 @@ namespace Spectrum128kEmulator.Z80
             ddOpcodeTable[0xBD] = () => CpA(IXL, 8);
             ddOpcodeTable[0xBE] = () => { sbyte d = (sbyte)FetchByte(); CpA(ReadMemory((ushort)(Regs.IX + d)), 19); };
 
-            ddOpcodeTable[0xE1] = () => { Regs.IX = Pop(); TStates += 10; };
+            ddOpcodeTable[0xE1] = () => { TStates += 8; Regs.IX = Pop(); };
             ddOpcodeTable[0xE3] = () =>
             {
                 byte low = ReadMemory(Regs.SP);
@@ -179,7 +179,7 @@ namespace Spectrum128kEmulator.Z80
                 Regs.IX = (ushort)(low | (high << 8));
                 TStates += 19;
             };
-            ddOpcodeTable[0xE5] = () => { Push(Regs.IX); TStates += 11; };
+            ddOpcodeTable[0xE5] = () => { TStates += 9; Push(Regs.IX); };
             ddOpcodeTable[0xE9] = () => { Regs.PC = Regs.IX; TStates += 8; };
             ddOpcodeTable[0xF9] = () => { Regs.SP = Regs.IX; TStates += 6; };
         }
@@ -348,7 +348,7 @@ namespace Spectrum128kEmulator.Z80
             fdOpcodeTable[0xBD] = () => CpA(IYL, 8);
             fdOpcodeTable[0xBE] = () => { sbyte d = (sbyte)FetchByte(); CpA(ReadMemory((ushort)(Regs.IY + d)), 19); };
 
-            fdOpcodeTable[0xE1] = () => { Regs.IY = Pop(); TStates += 10; };
+            fdOpcodeTable[0xE1] = () => { TStates += 8; Regs.IY = Pop(); };
             fdOpcodeTable[0xE3] = () =>
             {
                 byte low = ReadMemory(Regs.SP);
@@ -358,7 +358,7 @@ namespace Spectrum128kEmulator.Z80
                 Regs.IY = (ushort)(low | (high << 8));
                 TStates += 19;
             };
-            fdOpcodeTable[0xE5] = () => { Push(Regs.IY); TStates += 11; };
+            fdOpcodeTable[0xE5] = () => { TStates += 9; Push(Regs.IY); };
             fdOpcodeTable[0xE9] = () => { Regs.PC = Regs.IY; TStates += 8; };
             fdOpcodeTable[0xF9] = () => { Regs.SP = Regs.IY; TStates += 6; };
         }

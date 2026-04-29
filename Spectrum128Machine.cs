@@ -9,10 +9,22 @@ namespace Spectrum128kEmulator
 {
     public sealed class Spectrum128Machine
     {
+        public const int FrameTStates48 = 69888;
         public const int FrameTStates128 = 70908;
-        public const int CpuClockHz = 3546900;
+        public const int CpuClockHz48 = 3500000;
+        public const int CpuClockHz128 = 3546900;
+        // 48K .sna snapshots do not encode the current frame phase. A short initial
+        // delay avoids Exolon's ROM-stack interrupt hazard and restores a stable run.
+        public const int Default48kSnapshotInitialInterruptDelay = 512;
+        public const int CpuClockHz = CpuClockHz128;
         public const int ScreenWidth = 256;
         public const int ScreenHeight = 192;
+        private const int DisplayLineTStates = 224;
+        private const int DisplayAreaStartTStates48 = 14347;
+        private const int DisplayAreaVisibleLineTStates = 128;
+        private const int DisplayAreaLineCount = 192;
+        private const int Default48kFloatingBusDisplayStartAdjustTStates = 0;
+        private const int Default48kFloatingBusSampleAdjustTStates = 1;
 
         private readonly Z80Cpu cpu = new Z80Cpu();
         private readonly byte[][] ramBanks = new byte[8][];
@@ -36,15 +48,22 @@ namespace Spectrum128kEmulator
         private readonly List<Audio.AyRegisterWrite> ayWrites = new List<Audio.AyRegisterWrite>();
         private Audio.AyAudioState? frameStartAyState;
 
-        private const int DebugHistoryCapacity = 256;
+        private const int DebugHistoryCapacity = 8192;
         private readonly Queue<string> recentMemoryEvents = new Queue<string>();
         private readonly Queue<string> recentPortEvents = new Queue<string>();
         private readonly Queue<string> watchedWrites = new Queue<string>();
         private bool autoDebugDumpPending;
         private string? autoDebugDumpReason;
+        private string? autoDebugDumpSnapshot;
         private bool autoDebugDumpSuppressed;
         private bool interruptStallTrapArmed;
         private ushort lastLoopPc;
+        private ushort lastObservedPc;
+        private ulong? interruptPulseEndTStates;
+        private int floatingBusDisplayStartAdjustTStates;
+        private int floatingBusSampleAdjustTStates;
+        private int frameTStates = FrameTStates128;
+        private int tStatesUntilNextInterrupt = FrameTStates128;
 
         public bool SpeakerHigh => speakerHigh;
         public bool SpeakerEdge { get; private set; }
@@ -86,10 +105,11 @@ namespace Spectrum128kEmulator
             InitializeScreenRam();
             ClearKeyboard();
 
-            cpu.ReadMemory = ReadMemory;
-            cpu.WriteMemory = WriteMemory;
-            cpu.ReadPort = ReadPort;
-            cpu.WritePort = WritePort;
+            cpu.ReadMemory = ReadMemoryWithContention;
+            cpu.WriteMemory = WriteMemoryWithContention;
+            cpu.ReadPort = ReadPortWithContention;
+            cpu.ReadPortTimed = ReadPortTimed;
+            cpu.WritePort = WritePortWithContention;
             cpu.BeforeInstruction = HandleBeforeInstruction;
             cpu.Reset();
             frameStartTStates = cpu.TStates;
@@ -98,6 +118,7 @@ namespace Spectrum128kEmulator
             beeperEvents.Clear();
             ayWrites.Clear();
             ClearDebugHistory();
+            tStatesUntilNextInterrupt = frameTStates;
         }
 
         public Z80Cpu Cpu => cpu;
@@ -114,6 +135,8 @@ namespace Spectrum128kEmulator
         public int ScreenBank { get; private set; } = 5;
         public int BorderColor { get; private set; } = 1;
         public int FrameCount { get; private set; }
+        public int FrameTStates => frameTStates;
+        public int CurrentCpuClockHz => frameTStates == FrameTStates48 ? CpuClockHz48 : CpuClockHz128;
         public bool FlashPhase => ((FrameCount / 16) & 1) != 0;
 
         public Dictionary<ushort, int> ScreenWriteLog { get; } = new Dictionary<ushort, int>();
@@ -135,6 +158,9 @@ namespace Spectrum128kEmulator
             mountedTape = null;
             speakerHigh = false;
             SpeakerEdge = false;
+            frameTStates = FrameTStates128;
+            floatingBusDisplayStartAdjustTStates = 0;
+            floatingBusSampleAdjustTStates = 0;
 
             ClearLogs();
             ClearKeyboard();
@@ -150,20 +176,23 @@ namespace Spectrum128kEmulator
             ayWrites.Clear();
             ClearDebugHistory();
             interruptStallTrapArmed = false;
+            tStatesUntilNextInterrupt = frameTStates;
         }
 
         public void ExecuteFrame()
         {
             BeginFrameAudioCapture();
             TriggerFrameInterrupt();
-            cpu.ExecuteCycles(FrameTStates128);
+            cpu.ExecuteCycles((ulong)frameTStates);
+            tStatesUntilNextInterrupt = frameTStates;
             FrameCount++;
         }
 
         public Audio.AudioFrame DrainAudioFrame()
         {
             return new Audio.AudioFrame(
-                FrameTStates128,
+                frameTStates,
+                CurrentCpuClockHz,
                 frameStartSpeakerHigh,
                 speakerHigh,
                 beeperEvents,
@@ -179,8 +208,11 @@ namespace Spectrum128kEmulator
             watchedWrites.Clear();
             autoDebugDumpPending = false;
             autoDebugDumpReason = null;
+            autoDebugDumpSnapshot = null;
             autoDebugDumpSuppressed = false;
             lastLoopPc = 0;
+            lastObservedPc = 0;
+            interruptPulseEndTStates = null;
             cpu.ClearRecentTrace();
         }
 
@@ -194,9 +226,10 @@ namespace Spectrum128kEmulator
             }
 
             reason = autoDebugDumpReason ?? "Auto trap";
-            dump = BuildDebugDump(reason);
+            dump = autoDebugDumpSnapshot ?? BuildDebugDump(reason);
             autoDebugDumpPending = false;
             autoDebugDumpReason = null;
+            autoDebugDumpSnapshot = null;
             return true;
         }
 
@@ -223,18 +256,19 @@ namespace Spectrum128kEmulator
             sb.AppendLine();
 
             sb.AppendLine("=== STACK BYTES ===");
-            ushort sp = cpu.Regs.SP;
-            for (int i = 0; i < 32; i += 8)
-            {
-                ushort addr = (ushort)(sp + i);
-                sb.Append($"{addr:X4}: ");
-                for (int j = 0; j < 8; j++)
-                {
-                    ushort a = (ushort)(addr + j);
-                    sb.Append($"{PeekMemory(a):X2} ");
-                }
-                sb.AppendLine();
-            }
+            AppendMemoryWindow(sb, cpu.Regs.SP, 32);
+            AppendMemoryWindow(sb, 0x6C40, 32, "=== MEMORY 6C40 ===");
+            AppendMemoryWindow(sb, 0xFED8, 16, "=== MEMORY FED8 ===");
+            AppendMemoryWindow(sb, 0x78D8, 16, "=== MEMORY 78D8 ===");
+            AppendMemoryWindow(sb, 0x5C3B, 64, "=== SYSTEM VARS 5C3B ===");
+            AppendMemoryWindow(sb, 0xFF80, 128, "=== MEMORY FF80 ===");
+            AppendMemoryWindow(sb, 0xF320, 32, "=== MEMORY F320 ===");
+            AppendMemoryWindow(sb, 0xB1A0, 48, "=== MEMORY B1A0 ===");
+            AppendMemoryWindow(sb, 0xBEE0, 32, "=== MEMORY BEE0 ===");
+
+            sb.AppendLine("=== KEYBOARD MATRIX ===");
+            for (int row = 0; row < keyboardMatrix.Length; row++)
+                sb.AppendLine($"Row{row}={keyboardMatrix[row]:X2}");
             sb.AppendLine();
 
             sb.AppendLine("=== RECENT CPU TRACE ===");
@@ -264,6 +298,25 @@ namespace Spectrum128kEmulator
             return sb.ToString();
         }
 
+        private void AppendMemoryWindow(StringBuilder sb, ushort start, int length, string? title = null)
+        {
+            if (!string.IsNullOrEmpty(title))
+                sb.AppendLine(title);
+
+            for (int i = 0; i < length; i += 8)
+            {
+                ushort addr = (ushort)(start + i);
+                sb.Append($"{addr:X4}: ");
+                for (int j = 0; j < 8 && (i + j) < length; j++)
+                {
+                    ushort a = (ushort)(addr + j);
+                    sb.Append($"{PeekMemory(a):X2} ");
+                }
+                sb.AppendLine();
+            }
+            sb.AppendLine();
+        }
+
         private void RecordMemoryEvent(string line)
         {
             recentMemoryEvents.Enqueue(line);
@@ -278,14 +331,153 @@ namespace Spectrum128kEmulator
                 recentPortEvents.Dequeue();
         }
 
+        private ulong Get48kContentionDelay(ulong tStates)
+        {
+            if (frameTStates != FrameTStates48)
+                return 0;
+
+            ulong frameOffset = tStates % (ulong)FrameTStates48;
+            if (frameOffset < 14335UL)
+                return 0;
+
+            ulong displayOffset = frameOffset - 14335UL;
+            if (displayOffset >= (ulong)(DisplayLineTStates * DisplayAreaLineCount))
+                return 0;
+
+            int lineTState = (int)(displayOffset % (ulong)DisplayLineTStates);
+            if (lineTState >= DisplayAreaVisibleLineTStates)
+                return 0;
+
+            int phase = lineTState & 0x07;
+            return phase < 6 ? (ulong)(6 - phase) : 0;
+        }
+
+        private bool Is48kContendedMemoryAddress(ushort addr) => addr >= 0x4000 && addr < 0x8000;
+
+        private void Apply48kMemoryContention(ushort addr)
+        {
+            if (!Is48kContendedMemoryAddress(addr))
+                return;
+
+            ulong delay = Get48kContentionDelay(cpu.TStates);
+            if (delay != 0)
+                cpu.AddTStates(delay);
+        }
+
+        private ulong Get48kIoContentionDelay(ushort port)
+        {
+            if (frameTStates != FrameTStates48)
+                return 0;
+
+            bool highContended = (port & 0xFF00) >= 0x4000 && (port & 0xFF00) <= 0x7F00;
+            bool lowBitClear = (port & 0x0001) == 0;
+
+            if (!highContended && !lowBitClear)
+                return 0;
+
+            ulong currentTStates = cpu.TStates;
+            ulong totalDelay = 0;
+
+            void ApplyContendedSegment(int advanceTStates)
+            {
+                ulong delay = Get48kContentionDelay(currentTStates);
+                totalDelay += delay;
+                currentTStates += delay + (ulong)advanceTStates;
+            }
+
+            void ApplyUncontendedSegment(int advanceTStates)
+            {
+                currentTStates += (ulong)advanceTStates;
+            }
+
+            if (highContended && lowBitClear)
+            {
+                ApplyContendedSegment(1);
+                ApplyContendedSegment(3);
+            }
+            else if (highContended)
+            {
+                ApplyContendedSegment(1);
+                ApplyContendedSegment(1);
+                ApplyContendedSegment(1);
+                ApplyContendedSegment(1);
+            }
+            else
+            {
+                ApplyUncontendedSegment(1);
+                ApplyContendedSegment(3);
+            }
+
+            return totalDelay;
+        }
+
+        private byte ReadMemoryWithContention(ushort addr)
+        {
+            Apply48kMemoryContention(addr);
+            return ReadMemory(addr);
+        }
+
+        private void WriteMemoryWithContention(ushort addr, byte value)
+        {
+            Apply48kMemoryContention(addr);
+            WriteMemory(addr, value);
+        }
+
+        private byte ReadPortWithContention(ushort port)
+        {
+            ulong delay = Get48kIoContentionDelay(port);
+            if (delay != 0)
+                cpu.AddTStates(delay);
+
+            return ReadPort(port);
+        }
+
+        private void WritePortWithContention(ushort port, byte value)
+        {
+            ulong delay = Get48kIoContentionDelay(port);
+            if (delay != 0)
+                cpu.AddTStates(delay);
+
+            WritePort(port, value);
+        }
+
+        private void RecordMenuPortSample(ushort port, ulong sampleTStates, byte value)
+        {
+            if (frameTStates != FrameTStates48)
+                return;
+
+            if ((port & 0x00FF) != 0x00F7)
+                return;
+
+            ushort pc = cpu.Regs.PC;
+            if (pc < 0xFFA8 || pc > 0xFFC0)
+                return;
+
+            ulong frameOffset = sampleTStates % (ulong)FrameTStates48;
+            RecordPortEvent(
+                $"T={cpu.TStates,10} IN {port:X4}={value:X2} sample={sampleTStates} frame={frameOffset} " +
+                $"PC={pc:X4} SP={cpu.Regs.SP:X4} BC={cpu.Regs.BC:X4} HL={cpu.Regs.HL:X4}");
+        }
+
         private void RecordWatchedWrite(ushort addr, byte value)
         {
             bool inPrimaryRange = addr >= 0x52ED && addr <= 0x52F9;
             bool inSecondaryRange = addr >= 0xC5DB && addr <= 0xC5FA;
-            bool inLegacyRange = addr == 0x5C74 || addr == 0x5C3D || addr == 0x5C3E;
-            bool inStackWindow = addr >= 0x17C7 && addr <= 0x17D3;
+            bool inLegacyRange =
+                addr == 0x5C0C ||
+                addr == 0x5C3B ||
+                addr == 0x5C3D ||
+                addr == 0x5C3E ||
+                addr == 0x5C5D ||
+                addr == 0x5C5E ||
+                addr == 0x5C65 ||
+                addr == 0x5C66 ||
+                addr == 0x5C74;
+            bool inStackWindow = addr >= 0x17C7 && addr <= 0x17E1;
+            bool inLdSpSourceWindow = addr >= 0xFED8 && addr <= 0xFEDF;
+            bool inTempStackSaveWindow = addr >= 0x78D8 && addr <= 0x78DF;
 
-            if (!inPrimaryRange && !inSecondaryRange && !inLegacyRange && !inStackWindow)
+            if (!inPrimaryRange && !inSecondaryRange && !inLegacyRange && !inStackWindow && !inLdSpSourceWindow && !inTempStackSaveWindow)
                 return;
 
             string line =
@@ -303,6 +495,7 @@ namespace Spectrum128kEmulator
 
             autoDebugDumpPending = true;
             autoDebugDumpReason = reason;
+            autoDebugDumpSnapshot = BuildDebugDump(reason);
             autoDebugDumpSuppressed = true;
         }
 
@@ -333,6 +526,20 @@ namespace Spectrum128kEmulator
         }
 
         public byte[] GetKeyboardMatrixCopy() => (byte[])keyboardMatrix.Clone();
+
+        public void SetInitialInterruptDelay(int tStatesUntilNextInterrupt)
+        {
+            if (tStatesUntilNextInterrupt < 0 || tStatesUntilNextInterrupt > frameTStates)
+                throw new ArgumentOutOfRangeException(nameof(tStatesUntilNextInterrupt));
+
+            this.tStatesUntilNextInterrupt = tStatesUntilNextInterrupt;
+        }
+
+        public void Set48kFloatingBusTimingAdjustments(int displayStartAdjustTStates, int sampleAdjustTStates)
+        {
+            floatingBusDisplayStartAdjustTStates = displayStartAdjustTStates;
+            floatingBusSampleAdjustTStates = sampleAdjustTStates;
+        }
 
         public byte[] GetScreenBankData() => ramBanks[ScreenBank];
 
@@ -370,6 +577,114 @@ namespace Spectrum128kEmulator
 
         private bool HandleBeforeInstruction(Z80Cpu z80)
         {
+            if (interruptPulseEndTStates.HasValue &&
+                z80.InterruptPending &&
+                z80.TStates >= interruptPulseEndTStates.Value)
+            {
+                z80.InterruptPending = false;
+                interruptPulseEndTStates = null;
+            }
+
+            bool pastStartupWindow = z80.TStates >= (ulong)(frameTStates * 2);
+
+            if (frameTStates == FrameTStates48 &&
+                pastStartupWindow &&
+                z80.Regs.PC == 0x051E &&
+                z80.Regs.SP >= 0x3800 &&
+                z80.Regs.SP <= 0x38FF &&
+                !autoDebugDumpPending &&
+                !autoDebugDumpSuppressed)
+            {
+                RequestAutoDebugDump(
+                    $"ROM 051E output loop reached: PC={z80.Regs.PC:X4} SP={z80.Regs.SP:X4} " +
+                    $"AF={z80.Regs.AF:X4} BC={z80.Regs.BC:X4} DE={z80.Regs.DE:X4} HL={z80.Regs.HL:X4} " +
+                    $"IX={z80.Regs.IX:X4} IY={z80.Regs.IY:X4} IFF1={(z80.IFF1 ? 1 : 0)} IFF2={(z80.IFF2 ? 1 : 0)} " +
+                    $"PrevPC={lastObservedPc:X4}");
+            }
+
+            if (frameTStates == FrameTStates48 &&
+                pastStartupWindow &&
+                z80.Regs.PC == 0x24FB &&
+                ReadMemory(0x5C5D) == 0xFF &&
+                ReadMemory(0x5C5E) == 0xFF &&
+                z80.Regs.IY == 0xB331 &&
+                z80.Regs.SP >= 0x7B00 &&
+                z80.Regs.SP <= 0x7CFF &&
+                !autoDebugDumpPending &&
+                !autoDebugDumpSuppressed)
+            {
+                RequestAutoDebugDump(
+                    $"Parser entered RST 18 with CH_ADD=FFFF: PC={z80.Regs.PC:X4} SP={z80.Regs.SP:X4} " +
+                    $"AF={z80.Regs.AF:X4} BC={z80.Regs.BC:X4} DE={z80.Regs.DE:X4} HL={z80.Regs.HL:X4} " +
+                    $"IX={z80.Regs.IX:X4} IY={z80.Regs.IY:X4} IFF1={(z80.IFF1 ? 1 : 0)} IFF2={(z80.IFF2 ? 1 : 0)} " +
+                    $"PrevPC={lastObservedPc:X4} " +
+                    $"24FB={ReadMemory(0x24FB):X2} 24FC={ReadMemory(0x24FC):X2} 24FD={ReadMemory(0x24FD):X2} " +
+                    $"24FE={ReadMemory(0x24FE):X2} 24FF={ReadMemory(0x24FF):X2} 2500={ReadMemory(0x2500):X2} " +
+                    $"0018={ReadMemory(0x0018):X2} 0019={ReadMemory(0x0019):X2} 001A={ReadMemory(0x001A):X2} " +
+                    $"001B={ReadMemory(0x001B):X2} 001C={ReadMemory(0x001C):X2} 001D={ReadMemory(0x001D):X2} " +
+                    $"5C3B={ReadMemory(0x5C3B):X2} 5C5D={ReadMemory(0x5C5D):X2} 5C5E={ReadMemory(0x5C5E):X2} " +
+                    $"5C65={ReadMemory(0x5C65):X2} 5C66={ReadMemory(0x5C66):X2} 5C71={ReadMemory(0x5C71):X2}");
+            }
+
+            if (frameTStates == FrameTStates48 &&
+                pastStartupWindow &&
+                z80.Regs.PC == 0x26D7 &&
+                z80.Regs.IY == 0xB331 &&
+                z80.Regs.SP >= 0x7B00 &&
+                z80.Regs.SP <= 0x7CFF &&
+                !autoDebugDumpPending &&
+                !autoDebugDumpSuppressed)
+            {
+                RequestAutoDebugDump(
+                    $"Game entered ROM error branch: PC={z80.Regs.PC:X4} SP={z80.Regs.SP:X4} " +
+                    $"AF={z80.Regs.AF:X4} BC={z80.Regs.BC:X4} DE={z80.Regs.DE:X4} HL={z80.Regs.HL:X4} " +
+                    $"IX={z80.Regs.IX:X4} IY={z80.Regs.IY:X4} IFF1={(z80.IFF1 ? 1 : 0)} IFF2={(z80.IFF2 ? 1 : 0)} " +
+                    $"PrevPC={lastObservedPc:X4} " +
+                    $"26D3={ReadMemory(0x26D3):X2} 26D4={ReadMemory(0x26D4):X2} 26D5={ReadMemory(0x26D5):X2} " +
+                    $"26D6={ReadMemory(0x26D6):X2} 26D7={ReadMemory(0x26D7):X2} 26D8={ReadMemory(0x26D8):X2} " +
+                    $"26D9={ReadMemory(0x26D9):X2} " +
+                    $"26DA={ReadMemory(0x26DA):X2} 26DB={ReadMemory(0x26DB):X2} 26DC={ReadMemory(0x26DC):X2} " +
+                    $"26DD={ReadMemory(0x26DD):X2} 26DE={ReadMemory(0x26DE):X2} 26DF={ReadMemory(0x26DF):X2} " +
+                    $"B4={ReadMemory(0x33B4):X2} B5={ReadMemory(0x33B5):X2} B6={ReadMemory(0x33B6):X2} " +
+                    $"B7={ReadMemory(0x33B7):X2} " +
+                    $"B8={ReadMemory(0x33B8):X2} B9={ReadMemory(0x33B9):X2} BA={ReadMemory(0x33BA):X2} " +
+                    $"BB={ReadMemory(0x33BB):X2} BC={ReadMemory(0x33BC):X2} BD={ReadMemory(0x33BD):X2} " +
+                    $"BE={ReadMemory(0x33BE):X2} BF={ReadMemory(0x33BF):X2} C0={ReadMemory(0x33C0):X2} " +
+                    $"C1={ReadMemory(0x33C1):X2} C2={ReadMemory(0x33C2):X2} C3={ReadMemory(0x33C3):X2} " +
+                    $"A9={ReadMemory(0x33A9):X2} AA={ReadMemory(0x33AA):X2} AB={ReadMemory(0x33AB):X2} " +
+                    $"SP0={ReadMemory(z80.Regs.SP):X2} SP1={ReadMemory((ushort)(z80.Regs.SP + 1)):X2} " +
+                    $"SP2={ReadMemory((ushort)(z80.Regs.SP + 2)):X2} SP3={ReadMemory((ushort)(z80.Regs.SP + 3)):X2}");
+            }
+
+            if (frameTStates == FrameTStates48 &&
+                pastStartupWindow &&
+                z80.Regs.PC == 0x0058 &&
+                z80.Regs.IY == 0xB331 &&
+                z80.Regs.SP >= 0x7B00 &&
+                z80.Regs.SP <= 0x7CFF &&
+                !autoDebugDumpPending &&
+                !autoDebugDumpSuppressed)
+            {
+                RequestAutoDebugDump(
+                    $"ROM error handler entered: PC={z80.Regs.PC:X4} SP={z80.Regs.SP:X4} " +
+                    $"AF={z80.Regs.AF:X4} BC={z80.Regs.BC:X4} DE={z80.Regs.DE:X4} HL={z80.Regs.HL:X4} " +
+                    $"IX={z80.Regs.IX:X4} IY={z80.Regs.IY:X4} IFF1={(z80.IFF1 ? 1 : 0)} IFF2={(z80.IFF2 ? 1 : 0)}");
+            }
+
+            if (frameTStates == FrameTStates48 &&
+                pastStartupWindow &&
+                z80.Regs.PC == 0x11B6 &&
+                ReadMemory(z80.Regs.SP) == 0xFF &&
+                ReadMemory((ushort)(z80.Regs.SP + 1)) == 0xFF &&
+                !autoDebugDumpPending &&
+                !autoDebugDumpSuppressed)
+            {
+                RequestAutoDebugDump(
+                    $"ROM RET to FFFF armed: PC={z80.Regs.PC:X4} SP={z80.Regs.SP:X4} " +
+                    $"AF={z80.Regs.AF:X4} BC={z80.Regs.BC:X4} DE={z80.Regs.DE:X4} HL={z80.Regs.HL:X4} " +
+                    $"IX={z80.Regs.IX:X4} IY={z80.Regs.IY:X4} IFF1={(z80.IFF1 ? 1 : 0)} IFF2={(z80.IFF2 ? 1 : 0)}");
+            }
+
             if (interruptStallTrapArmed && !autoDebugDumpPending && !autoDebugDumpSuppressed)
             {
                 bool inLoopWindow = z80.Regs.PC >= 0xB8CD && z80.Regs.PC <= 0xC217;
@@ -387,6 +702,30 @@ namespace Spectrum128kEmulator
 
                 lastLoopPc = z80.Regs.PC;
             }
+
+            if (frameTStates == FrameTStates48 &&
+                pastStartupWindow &&
+                !autoDebugDumpPending &&
+                !autoDebugDumpSuppressed &&
+                z80.TStates - z80.LastInterruptProgressTStates >= 200000UL)
+            {
+                RequestAutoDebugDump(
+                    $"General interrupt-progress stall: no INT_ACCEPT/EI_EFFECT/DI/EI progress for {z80.TStates - z80.LastInterruptProgressTStates} T-states. " +
+                    $"PC={z80.Regs.PC:X4} SP={z80.Regs.SP:X4} AF={z80.Regs.AF:X4} BC={z80.Regs.BC:X4} DE={z80.Regs.DE:X4} HL={z80.Regs.HL:X4} " +
+                    $"IX={z80.Regs.IX:X4} IY={z80.Regs.IY:X4} IFF1={(z80.IFF1 ? 1 : 0)} IFF2={(z80.IFF2 ? 1 : 0)} INTP={(z80.InterruptPending ? 1 : 0)} PrevPC={lastObservedPc:X4}");
+            }
+
+            if (frameTStates == FrameTStates48 &&
+                pastStartupWindow &&
+                z80.Regs.PC == 0xFFA1)
+            {
+                ulong frameOffset = z80.TStates % (ulong)FrameTStates48;
+                RecordPortEvent(
+                    $"T={z80.TStates,10} MENU_COMPARE A={z80.Regs.A:X2} H={z80.Regs.H:X2} C={z80.Regs.C:X2} " +
+                    $"frame={frameOffset} SP={z80.Regs.SP:X4} DE={z80.Regs.DE:X4} HL={z80.Regs.HL:X4}");
+            }
+
+            lastObservedPc = z80.Regs.PC;
 
             return mountedTape != null && mountedTape.TryHandleRomLoadTrap(this, z80);
         }
@@ -443,6 +782,8 @@ namespace Spectrum128kEmulator
             if (addr < 0x4000)
                 return;
 
+            byte oldValue = ReadMemory(addr);
+
             int bank = addr switch
             {
                 < 0x8000 => 5,
@@ -467,6 +808,51 @@ namespace Spectrum128kEmulator
             ramBanks[bank][addr & 0x3FFF] = value;
             RecordMemoryEvent($"T={cpu.TStates,10} W {addr:X4}={value:X2} bank={bank} PC={cpu.Regs.PC:X4} SP={cpu.Regs.SP:X4}");
             RecordWatchedWrite(addr, value);
+
+            bool pastStartupWindow = cpu.TStates >= (ulong)(frameTStates * 2);
+            if (frameTStates == FrameTStates48 &&
+                pastStartupWindow &&
+                !autoDebugDumpPending &&
+                !autoDebugDumpSuppressed)
+            {
+                if (addr == 0x5C3B && value != oldValue)
+                {
+                    RequestAutoDebugDump(
+                        $"System var 5C3B changed: {oldValue:X2}->{value:X2} PC={cpu.Regs.PC:X4} SP={cpu.Regs.SP:X4} " +
+                        $"AF={cpu.Regs.AF:X4} BC={cpu.Regs.BC:X4} DE={cpu.Regs.DE:X4} HL={cpu.Regs.HL:X4} " +
+                        $"IX={cpu.Regs.IX:X4} IY={cpu.Regs.IY:X4}");
+                }
+                else if ((addr == 0x5C65 || addr == 0x5C66) && value != oldValue)
+                {
+                    RequestAutoDebugDump(
+                        $"System var {addr:X4} changed: {oldValue:X2}->{value:X2} PC={cpu.Regs.PC:X4} SP={cpu.Regs.SP:X4} " +
+                        $"AF={cpu.Regs.AF:X4} BC={cpu.Regs.BC:X4} DE={cpu.Regs.DE:X4} HL={cpu.Regs.HL:X4} " +
+                        $"IX={cpu.Regs.IX:X4} IY={cpu.Regs.IY:X4}");
+                }
+                else if ((addr == 0x5C5D || addr == 0x5C5E) &&
+                    oldValue == 0xFF &&
+                    value != oldValue &&
+                    cpu.Regs.PC != 0x007B)
+                {
+                    RequestAutoDebugDump(
+                        $"System var {addr:X4} changed from FF: {oldValue:X2}->{value:X2} PC={cpu.Regs.PC:X4} SP={cpu.Regs.SP:X4} " +
+                        $"AF={cpu.Regs.AF:X4} BC={cpu.Regs.BC:X4} DE={cpu.Regs.DE:X4} HL={cpu.Regs.HL:X4} " +
+                        $"IX={cpu.Regs.IX:X4} IY={cpu.Regs.IY:X4}");
+                }
+            }
+
+            if (frameTStates == FrameTStates48 &&
+                addr >= 0xFFC0 &&
+                cpu.Regs.PC >= 0x11DC &&
+                cpu.Regs.PC <= 0x11E0 &&
+                !autoDebugDumpPending &&
+                !autoDebugDumpSuppressed)
+            {
+                RequestAutoDebugDump(
+                    $"ROM fill loop wrote high RAM: addr={addr:X4} value={value:X2} " +
+                    $"PC={cpu.Regs.PC:X4} SP={cpu.Regs.SP:X4} AF={cpu.Regs.AF:X4} BC={cpu.Regs.BC:X4} " +
+                    $"DE={cpu.Regs.DE:X4} HL={cpu.Regs.HL:X4}");
+            }
         }
 
         public byte ReadPort(ushort port)
@@ -490,6 +876,74 @@ namespace Spectrum128kEmulator
                 return result;
             }
 
+            if (frameTStates == FrameTStates48)
+                return ReadFloatingBus48(cpu.TStates);
+
+            return 0xFF;
+        }
+
+        private byte ReadPortTimed(ushort port, int sampleOffsetTStates)
+        {
+            ulong contentionDelay = Get48kIoContentionDelay(port);
+            if (contentionDelay != 0)
+                cpu.AddTStates(contentionDelay);
+
+            if ((port & 0x0001) == 0)
+                return ReadPort(port);
+
+            if (frameTStates == FrameTStates48)
+            {
+                long adjustedSampleTStates = (long)cpu.TStates + sampleOffsetTStates + floatingBusSampleAdjustTStates;
+                ulong sampleTStates = adjustedSampleTStates > 0 ? (ulong)adjustedSampleTStates : 0UL;
+                byte value = ReadFloatingBus48(sampleTStates);
+                RecordMenuPortSample(port, sampleTStates, value);
+                return value;
+            }
+
+            return 0xFF;
+        }
+
+        private byte ReadFloatingBus48(ulong sampleTStates)
+        {
+            long adjustedFrameOffset = (long)(sampleTStates % (ulong)FrameTStates48) - floatingBusDisplayStartAdjustTStates;
+            if (adjustedFrameOffset < 0)
+                adjustedFrameOffset += FrameTStates48;
+
+            ulong frameOffset = (ulong)adjustedFrameOffset;
+            if (frameOffset < DisplayAreaStartTStates48)
+                return 0xFF;
+
+            int displayOffset = (int)(frameOffset - DisplayAreaStartTStates48);
+            int displaySpan = DisplayLineTStates * DisplayAreaLineCount;
+            if (displayOffset >= displaySpan)
+                return 0xFF;
+
+            int line = displayOffset / DisplayLineTStates;
+            int lineTState = displayOffset % DisplayLineTStates;
+            if (lineTState >= DisplayAreaVisibleLineTStates)
+                return 0xFF;
+
+            int fetchPhase = lineTState & 0x07;
+            int column = (lineTState >> 3) << 1;
+            int charRow = line >> 3;
+            int charLine = line & 0x07;
+            int pixelOffset = ((charRow & 0x18) << 8) |
+                              ((charRow & 0x07) << 5) |
+                              (charLine << 8) |
+                              column;
+            int attrOffset = 0x1800 + (charRow * 32) + column;
+
+            // The ULA drives two pixel/attribute pairs every 8 T-states. Outside
+            // those fetches, odd-port reads see the undriven bus rather than a
+            // sticky copy of the final attribute byte.
+            if (fetchPhase < 4)
+            {
+                int pairOffset = fetchPhase >= 2 ? 1 : 0;
+                return (fetchPhase & 0x01) == 0
+                    ? ramBanks[ScreenBank][pixelOffset + pairOffset]
+                    : ramBanks[ScreenBank][attrOffset + pairOffset];
+            }
+
             return 0xFF;
         }
 
@@ -501,12 +955,17 @@ namespace Spectrum128kEmulator
             CurrentRomBank = 1; // Use the 48 BASIC ROM in your current setup.
             PagingLocked = true;
             BorderColor = borderColor & 0x07;
+            frameTStates = FrameTStates128;
             FrameCount = 0;
+            floatingBusDisplayStartAdjustTStates = 0;
+            floatingBusSampleAdjustTStates = 0;
             interruptStallTrapArmed = true;
             lastLoopPc = 0;
             autoDebugDumpPending = false;
             autoDebugDumpReason = null;
+            autoDebugDumpSnapshot = null;
             autoDebugDumpSuppressed = false;
+            tStatesUntilNextInterrupt = frameTStates;
         }
 
         public void Load48kSnapshotRam(byte[] ram48)
@@ -546,13 +1005,18 @@ namespace Spectrum128kEmulator
             CurrentRomBank = ((last7ffdValue & 0x10) != 0) ? 1 : 0;
             PagingLocked = (last7ffdValue & 0x20) != 0;
             BorderColor = borderColor & 0x07;
+            frameTStates = FrameTStates128;
             FrameCount = 0;
+            floatingBusDisplayStartAdjustTStates = 0;
+            floatingBusSampleAdjustTStates = 0;
             this.last7ffdValue = (byte)(last7ffdValue & 0x3F);
             interruptStallTrapArmed = false;
             lastLoopPc = 0;
             autoDebugDumpPending = false;
             autoDebugDumpReason = null;
+            autoDebugDumpSnapshot = null;
             autoDebugDumpSuppressed = false;
+            tStatesUntilNextInterrupt = frameTStates;
         }
 
         private void WritePort(ushort port, byte value)
@@ -607,6 +1071,7 @@ namespace Spectrum128kEmulator
         private void TriggerFrameInterrupt()
         {
             cpu.InterruptPending = true;
+            interruptPulseEndTStates = cpu.TStates + 32UL;
         }
 
         private void BeginFrameAudioCapture()
@@ -621,14 +1086,14 @@ namespace Spectrum128kEmulator
         private void RecordBeeperEvent(bool newSpeakerHigh)
         {
             ulong elapsed = cpu.TStates - frameStartTStates;
-            int offset = (int)Math.Min((ulong)FrameTStates128, elapsed);
+            int offset = (int)Math.Min((ulong)frameTStates, elapsed);
             beeperEvents.Add(new Audio.BeeperEvent(offset, newSpeakerHigh));
         }
 
         private void RecordAyWrite(byte register, byte value)
         {
             ulong elapsed = cpu.TStates - frameStartTStates;
-            int offset = (int)Math.Min((ulong)FrameTStates128, elapsed);
+            int offset = (int)Math.Min((ulong)frameTStates, elapsed);
             ayWrites.Add(new Audio.AyRegisterWrite(offset, register, value));
         }
     }

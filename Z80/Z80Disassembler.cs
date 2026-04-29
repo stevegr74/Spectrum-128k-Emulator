@@ -1,4 +1,5 @@
 using System;
+using System.Text;
 
 namespace Spectrum128kEmulator.Z80
 {
@@ -22,8 +23,26 @@ namespace Spectrum128kEmulator.Z80
                 $"HALT={(IsHalted ? 1 : 0)} INTP={(InterruptPending ? 1 : 0)}";
 
             recentTrace.Enqueue(line);
-            while (recentTrace.Count > RecentInterruptEventCapacity)
+            while (recentTrace.Count > RecentTraceCapacity)
                 recentTrace.Dequeue();
+        }
+
+        private string FormatOpcodeWindow(ushort start, int length)
+        {
+            if (length <= 0)
+                return string.Empty;
+
+            var bytes = new StringBuilder(length * 3);
+            for (int i = 0; i < length; i++)
+            {
+                if (i > 0)
+                    bytes.Append(' ');
+
+                ushort addr = (ushort)(start + i);
+                bytes.Append(ReadMemory(addr).ToString("X2"));
+            }
+
+            return bytes.ToString();
         }
     }
 }

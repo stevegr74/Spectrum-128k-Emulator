@@ -389,3 +389,11 @@ Thumbs.db
 # Temporary files
 *.tmp
 *.temp
+.dotnet/.dotnet/.workloadAdvertisingManifestSentinel10.0.100
+.dotnet/.dotnet/10.0.107_IsDockerContainer.dotnetUserLevelCache
+.dotnet/.dotnet/10.0.107_MachineId.dotnetUserLevelCache
+.dotnet/.dotnet/10.0.107.aspNetCertificateSentinel
+.dotnet/.dotnet/10.0.107.dotnetFirstUseSentinel
+.dotnet/.dotnet/10.0.107.toolpath.sentinel
+.dotnet/.dotnet/MachineId.v1.dotnetUserLevelCache
+.dotnet/.dotnet/TelemetryStorageService/*

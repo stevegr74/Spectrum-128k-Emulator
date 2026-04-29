@@ -84,10 +84,18 @@ namespace Spectrum128kEmulator.Z80
         private void Push(ushort value)
         {
             Regs.SP--;
-            WriteMemory(Regs.SP, (byte)(value >> 8)); // high
+            byte high = (byte)(value >> 8);
+            if (IsWatchedStackAddress(Regs.SP))
+                RecordStackEvent($"STACK_PUSH_HIGH {Regs.SP:X4}<-{high:X2} value={value:X4}");
+            WriteMemory(Regs.SP, high); // high
+            TStates += 3;
 
             Regs.SP--;
-            WriteMemory(Regs.SP, (byte)(value & 0xFF)); // low
+            byte low = (byte)(value & 0xFF);
+            if (IsWatchedStackAddress(Regs.SP))
+                RecordStackEvent($"STACK_PUSH_LOW {Regs.SP:X4}<-{low:X2} value={value:X4}");
+            WriteMemory(Regs.SP, low); // low
+            TStates += 3;
         }
 
         /*private ushort Pop()
@@ -99,13 +107,24 @@ namespace Spectrum128kEmulator.Z80
 
         private ushort Pop()
         {
+            ushort lowAddr = Regs.SP;
             byte low = ReadMemory(Regs.SP);
+            if (IsWatchedStackAddress(lowAddr))
+                RecordStackEvent($"STACK_POP_LOW {lowAddr:X4}->{low:X2}");
+            TStates += 3;
             Regs.SP++;
 
+            ushort highAddr = Regs.SP;
             byte high = ReadMemory(Regs.SP);
+            if (IsWatchedStackAddress(highAddr))
+                RecordStackEvent($"STACK_POP_HIGH {highAddr:X4}->{high:X2}");
+            TStates += 3;
             Regs.SP++;
 
-            return (ushort)(low | (high << 8));
+            ushort value = (ushort)(low | (high << 8));
+            if (value == 0x6C53 || value == 0x185C)
+                RecordStackEvent($"STACK_POP_VALUE {value:X4}");
+            return value;
         }
 
         // Fetch helpers do not add T-states here.

@@ -334,7 +334,7 @@ namespace Spectrum128kEmulator.Tests
             memory[0x0005] = 0x11; memory[0x0006] = 0x00; memory[0x0007] = 0x50;
             memory[0x0008] = 0x01; memory[0x0009] = 0x01; memory[0x000A] = 0x00;
             memory[0x000B] = 0xED; memory[0x000C] = 0xA0;
-            memory[0x4000] = 0x07; // A+value = 08h => F3 set, F5 clear because bit1 is 0
+            memory[0x4000] = 0x07; // A+value = 08h => F3 set, F5 clear because bit5 is 0
 
             cpu.Reset();
             for (int i = 0; i < 5; i++) cpu.Step();
@@ -344,7 +344,7 @@ namespace Spectrum128kEmulator.Tests
         }
 
         [Fact]
-        public void Cpi_SetsF5FromBit1OfIntermediateValue()
+        public void Cpi_SetsF5FromBit5OfIntermediateValue()
         {
             var memory = new byte[65536];
             var cpu = new Z80Cpu
@@ -353,9 +353,9 @@ namespace Spectrum128kEmulator.Tests
                 WriteMemory = (addr, value) => memory[addr] = value
             };
 
-            // Choose values so r = A - (HL) = 03, H clear, so n = 03.
-            // F3 should come from bit 3 of n (clear), F5 from bit 1 of n (set).
-            memory[0x0000] = 0x3E; memory[0x0001] = 0x05; // LD A,05
+            // Choose values so r = A - (HL) = 20h, H clear, so n = 20h.
+            // F3 should come from bit 3 of n (clear), F5 from bit 5 of n (set).
+            memory[0x0000] = 0x3E; memory[0x0001] = 0x22; // LD A,22
             memory[0x0002] = 0x21; memory[0x0003] = 0x00; memory[0x0004] = 0x40; // LD HL,4000
             memory[0x0005] = 0x01; memory[0x0006] = 0x01; memory[0x0007] = 0x00; // LD BC,0001
             memory[0x0008] = 0xED; memory[0x0009] = 0xA1; // CPI
@@ -366,6 +366,90 @@ namespace Spectrum128kEmulator.Tests
 
             Assert.False(FlagSet(cpu.Regs.F, 3));
             Assert.True(FlagSet(cpu.Regs.F, 5));
+        }
+
+        [Fact]
+        public void Ei_Delays_Interrupt_Accept_Until_After_One_Following_Instruction()
+        {
+            var memory = new byte[65536];
+            var cpu = new Z80Cpu
+            {
+                ReadMemory = addr => memory[addr],
+                WriteMemory = (addr, value) => memory[addr] = value
+            };
+
+            memory[0x0000] = 0xFB; // EI
+            memory[0x0001] = 0x00; // NOP
+            memory[0x0002] = 0x00; // NOP
+
+            cpu.Reset();
+            cpu.InterruptPending = true;
+
+            cpu.ExecuteCycles(8);
+
+            Assert.Equal((ushort)0x0002, cpu.Regs.PC);
+            Assert.True(cpu.IFF1);
+            Assert.True(cpu.IFF2);
+            Assert.True(cpu.InterruptPending);
+
+            cpu.ExecuteCycles(13);
+
+            Assert.Equal((ushort)0x0038, cpu.Regs.PC);
+            Assert.False(cpu.IFF1);
+            Assert.True(cpu.IFF2);
+            Assert.False(cpu.InterruptPending);
+            Assert.Equal((byte)0x02, memory[0xFFFD]);
+            Assert.Equal((byte)0x00, memory[0xFFFE]);
+        }
+
+        [Fact]
+        public void PushIx_Uses15TStates_And_Writes_Stack_Frame()
+        {
+            var memory = new byte[65536];
+            var cpu = new Z80Cpu
+            {
+                ReadMemory = addr => memory[addr],
+                WriteMemory = (addr, value) => memory[addr] = value
+            };
+
+            memory[0x0000] = 0xDD;
+            memory[0x0001] = 0xE5; // PUSH IX
+
+            cpu.Reset();
+            cpu.Regs.IX = 0x1234;
+            cpu.Regs.SP = 0x9000;
+
+            cpu.ExecuteCycles(15);
+
+            Assert.Equal((ushort)0x8FFE, cpu.Regs.SP);
+            Assert.Equal((byte)0x12, memory[0x8FFF]);
+            Assert.Equal((byte)0x34, memory[0x8FFE]);
+            Assert.Equal((ulong)15, cpu.TStates);
+        }
+
+        [Fact]
+        public void PopIx_Uses14TStates_And_Restores_Value()
+        {
+            var memory = new byte[65536];
+            var cpu = new Z80Cpu
+            {
+                ReadMemory = addr => memory[addr],
+                WriteMemory = (addr, value) => memory[addr] = value
+            };
+
+            memory[0x0000] = 0xDD;
+            memory[0x0001] = 0xE1; // POP IX
+            memory[0x8FFE] = 0x34;
+            memory[0x8FFF] = 0x12;
+
+            cpu.Reset();
+            cpu.Regs.SP = 0x8FFE;
+
+            cpu.ExecuteCycles(14);
+
+            Assert.Equal((ushort)0x1234, cpu.Regs.IX);
+            Assert.Equal((ushort)0x9000, cpu.Regs.SP);
+            Assert.Equal((ulong)14, cpu.TStates);
         }
 
         [Fact]
