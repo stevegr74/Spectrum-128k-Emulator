@@ -565,3 +565,71 @@ New findings from 2026-04-29, repo-baseline rollback for 48K snapshots:
 - Interpretation:
   - this rollback is the strongest "match the known-good repo behavior" step taken so far for JSW
   - direct listening is still required to confirm whether JSW's beeper pitch/flow is restored in the app.
+
+Latest user-verified state from 2026-04-29:
+- Jet Set Willy (`JSWAPRIL.Z80`) is now much better in the live app after the repo-baseline rollback:
+  - tone is correct
+  - speed/flow is broadly correct again
+  - remaining issue:
+    - a very slight audio crackle is still present
+- Exolon is also improved in the live app after the same rollback:
+  - logo is now correct
+  - menu/title path is further along than before
+  - music now plays a couple of notes before failure
+  - screen shows animation before crashing
+  - this is a genuine improvement over the earlier state where the title/menu was badly corrupted
+
+Repository checkpoint:
+- The improved baseline was committed and pushed to GitHub.
+- Commit:
+  - `d43171e`
+- Commit message:
+  - `Stabilize 48K snapshot audio and Exolon baseline`
+- Remote:
+  - `origin/master`
+
+Practical interpretation going forward:
+- This pushed state is the new recovery point.
+- The current priority order for future work should be:
+  - 1. remove the slight JSW beeper crackle without regressing tone/speed
+  - 2. continue Exolon crash investigation from the now-improved state rather than re-opening the earlier title/logo corruption branch
+
+Most likely next-step hypotheses:
+- For the remaining JSW crackle:
+  - check for small discontinuities in the beeper/audio output path rather than gross timing errors
+  - likely areas:
+    - `WaveOutAudioOutput`
+    - frame-boundary transitions in `BeeperSampleGenerator`
+    - catch-up behavior in `MainForm.FrameTimer_Tick`
+- For Exolon:
+  - the important symptom is no longer "corrupt title/logo"
+  - it is now "gets further, plays a couple of notes, animates, then crashes"
+  - that suggests the rollback restored enough baseline timing to pass the early setup, and the next fault is deeper in runtime execution rather than initial menu/logo generation
+  - likely future focus:
+    - trace the crash point from this newer live state
+    - compare crash-time PC/SP and recent writes against the pushed baseline behavior now that visuals are largely correct
+
+Locked-in incremental audio step from 2026-04-29:
+- User tested the crackle-focused beeper cleanup and reported:
+  - sound/tone is pretty accurate
+  - there is still some background crackle
+  - the roughness now feels more like small consistency/output issues than gross timing failure
+- Conservative follow-up applied:
+  - `Audio/WaveOutAudioOutput.cs`
+    - increased `BufferCount` from `3` to `6`
+  - rationale:
+    - add more output queue headroom
+    - reduce the chance of tiny underruns or reset churn showing up as low-level crackle
+    - avoid changing core CPU timing while audio pitch/speed is already mostly correct
+- Validation:
+  - `dotnet build Spectrum128kEmulator.sln`
+    - passes
+  - `dotnet test Spectrum128kEmulator.Tests\Spectrum128kEmulator.Tests.csproj --filter BeeperSampleGeneratorTests`
+    - passes
+  - `dotnet test Spectrum128kEmulator.Tests\Spectrum128kEmulator.Tests.csproj --filter AudioPipelineTests`
+    - passes
+- User then said:
+  - "ok thats good, lets lock that in for now"
+- Practical meaning:
+  - this audio-output headroom change is accepted as the current baseline
+  - future work should continue from here, with care to avoid regressing the now-mostly-correct JSW sound

@@ -11,7 +11,7 @@ namespace Spectrum128kEmulator.Audio
         private const int WaveFormatPcm = 1;
         private const uint HeaderDone = 0x00000001;
         private const uint HeaderPrepared = 0x00000002;
-        private const int BufferCount = 3;
+        private const int BufferCount = 6;
         private const uint TargetBufferMilliseconds = 20;
 
         private readonly IntPtr deviceHandle;
