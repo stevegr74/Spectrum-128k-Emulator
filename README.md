@@ -45,7 +45,7 @@ This project focuses on correctness, clean architecture, and incremental develop
 
 ## Current Status
 
-Milestone 7 In Progress — Audio Output Working, Timing Improved
+Milestone 7 In Progress — Audio Output Working, 48K Snapshot Compatibility Improving
 
 - Emulator boots into 128K menu
 - Menu navigation works
@@ -64,6 +64,9 @@ Milestone 7 In Progress — Audio Output Working, Timing Improved
 - AY tone, envelope, and noise output implemented
 - Basic audio mixing implemented
 - CPU/frame timing and interrupt handling improved through real-game testing
+- 48K snapshot audio path improved through JSWAPRIL.Z80 regression testing
+- Jet Set Willy now has broadly correct tone and speed again
+- Exolon now gets past the earlier corrupted logo/title state and progresses into music and animation before crashing
 - Z80 core refactored into focused partial files without intended behaviour changes
 
 CPU Compliance
@@ -100,6 +103,9 @@ Audio Progress (Milestone 7)
 - AY envelope support implemented
 - AY noise support implemented
 - Basic beeper + AY mixing implemented
+- 48K beeper frame-boundary regression coverage added
+- 48K audio clock handling aligned with snapshot mode
+- Output buffering tuned to reduce low-level crackle
 - Timing/performance polish still in progress
 
 ---
@@ -304,6 +310,7 @@ Notes:
 - AY envelope support implemented
 - AY noise support implemented
 - Basic mixing implemented
+- 48K snapshot audio path improved through regression testing
 - Timing/performance polish still in progress
 
 ---
@@ -316,7 +323,9 @@ Notes:
 - Demo compatibility improvements
 - Higher-fidelity tape timing
 - Extended tape compatibility
-- Exolon compatibility and broader real-game validation
+- Remaining 48K beeper crackle/consistency polish
+- Exolon crash investigation from the now-improved baseline
+- Broader real-game validation
 
 ---
 
