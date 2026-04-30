@@ -63,7 +63,7 @@ namespace Spectrum128kEmulator
         private int floatingBusDisplayStartAdjustTStates;
         private int floatingBusSampleAdjustTStates;
         private int frameTStates = FrameTStates128;
-        private int tStatesUntilNextInterrupt = FrameTStates128;
+        private int tStatesUntilNextInterrupt;
 
         public bool SpeakerHigh => speakerHigh;
         public bool SpeakerEdge { get; private set; }
@@ -118,7 +118,7 @@ namespace Spectrum128kEmulator
             beeperEvents.Clear();
             ayWrites.Clear();
             ClearDebugHistory();
-            tStatesUntilNextInterrupt = frameTStates;
+            tStatesUntilNextInterrupt = 0;
         }
 
         public Z80Cpu Cpu => cpu;
@@ -176,15 +176,28 @@ namespace Spectrum128kEmulator
             ayWrites.Clear();
             ClearDebugHistory();
             interruptStallTrapArmed = false;
-            tStatesUntilNextInterrupt = frameTStates;
+            tStatesUntilNextInterrupt = 0;
         }
 
         public void ExecuteFrame()
         {
             BeginFrameAudioCapture();
-            TriggerFrameInterrupt();
-            cpu.ExecuteCycles((ulong)frameTStates);
-            tStatesUntilNextInterrupt = frameTStates;
+            int remainingFrameTStates = frameTStates;
+
+            while (remainingFrameTStates > 0)
+            {
+                if (tStatesUntilNextInterrupt == 0)
+                {
+                    TriggerFrameInterrupt();
+                    tStatesUntilNextInterrupt = frameTStates;
+                }
+
+                int executionChunk = Math.Min(remainingFrameTStates, tStatesUntilNextInterrupt);
+                cpu.ExecuteCycles((ulong)executionChunk);
+                remainingFrameTStates -= executionChunk;
+                tStatesUntilNextInterrupt -= executionChunk;
+            }
+
             FrameCount++;
         }
 
@@ -965,7 +978,7 @@ namespace Spectrum128kEmulator
             autoDebugDumpReason = null;
             autoDebugDumpSnapshot = null;
             autoDebugDumpSuppressed = false;
-            tStatesUntilNextInterrupt = frameTStates;
+            tStatesUntilNextInterrupt = 0;
         }
 
         public void Load48kSnapshotRam(byte[] ram48)
@@ -1016,7 +1029,7 @@ namespace Spectrum128kEmulator
             autoDebugDumpReason = null;
             autoDebugDumpSnapshot = null;
             autoDebugDumpSuppressed = false;
-            tStatesUntilNextInterrupt = frameTStates;
+            tStatesUntilNextInterrupt = 0;
         }
 
         private void WritePort(ushort port, byte value)

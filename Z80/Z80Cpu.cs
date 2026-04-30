@@ -162,6 +162,7 @@ namespace Spectrum128kEmulator.Z80
                     // Preserve IFF2 on maskable interrupt acknowledge.
                     // RETN/RETI restore IFF1 from IFF2.
 
+                    Regs.R = (byte)((Regs.R & 0x80) | ((Regs.R + 1) & 0x7F));
                     TStates += 7;
                     Push(Regs.PC);
 

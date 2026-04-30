@@ -96,7 +96,6 @@ namespace Spectrum128kEmulator.Z80
         {
             ushort addr = (ushort)(indexReg + disp);
             byte value = ReadMemory(addr);
-
             int group = (cbOp >> 6) & 0x03;
             int y = (cbOp >> 3) & 0x07;
             int z = cbOp & 0x07;
@@ -107,7 +106,6 @@ namespace Spectrum128kEmulator.Z80
                 {
                     byte result = value;
                     bool carry = false;
-
                     switch (y)
                     {
                         case 0: carry = (value & 0x80) != 0; result = (byte)((value << 1) | (carry ? 1 : 0)); break; // RLC

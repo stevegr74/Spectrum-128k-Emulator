@@ -633,3 +633,159 @@ Locked-in incremental audio step from 2026-04-29:
 - Practical meaning:
   - this audio-output headroom change is accepted as the current baseline
   - future work should continue from here, with care to avoid regressing the now-mostly-correct JSW sound
+
+Latest Exolon checkpoint from 2026-04-29 after resuming from the accepted baseline:
+- User confirmed the restored baseline was "back on track" after reverting the bad default 48K snapshot interrupt-delay change.
+- Important guardrail:
+  - do not reintroduce a default `512`-T-state initial interrupt delay for 48K snapshots
+  - the user explicitly reported that as a regression:
+    - logo corrupt again
+    - music no longer played the few notes seen in the better baseline
+
+Safe core timing fixes kept during the latest Exolon investigation:
+- `Spectrum128Machine`
+  - interrupt phase scheduling support remains implemented and test-covered
+  - normal 48K snapshot behavior still defaults to immediate interrupt phase
+  - `SetInitialInterruptDelay(...)` now genuinely works for harness-only experiments
+- `Z80/Z80CoreHelpers.cs`
+  - 16-bit word read/write helpers added so low/high byte accesses can be spaced in time while preserving total instruction length
+- `Z80/Z80ExtendedOperations.cs`
+  - `LD (nn),BC/DE/HL/SP` and `LD BC/DE/HL/SP,(nn)` now use spaced byte accesses instead of back-to-back same-instant accesses
+- `Z80/Z80BaseOperations.cs`
+  - `DJNZ` now delays before fetching its displacement instead of fetching it immediately
+- `Z80/Z80Cpu.cs`
+  - interrupt acknowledge now increments refresh register `R`
+- These were deliberately kept because they appear hardware-correct and did not regress the user-accepted baseline
+
+Regression coverage added during this pass:
+- `Spectrum128kEmulator.Tests/CpuMicroTests.cs`
+  - `LdSpPtr_Uses20TStates_And_Separates_Byte_Reads`
+  - `LdPtrSp_Uses20TStates_And_Separates_Byte_Writes`
+  - `Djnz_Uses13TStates_And_Fetches_Displacement_After_Initial_Delay`
+  - `Interrupt_Acknowledge_Increments_R_Register`
+- Existing scheduler tests in `MachineCoreTests` still cover:
+  - immediate interrupt by default
+  - custom initial interrupt delay preserving phase
+
+Validation status for the safe fixes:
+- `dotnet test Spectrum128kEmulator.Tests\Spectrum128kEmulator.Tests.csproj --filter CpuMicroTests`
+  - passes with `23` passed
+- `dotnet test Spectrum128kEmulator.Tests\Spectrum128kEmulator.Tests.csproj --filter MachineCoreTests`
+  - passes with `15` passed / `8` skipped
+- A few runs hit transient file-lock/copy warnings in `obj`/`.pdb`, but reruns passed; no known logic-test failures remain from these changes
+
+Current Exolon investigative state:
+- The default harness path for `C:\Users\steve\Desktop\Snapshots\exolon.sna` is still bad:
+  - by about frame 11 it lands in `FCxx`
+  - representative output:
+    - `Frame 11: PC=0xFC3D SP=0xFD74`
+  - latest default-run artifacts:
+    - text dump:
+      - `C:\Users\steve\Spectrum128kEmulator\Spectrum128kEmulator.ManualHarness\bin\Debug\net10.0-windows\debug\harness-end-20260429-152713165.txt`
+    - image:
+      - `C:\Users\steve\Spectrum128kEmulator\Spectrum128kEmulator.ManualHarness\bin\Debug\net10.0-windows\debug\harness-end-20260429-152713165.png`
+- The phase sensitivity is still very sharp:
+  - `delay=0`
+    - bad `FCxx` path
+  - `delay=32`
+    - reaches coherent live game code around `103E..1056`
+    - frame-60 image looks clean
+    - artifact image:
+      - `C:\Users\steve\Spectrum128kEmulator\Spectrum128kEmulator.ManualHarness\bin\Debug\net10.0-windows\debug\harness-end-20260429-151740492.png`
+  - `delay=480`
+    - reaches stable `FFxx` menu loop
+    - artifact image:
+      - `C:\Users\steve\Spectrum128kEmulator\Spectrum128kEmulator.ManualHarness\bin\Debug\net10.0-windows\debug\harness-end-20260429-151740342.png`
+- Interpretation:
+  - the issue still looks like a first-frame / early-runtime 48K timing problem
+  - it is no longer well-modeled as one bad opcode
+  - the remaining bug is more likely tied to broader contended-RAM fetch/access timing on the startup path
+
+Most important comparative findings from the latest pass:
+- The default `0`-delay path and the healthier delayed paths share a lot of the same early setup:
+  - repeated `ST_SP_PTR` / `LD_SP_PTR` around `78DA`
+  - repeated execution in the `7A31..7A7D` producer path
+- The crucial divergence is still early:
+  - default path:
+    - first interrupt accepted at `T=0`, returning to `79ED`
+    - eventually falls into synthetic-looking `FCxx` worker code
+  - `32`-delay path:
+    - first interrupt accepted at `T=38`, returning to `79F5`
+    - later runs coherent code around `103E..1056`
+  - `480`-delay path:
+    - flips into the stable `FFxx` menu loop
+- The `32`-delay run is now especially valuable as a comparison target because it appears more "alive" than the dead `FCxx` path without collapsing into the over-stable `FFxx` menu branch
+
+Practical conclusion at this checkpoint:
+- The recent CPU fixes are worth keeping.
+- They did not solve Exolon outright, but they improved hardware fidelity without breaking the current accepted baseline.
+- The next pass should compare the first-frame fetch/execution stream for:
+  - default `0` delay
+  - healthy-looking `32` delay
+- Likely target area:
+  - operand/opcode fetch timing in contended RAM on the `79ED..7A8D` startup path
+  - not another global/default snapshot interrupt-phase change
+
+Separate open issue still pending:
+- `Renegade (Hit Squad) 128K.z80` fails to load with:
+  - `This .z80 hardware mode is not supported yet (headerLength=31, hardwareMode=4).`
+- This has not been fixed yet.
+- `Z80SnapshotLoader` currently supports:
+  - 48K:
+    - header length `23` with hardware modes `0` or `1`
+    - header length `54` or `55` with hardware modes `0`, `1`, or `3`
+  - 128K:
+    - header length `23` with hardware modes `3` or `4`
+    - header length `54` or `55` with hardware modes `4`, `5`, or `12`
+- The unsupported `31`-byte extended header remains a real loader gap to address later.
+
+Checkpoint after Z80 compliance repair and test cleanup on 2026-04-30:
+- User confirmed:
+  - `zexall` now passes fully
+  - `zexdoc` passes fully
+  - manual smoke test harness passes
+  - the fixes do not worsen the current Exolon baseline
+- Root cause fixed for the `CPI/CPD/LDI/LDD` family:
+  - in `Z80/Z80ExtendedOperations.cs`, undocumented flag `F5` for block transfer/compare instructions was taken from the wrong bit
+  - corrected behavior:
+    - `F3` comes from bit 3 of the documented intermediate value
+    - `F5` comes from bit 1 of that same intermediate value
+  - this was the concrete cause of the prior `zexall` failures in:
+    - `cpd<r>`
+    - `cpi<r>`
+    - `ldd<r> (2)`
+    - `ldi<r> (1)`
+    - `ldi<r> (2)`
+- The broader experimental Exolon timing changes were rolled back before landing this:
+  - no late-read timing change remains for base `(HL)` ALU ops
+  - no late-read / read-modify-write timing change remains for indexed `FD/DD CB` ops
+  - the kept safe CPU fixes are still:
+    - interrupt acknowledge increments `R`
+    - `DJNZ` fetch timing cleanup
+    - spaced 16-bit `LD rr,(nn)` / `LD (nn),rr` memory accesses
+
+Test-suite cleanup completed:
+- Removed the 8 permanently skipped `MachineCoreTests` that only covered the abandoned experimental 48K floating-bus/contention model
+- Current automated test status:
+  - `dotnet test --no-restore Spectrum128kEmulator.Tests\Spectrum128kEmulator.Tests.csproj`
+    - passes with `78 passed, 0 skipped`
+  - `MachineCoreTests`
+    - `15 passed, 0 skipped`
+  - `CpuMicroTests`
+    - `23 passed`
+
+Current stable baseline before resuming Exolon:
+- Z80 compliance is back to trusted:
+  - user-verified `zexall` pass
+  - user-verified `zexdoc` pass
+- Unit tests are clean:
+  - no skipped tests left in the enabled suite
+- Exolon status is unchanged from the accepted baseline:
+  - do not treat Exolon as fixed
+  - default snapshot path still falls into the bad `FCxx` branch
+  - safer CPU fixes and the block-instruction flag fix did not regress the current Exolon state
+
+Recommended next work:
+- Resume Exolon from this stronger checkpoint
+- Prefer targeted startup-path investigation over broad CPU timing changes
+- Keep `zexall`/`zexdoc`/full test suite as the primary anti-regression gate for any further CPU-core changes
