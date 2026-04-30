@@ -153,5 +153,24 @@ namespace Spectrum128kEmulator.Z80
             byte high = FetchByte();
             return (ushort)(low | (high << 8));
         }
+
+        private void WriteWordWithAccessSpacing(ushort addr, byte low, byte high, int totalTStates)
+        {
+            TStates += (ulong)(totalTStates - 6);
+            WriteMemory(addr, low);
+            TStates += 3;
+            WriteMemory((ushort)(addr + 1), high);
+            TStates += 3;
+        }
+
+        private ushort ReadWordWithAccessSpacing(ushort addr, int totalTStates)
+        {
+            TStates += (ulong)(totalTStates - 6);
+            byte low = ReadMemory(addr);
+            TStates += 3;
+            byte high = ReadMemory((ushort)(addr + 1));
+            TStates += 3;
+            return (ushort)(low | (high << 8));
+        }
     }
 }

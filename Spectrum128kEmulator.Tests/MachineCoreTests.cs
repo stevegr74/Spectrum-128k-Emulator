@@ -1,5 +1,6 @@
 using System;
 using System.IO;
+using System.Linq;
 using System.Reflection;
 using Xunit;
 
@@ -163,6 +164,58 @@ namespace Spectrum128kEmulator.Tests
             }
         }
 
+        [Fact]
+        public void ExecuteFrame_Triggers_Interrupt_Immediately_By_Default()
+        {
+            string romFolder = CreateTempRoms();
+            try
+            {
+                var machine = new Spectrum128Machine(romFolder);
+                machine.Cpu.RestoreInterruptState(iff1: true, iff2: true, interruptMode: 1);
+                machine.Cpu.ClearRecentTrace();
+
+                machine.ExecuteFrame();
+
+                string[] events = machine.Cpu.GetRecentInterruptEventsSnapshot();
+                Assert.Contains(events, line => line.Contains("T=         0") && line.Contains("INT_ACCEPT"));
+            }
+            finally
+            {
+                Directory.Delete(romFolder, true);
+            }
+        }
+
+        [Fact]
+        public void SetInitialInterruptDelay_Delays_First_Interrupt_And_Preserves_Phase()
+        {
+            string romFolder = CreateTempRoms();
+            try
+            {
+                var machine = new Spectrum128Machine(romFolder);
+                machine.Cpu.RestoreInterruptState(iff1: true, iff2: true, interruptMode: 1);
+                machine.SetInitialInterruptDelay(512);
+                machine.Cpu.ClearRecentTrace();
+
+                machine.ExecuteFrame();
+                string[] firstFrameEvents = machine.Cpu.GetRecentInterruptEventsSnapshot();
+                ulong firstAcceptTStates = ExtractFirstInterruptAcceptTStates(firstFrameEvents);
+                Assert.InRange(firstAcceptTStates, 512UL, 516UL);
+
+                machine.Cpu.RestoreInterruptState(iff1: true, iff2: true, interruptMode: 1);
+                machine.Cpu.ClearRecentTrace();
+                machine.ExecuteFrame();
+                string[] secondFrameEvents = machine.Cpu.GetRecentInterruptEventsSnapshot();
+                ulong secondAcceptTStates = ExtractFirstInterruptAcceptTStates(secondFrameEvents);
+                Assert.InRange(
+                    secondAcceptTStates - firstAcceptTStates,
+                    (ulong)Spectrum128Machine.FrameTStates128,
+                    (ulong)Spectrum128Machine.FrameTStates128 + 4UL);
+            }
+            finally
+            {
+                Directory.Delete(romFolder, true);
+            }
+        }
 
         [Fact]
         public void Ay_Register_Select_And_Write_Via_Ports_Works()
@@ -204,65 +257,6 @@ namespace Spectrum128kEmulator.Tests
             }
         }
 
-        [Fact(Skip = "Experimental 48K floating-bus model is currently rolled back to the pushed baseline.")]
-        public void Unknown_Odd_Port_Read_Uses_Floating_Bus_During_48k_Display_Window()
-        {
-            string romFolder = CreateTempRoms();
-            try
-            {
-                var machine = new Spectrum128Machine(romFolder);
-                machine.ConfigureFor48kSnapshot(borderColor: 0);
-                machine.Set48kFloatingBusTimingAdjustments(displayStartAdjustTStates: 0, sampleAdjustTStates: 0);
-
-                byte[] ram48 = new byte[48 * 1024];
-                ram48[0] = 0xA5;
-                machine.Load48kSnapshotRam(ram48);
-
-                SetCpuTStates(machine, 14347);
-
-                Assert.Equal((byte)0xA5, machine.DebugReadPort(0xFFFF));
-            }
-            finally
-            {
-                Directory.Delete(romFolder, true);
-            }
-        }
-
-        [Fact(Skip = "Experimental 48K floating-bus model is currently rolled back to the pushed baseline.")]
-        public void Unknown_Odd_Port_Read_Is_High_During_48k_Display_Idle_Phase()
-        {
-            string romFolder = CreateTempRoms();
-            try
-            {
-                var machine = new Spectrum128Machine(romFolder);
-                machine.ConfigureFor48kSnapshot(borderColor: 0);
-                machine.Set48kFloatingBusTimingAdjustments(displayStartAdjustTStates: 0, sampleAdjustTStates: 0);
-
-                byte[] ram48 = new byte[48 * 1024];
-                ram48[0] = 0xA5;
-                ram48[0x1800] = 0x3C;
-                ram48[1] = 0x5A;
-                ram48[0x1801] = 0xC3;
-                machine.Load48kSnapshotRam(ram48);
-
-                SetCpuTStates(machine, 14348);
-                Assert.Equal((byte)0x3C, machine.DebugReadPort(0xFFFF));
-
-                SetCpuTStates(machine, 14349);
-                Assert.Equal((byte)0x5A, machine.DebugReadPort(0xFFFF));
-
-                SetCpuTStates(machine, 14350);
-                Assert.Equal((byte)0xC3, machine.DebugReadPort(0xFFFF));
-
-                SetCpuTStates(machine, 14351);
-                Assert.Equal((byte)0xFF, machine.DebugReadPort(0xFFFF));
-            }
-            finally
-            {
-                Directory.Delete(romFolder, true);
-            }
-        }
-
         [Fact]
         public void Unknown_Odd_Port_Read_Is_High_Outside_48k_Display_Window()
         {
@@ -280,144 +274,6 @@ namespace Spectrum128kEmulator.Tests
                 SetCpuTStates(machine, 0);
 
                 Assert.Equal((byte)0xFF, machine.DebugReadPort(0xFFFF));
-            }
-            finally
-            {
-                Directory.Delete(romFolder, true);
-            }
-        }
-
-        [Fact(Skip = "Experimental 48K floating-bus model is currently rolled back to the pushed baseline.")]
-        public void Floating_Bus_Display_Start_Adjust_Shifts_First_Byte_Window()
-        {
-            string romFolder = CreateTempRoms();
-            try
-            {
-                var machine = new Spectrum128Machine(romFolder);
-                machine.ConfigureFor48kSnapshot(borderColor: 0);
-
-                byte[] ram48 = new byte[48 * 1024];
-                ram48[0] = 0xA5;
-                machine.Load48kSnapshotRam(ram48);
-                machine.Set48kFloatingBusTimingAdjustments(displayStartAdjustTStates: -1, sampleAdjustTStates: 0);
-
-                SetCpuTStates(machine, 14346);
-
-                Assert.Equal((byte)0xA5, machine.DebugReadPort(0xFFFF));
-            }
-            finally
-            {
-                Directory.Delete(romFolder, true);
-            }
-        }
-
-        [Fact(Skip = "Experimental 48K floating-bus model is currently rolled back to the pushed baseline.")]
-        public void Floating_Bus_Sample_Adjust_Shifts_Timed_Odd_Port_Read()
-        {
-            string romFolder = CreateTempRoms();
-            try
-            {
-                var machine = new Spectrum128Machine(romFolder);
-                machine.ConfigureFor48kSnapshot(borderColor: 0);
-
-                byte[] ram48 = new byte[48 * 1024];
-                ram48[0] = 0xA5;
-                ram48[0x1800] = 0x3C;
-                machine.Load48kSnapshotRam(ram48);
-                machine.Set48kFloatingBusTimingAdjustments(displayStartAdjustTStates: 0, sampleAdjustTStates: 1);
-
-                SetCpuTStates(machine, 14347);
-
-                Assert.Equal((byte)0x3C, machine.Cpu.ReadPortTimed!(0xFFFF, 0));
-            }
-            finally
-            {
-                Directory.Delete(romFolder, true);
-            }
-        }
-
-        [Fact(Skip = "Experimental 48K contention model is currently rolled back to the pushed baseline.")]
-        public void ClearDebugHistory_Does_Not_Reset_48k_Floating_Bus_Timing()
-        {
-            string romFolder = CreateTempRoms();
-            try
-            {
-                var machine = new Spectrum128Machine(romFolder);
-                machine.ConfigureFor48kSnapshot(borderColor: 0);
-
-                byte[] ram48 = new byte[48 * 1024];
-                ram48[0] = 0xA5;
-                ram48[0x1800] = 0x3C;
-                machine.Load48kSnapshotRam(ram48);
-
-                machine.ClearDebugHistory();
-                SetCpuTStates(machine, 14347);
-
-                Assert.Equal((byte)0x3C, machine.Cpu.ReadPortTimed!(0xFFFF, 0));
-            }
-            finally
-            {
-                Directory.Delete(romFolder, true);
-            }
-        }
-
-        [Fact(Skip = "Experimental 48K contention model is currently rolled back to the pushed baseline.")]
-        public void Contended_48k_Memory_Read_Adds_Wait_States()
-        {
-            string romFolder = CreateTempRoms();
-            try
-            {
-                var machine = new Spectrum128Machine(romFolder);
-                machine.ConfigureFor48kSnapshot(borderColor: 0);
-                machine.Load48kSnapshotRam(new byte[48 * 1024]);
-                SetCpuTStates(machine, 14335);
-
-                ulong before = machine.Cpu.TStates;
-                _ = machine.Cpu.ReadMemory!(0x4000);
-
-                Assert.Equal(before + 6UL, machine.Cpu.TStates);
-            }
-            finally
-            {
-                Directory.Delete(romFolder, true);
-            }
-        }
-
-        [Fact(Skip = "Experimental 48K contention model is currently rolled back to the pushed baseline.")]
-        public void Even_Port_Read_With_Contended_High_Byte_Uses_C1_C3_Pattern()
-        {
-            string romFolder = CreateTempRoms();
-            try
-            {
-                var machine = new Spectrum128Machine(romFolder);
-                machine.ConfigureFor48kSnapshot(borderColor: 0);
-                SetCpuTStates(machine, 14335);
-
-                ulong before = machine.Cpu.TStates;
-                _ = machine.Cpu.ReadPortTimed!(0x40FE, 0);
-
-                Assert.Equal(before + 6UL, machine.Cpu.TStates);
-            }
-            finally
-            {
-                Directory.Delete(romFolder, true);
-            }
-        }
-
-        [Fact(Skip = "Experimental 48K contention model is currently rolled back to the pushed baseline.")]
-        public void Even_Port_Read_With_Uncontended_High_Byte_Uses_N1_C3_Pattern()
-        {
-            string romFolder = CreateTempRoms();
-            try
-            {
-                var machine = new Spectrum128Machine(romFolder);
-                machine.ConfigureFor48kSnapshot(borderColor: 0);
-                SetCpuTStates(machine, 14335);
-
-                ulong before = machine.Cpu.TStates;
-                _ = machine.Cpu.ReadPortTimed!(0xFEFE, 0);
-
-                Assert.Equal(before + 5UL, machine.Cpu.TStates);
             }
             finally
             {
@@ -503,6 +359,17 @@ namespace Spectrum128kEmulator.Tests
                 throw new InvalidOperationException("Unable to set CPU TStates for test.");
 
             setter.Invoke(machine.Cpu, new object[] { value });
+        }
+
+        private static ulong ExtractFirstInterruptAcceptTStates(string[] events)
+        {
+            string acceptLine = events.First(line => line.Contains("INT_ACCEPT return="));
+            int start = acceptLine.IndexOf("T=", StringComparison.Ordinal);
+            int end = acceptLine.IndexOf(" PC=", StringComparison.Ordinal);
+            if (start < 0 || end <= start + 2)
+                throw new FormatException($"Unable to parse interrupt event line: {acceptLine}");
+
+            return ulong.Parse(acceptLine[(start + 2)..end].Trim());
         }
     }
 }

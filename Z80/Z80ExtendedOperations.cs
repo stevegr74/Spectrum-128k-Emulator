@@ -86,9 +86,9 @@ namespace Spectrum128kEmulator.Z80
             // =========================
             // 16-bit loads via memory
             // =========================
-            edOpcodeTable[0x43] = () => { ushort a = FetchWord(); WriteMemory(a, Regs.C); WriteMemory((ushort)(a + 1), Regs.B); TStates += 20; };
-            edOpcodeTable[0x53] = () => { ushort a = FetchWord(); WriteMemory(a, Regs.E); WriteMemory((ushort)(a + 1), Regs.D); TStates += 20; };
-            edOpcodeTable[0x63] = () => { ushort a = FetchWord(); WriteMemory(a, Regs.L); WriteMemory((ushort)(a + 1), Regs.H); TStates += 20; };
+            edOpcodeTable[0x43] = () => { ushort a = FetchWord(); WriteWordWithAccessSpacing(a, Regs.C, Regs.B, 20); };
+            edOpcodeTable[0x53] = () => { ushort a = FetchWord(); WriteWordWithAccessSpacing(a, Regs.E, Regs.D, 20); };
+            edOpcodeTable[0x63] = () => { ushort a = FetchWord(); WriteWordWithAccessSpacing(a, Regs.L, Regs.H, 20); };
             edOpcodeTable[0x73] = () =>
             {
                 ushort a = FetchWord();
@@ -102,20 +102,18 @@ namespace Spectrum128kEmulator.Z80
                         true);
                 }
 
-                WriteMemory(a, low);
-                WriteMemory((ushort)(a + 1), high);
-                TStates += 20;
+                WriteWordWithAccessSpacing(a, low, high, 20);
             };
 
-            edOpcodeTable[0x4B] = () => { ushort a = FetchWord(); Regs.BC = (ushort)(ReadMemory(a) | (ReadMemory((ushort)(a + 1)) << 8)); TStates += 20; };
-            edOpcodeTable[0x5B] = () => { ushort a = FetchWord(); Regs.DE = (ushort)(ReadMemory(a) | (ReadMemory((ushort)(a + 1)) << 8)); TStates += 20; };
-            edOpcodeTable[0x6B] = () => { ushort a = FetchWord(); Regs.HL = (ushort)(ReadMemory(a) | (ReadMemory((ushort)(a + 1)) << 8)); TStates += 20; };
+            edOpcodeTable[0x4B] = () => { ushort a = FetchWord(); Regs.BC = ReadWordWithAccessSpacing(a, 20); };
+            edOpcodeTable[0x5B] = () => { ushort a = FetchWord(); Regs.DE = ReadWordWithAccessSpacing(a, 20); };
+            edOpcodeTable[0x6B] = () => { ushort a = FetchWord(); Regs.HL = ReadWordWithAccessSpacing(a, 20); };
             edOpcodeTable[0x7B] = () =>
             {
                 ushort a = FetchWord();
-                byte low = ReadMemory(a);
-                byte high = ReadMemory((ushort)(a + 1));
-                ushort value = (ushort)(low | (high << 8));
+                ushort value = ReadWordWithAccessSpacing(a, 20);
+                byte low = (byte)(value & 0xFF);
+                byte high = (byte)(value >> 8);
                 if (a == 0x78DA || value < 0x4000)
                 {
                     RecordInterruptEvent(
@@ -125,7 +123,6 @@ namespace Spectrum128kEmulator.Z80
                 }
 
                 Regs.SP = value;
-                TStates += 20;
             };
 
             // =========================
@@ -212,7 +209,7 @@ namespace Spectrum128kEmulator.Z80
                 SetFlag(Flag.N, false);
                 SetFlag(Flag.P, Regs.BC != 0);
                 SetFlag(Flag.F3, (sum & 0x08) != 0);
-                SetFlag(Flag.F5, (sum & 0x20) != 0);
+                SetFlag(Flag.F5, (sum & 0x02) != 0);
 
                 TStates += 16;
             };
@@ -229,7 +226,7 @@ namespace Spectrum128kEmulator.Z80
                 SetFlag(Flag.N, false);
                 SetFlag(Flag.P, Regs.BC != 0);
                 SetFlag(Flag.F3, (sum & 0x08) != 0);
-                SetFlag(Flag.F5, (sum & 0x20) != 0);
+                SetFlag(Flag.F5, (sum & 0x02) != 0);
 
                 if (Regs.BC != 0)
                 {
@@ -254,7 +251,7 @@ namespace Spectrum128kEmulator.Z80
                 SetFlag(Flag.N, false);
                 SetFlag(Flag.P, Regs.BC != 0);
                 SetFlag(Flag.F3, (sum & 0x08) != 0);
-                SetFlag(Flag.F5, (sum & 0x20) != 0);
+                SetFlag(Flag.F5, (sum & 0x02) != 0);
 
                 TStates += 16;
             };
@@ -271,7 +268,7 @@ namespace Spectrum128kEmulator.Z80
                 SetFlag(Flag.N, false);
                 SetFlag(Flag.P, Regs.BC != 0);
                 SetFlag(Flag.F3, (sum & 0x08) != 0);
-                SetFlag(Flag.F5, (sum & 0x20) != 0);
+                SetFlag(Flag.F5, (sum & 0x02) != 0);
 
                 if (Regs.BC != 0)
                 {
@@ -389,7 +386,7 @@ namespace Spectrum128kEmulator.Z80
 
             byte n = (byte)(r - (halfBorrow ? 1 : 0));
             SetFlag(Flag.F3, (n & 0x08) != 0);
-            SetFlag(Flag.F5, (n & 0x20) != 0);
+            SetFlag(Flag.F5, (n & 0x02) != 0);
 
             SetFlag(Flag.C, oldCarry);
 
