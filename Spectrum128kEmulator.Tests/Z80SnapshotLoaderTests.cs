@@ -162,6 +162,48 @@ namespace Spectrum128kEmulator.Tests
         }
 
         [Fact]
+        public void LoadZ80v2_48k_PageBlocks_Applies_Default_Initial_Interrupt_Delay()
+        {
+            string tempFolder = CreateTempRoms();
+            string snapshotPath = Path.Combine(tempFolder, "48k-delay.z80");
+
+            try
+            {
+                byte[] page8 = CreateFilledBank(0x11);
+                byte[] page4 = CreateFilledBank(0x22);
+                byte[] page5 = CreateFilledBank(0x33);
+
+                byte[] data = BuildExtendedSnapshot(
+                    additionalHeaderLength: 23,
+                    hardwareMode: 0,
+                    last7ffd: 0x00,
+                    compressedBlocks: false,
+                    (8, page8),
+                    (4, page4),
+                    (5, page5));
+
+                File.WriteAllBytes(snapshotPath, data);
+
+                var machine = new Spectrum128Machine(tempFolder);
+                Z80SnapshotLoader.Load(machine, snapshotPath);
+                machine.Cpu.ClearRecentTrace();
+
+                machine.ExecuteFrame();
+
+                string[] events = machine.Cpu.GetRecentInterruptEventsSnapshot();
+                ulong firstAcceptTStates = ExtractFirstInterruptAcceptTStates(events);
+                Assert.InRange(
+                    firstAcceptTStates,
+                    (ulong)Spectrum128Machine.Default48kSnapshotInitialInterruptDelay,
+                    (ulong)Spectrum128Machine.Default48kSnapshotInitialInterruptDelay + 16UL);
+            }
+            finally
+            {
+                Directory.Delete(tempFolder, true);
+            }
+        }
+
+        [Fact]
         public void LoadZ80v3_128k_PageBlocks_Restores_All_Banks_And_Paging_State()
         {
             string tempFolder = CreateTempRoms();
@@ -363,6 +405,30 @@ namespace Spectrum128kEmulator.Tests
             for (int i = 0; i < bank.Length; i++)
                 bank[i] = value;
             return bank;
+        }
+
+        private static ulong ExtractFirstInterruptAcceptTStates(string[] events)
+        {
+            foreach (string line in events)
+            {
+                int acceptIndex = line.IndexOf("INT_ACCEPT", StringComparison.Ordinal);
+                if (acceptIndex < 0 || line.Contains("return=", StringComparison.Ordinal) == false)
+                    continue;
+
+                int tIndex = line.IndexOf("T=", StringComparison.Ordinal);
+                if (tIndex < 0)
+                    continue;
+
+                int pcIndex = line.IndexOf("PC=", StringComparison.Ordinal);
+                if (pcIndex <= tIndex)
+                    continue;
+
+                string tToken = line.Substring(tIndex + 2, pcIndex - (tIndex + 2)).Trim();
+                if (ulong.TryParse(tToken, out ulong tStates))
+                    return tStates;
+            }
+
+            throw new InvalidOperationException("No INT_ACCEPT event found in interrupt log.");
         }
 
         private static IEnumerable<byte> CompressBlock(byte[] data)

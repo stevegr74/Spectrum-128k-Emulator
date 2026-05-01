@@ -120,6 +120,7 @@ namespace Spectrum128kEmulator.Tests
                     bool earHigh = (machine.DebugReadPort(0x00FE) & 0x40) != 0;
                     sawHigh |= earHigh;
                     sawLow |= !earHigh;
+                    machine.Cpu.AddTStates(2168);
                 }
 
                 Assert.True(sawHigh);
@@ -468,6 +469,90 @@ namespace Spectrum128kEmulator.Tests
                 Directory.Delete(tempFolder, true);
             }
         }
+
+        [Fact]
+        public void BootstrapBasicProgramAndMountRemaining_Loads_Leading_Basic_And_Starts_Tape_After_Consumed_Blocks()
+        {
+            string tempFolder = CreateTempRoms();
+            string tapePath = Path.Combine(tempFolder, "bootstrap.tap");
+
+            try
+            {
+                byte[] basicLoader = new byte[] { 0x0A, 0x00, 0x02, 0x00, 0xF7, 0x0D };
+                byte[] codeLoader = new byte[] { 0x3E, 0x42, 0x32, 0x00, 0x90 };
+                byte[] trailingData = new byte[] { 0x44, 0x55, 0x66 };
+                byte[] header = BuildHeaderBlock(type: 0, fileName: "BOOT", dataLength: 12, parameter1: 10, parameter2: 12);
+                byte[] tap = BuildTap(
+                    header,
+                    BuildDataBlock(basicLoader),
+                    BuildHeaderBlock(type: 3, fileName: "CODE", dataLength: (ushort)codeLoader.Length, parameter1: 0x9000, parameter2: 0),
+                    BuildDataBlock(codeLoader),
+                    BuildDataBlock(trailingData));
+
+                File.WriteAllBytes(tapePath, tap);
+
+                var machine = new Spectrum128Machine(tempFolder);
+                TapBootstrapResult result = TapLoader.BootstrapBasicProgramAndMountRemaining(machine, tapePath);
+
+                Assert.Equal(5, result.TotalBlockCount);
+                Assert.Equal(4, result.ConsumedBlockCount);
+                Assert.Equal("BOOT", result.AutoStartFileName);
+                Assert.True(machine.HasMountedTape);
+                Assert.True(machine.MountedTape!.HasRemainingBlocks);
+                Assert.Equal((byte)0x0A, machine.PeekMemory(23755));
+                Assert.Equal((byte)0xF7, machine.PeekMemory(23759));
+                Assert.Equal((byte)0x3E, machine.PeekMemory(0x9000));
+                Assert.Equal((byte)0x42, machine.PeekMemory(0x9001));
+                Assert.Equal((ushort)10, ReadWord(machine, 23618));
+
+                machine.PokeMemory(0x9000, 0x3F);
+                machine.PokeMemory(0x9001, 0x05);
+                machine.Cpu.Regs.PC = 0x056B;
+                machine.Cpu.Regs.SP = 0x9000;
+                machine.Cpu.Regs.IX = 0x8000;
+                machine.Cpu.Regs.DE = (ushort)trailingData.Length;
+                machine.Cpu.Regs.A = 0xFF;
+                machine.Cpu.Regs.F = 0x01;
+
+                bool handled = machine.TryServiceTapeTrap();
+
+                Assert.True(handled);
+                Assert.Equal((byte)0x44, machine.PeekMemory(0x8000));
+                Assert.Equal((byte)0x55, machine.PeekMemory(0x8001));
+                Assert.Equal((byte)0x66, machine.PeekMemory(0x8002));
+                Assert.False(machine.MountedTape!.HasRemainingBlocks);
+            }
+            finally
+            {
+                Directory.Delete(tempFolder, true);
+            }
+        }
+
+        [Fact]
+        public void BootstrapBasicProgramAndMountRemaining_Rejects_NonBasic_Leader()
+        {
+            string tempFolder = CreateTempRoms();
+            string tapePath = Path.Combine(tempFolder, "nonbasicbootstrap.tap");
+
+            try
+            {
+                byte[] tap = BuildTap(
+                    BuildHeaderBlock(type: 3, fileName: "CODE", dataLength: 4, parameter1: 0x8000, parameter2: 0),
+                    BuildDataBlock(new byte[] { 1, 2, 3, 4 }));
+
+                File.WriteAllBytes(tapePath, tap);
+
+                var machine = new Spectrum128Machine(tempFolder);
+
+                Assert.Throws<InvalidOperationException>(() =>
+                    TapLoader.BootstrapBasicProgramAndMountRemaining(machine, tapePath));
+            }
+            finally
+            {
+                Directory.Delete(tempFolder, true);
+            }
+        }
+
         private static ushort ReadWord(Spectrum128Machine machine, ushort address)
         {
             return (ushort)(machine.PeekMemory(address) | (machine.PeekMemory((ushort)(address + 1)) << 8));

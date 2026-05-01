@@ -1,11 +1,59 @@
 Project: ZX Spectrum 128K Emulator (C# WinForms)
 
 Current issue:
-Exolon still crashes shortly after the menu appears.
+Exolon is materially improved and no longer resets into 48K BASIC on the accepted latest build, but it still needs further gameplay/audio validation and comparison against the clean `.z80` control snapshot.
+
+Accepted checkpoint on 2026-05-01:
+- User verified success on the latest build:
+  - `exolon.sna` now stays on a healthy title/menu path
+  - the earlier `48K BASIC` reset is gone
+  - logo/sprites start correctly and the accepted regression target is cleared
+- The accepted loader rule for `exolon.sna` is now:
+  - force `IFF1/IFF2` off on load
+  - use normal 48K cadence (`69888`), not the earlier Exolon-only `70908` experiment
+  - keep the existing default 48K snapshot initial interrupt delay (`16`)
+- This was derived by comparing the problematic `exolon.sna` against a known-good control snapshot:
+  - `C:\Users\steve\Desktop\Snapshots\Exolon.z80`
+  - that `.z80` runs in clean 48K mode and was the strongest local control during the investigation
+
+Most recent meaningful result:
+- `exolon.sna` no longer needs the older Exolon-only legacy frame cadence hack.
+- The important fix was matching the healthy control more closely at load time:
+  - interrupts off
+  - normal 48K cadence
+- Harness confirmation for the accepted path:
+  - `Spectrum128kEmulator.ManualHarness/bin/Debug/net10.0-windows/debug/harness-end-20260501-102846957.png`
+  - this shows the clean title/menu result on the accepted baseline
+
+Best next step when resuming:
+- Compare remaining Exolon runtime behavior between:
+  - `C:\Users\steve\Desktop\Snapshots\exolon.sna`
+  - `C:\Users\steve\Desktop\Snapshots\Exolon.z80`
+- The next investigation target is no longer the old early reset-to-BASIC path.
+- Next focus should be later runtime differences only:
+  - sound sequencing
+  - sprite/state corruption if it reappears after more runtime
+  - divergence in `79xx/7Axx/7Cxx` game code between the `.sna` and `.z80` paths
 
 High-level status:
+- New safe checkpoint on 2026-04-30:
+  - `ConfigureFor48kSnapshot(...)` now uses true 48K frame cadence (`69888`) instead of 128K cadence (`70908`).
+  - Focused regressions stayed green:
+    - `MachineCoreTests`
+    - `CpuMicroTests`
+    - `SnapshotLoaderTests`
+    - `Z80SnapshotLoaderTests`
+    - `AudioPipelineTests`
+  - This is the first change that materially advances the current Exolon baseline without breaking zexall/zexdoc or the focused unit suites.
+- Current user-facing Exolon expectation to verify next:
+  - title/logo should still look correct
+  - by about frame 60 the title/menu is still intact
+  - the old late `11DC` failure is no longer terminal
+  - the run now recovers out of that state around frame 161 and reaches live code again (`PC=10B4`, then `15F7/15FF`)
+  - after that it appears to head into a later prompt/reset path rather than staying stuck forever in the old fill loop
 - The original interrupt-stall bug is no longer the active failure.
-- The current crash is a separate 48K-mode control-flow problem that eventually produces:
+- The current crash is still a separate 48K-mode control-flow problem, but the failure now happens later than before.
+- Old late-failure signature that is still diagnostically relevant:
   - ROM `PC=11B6`
   - stack target `FFFF`
   - `RET` to `FFFF`
@@ -13,6 +61,23 @@ High-level status:
   - `DI` at `0000`
   - later ROM fill loop `11DC..11E0` writing `02` downward through top RAM
 - The ROM fill loop is aftermath, not root cause.
+
+Latest concrete evidence:
+- Harness run with default snapshot path now reaches:
+  - frame 61: still live title/menu path around `PC=103F`
+  - frame 71-151: old `11DC/11E9` bad region
+  - frame 161: recovers to `PC=10B4`, `SP=FF48`, `IFF1=True`
+  - frame 171+: settles into `PC=15F7/15FF`, `SP=FF4A/FF4C`
+- Useful artifacts:
+  - clean title image at frame 60:
+    - `Spectrum128kEmulator.ManualHarness/bin/Debug/net10.0-windows/debug/harness-end-20260430-223755417.png`
+  - recovery/later-loop trace:
+    - `Spectrum128kEmulator.ManualHarness/bin/Debug/net10.0-windows/debug/harness-end-20260430-223706467.txt`
+    - `Spectrum128kEmulator.ManualHarness/bin/Debug/net10.0-windows/debug/harness-end-20260430-223733032.txt`
+
+Best next step after verifying this build:
+- Compare the recovered `10B4 -> 15F7/15FF` path against a known-good emulator or expected game flow.
+- The new target is no longer “escape 11DC”; it is “why does the recovered run end up at the later `15F7/15FF` loop / prompt-reset path instead of entering stable gameplay/menu behavior?”
 
 What was already ruled out:
 - `EI` delay handling is correct.
@@ -789,3 +854,329 @@ Recommended next work:
 - Resume Exolon from this stronger checkpoint
 - Prefer targeted startup-path investigation over broad CPU timing changes
 - Keep `zexall`/`zexdoc`/full test suite as the primary anti-regression gate for any further CPU-core changes
+
+Checkpoint after Exolon trace narrowing on 2026-04-30:
+- User-confirmed current live-app Exolon state:
+  - logo now looks good
+  - sound is still wrong
+  - sprites are still corrupted
+- Important safety note:
+  - do not describe Exolon as fixed
+  - the current state is visually improved at the title/logo level, but still has gameplay/audio corruption
+
+What was tried and what was kept:
+- A wider CPU timing experiment was attempted for simple 7T memory-access instructions:
+  - `LD A,(DE)` / `LD A,(BC)`
+  - `LD (DE),A` / `LD (BC),A`
+  - `LD (HL),r`
+  - ALU `(HL)` forms like `AND (HL)`
+- That experiment moved Exolon into a different failure mode and made the `32`-T-state comparison path worse.
+- Those risky timing edits were fully reverted.
+- The only retained changes from this pass are debug-only tracing improvements:
+  - dormant focused instruction tracing in `Spectrum128Machine`
+  - harness CLI support for:
+    - `tracepc=`
+    - `traceframes=`
+    - `tracefromframe=`
+    - `tracemax=`
+- These tracing changes do not alter normal emulator behavior.
+
+Current validated baseline after reverting the risky timing edits:
+- `dotnet test Spectrum128kEmulator.Tests\Spectrum128kEmulator.Tests.csproj --filter CpuMicroTests`
+  - passes
+- `dotnet test Spectrum128kEmulator.Tests\Spectrum128kEmulator.Tests.csproj --filter MachineCoreTests`
+  - passes
+- `dotnet build Spectrum128kEmulator.ManualHarness\Spectrum128kEmulator.ManualHarness.csproj`
+  - passes
+- Harness baseline is restored:
+  - `delay=0` path:
+    - frame 11 reaches `PC=FC3D`
+  - `delay=32` path:
+    - frame 11 reaches `PC=1040`
+
+Most useful new Exolon findings from the focused trace work:
+- The first `79ED..7A2D` startup worker is not where the lasting divergence happens.
+  - `delay=0` and `delay=32` are effectively identical there apart from the known first-interrupt placement around `79F5`.
+- The real split is already established much earlier than the later `FCxx` symptom suggests.
+- By frame 2:
+  - both runs are still in the same general `79C2..79C8` worker loop and ROM interrupt service path
+  - but the interrupt is landing at slightly different instruction boundaries inside that loop
+- By frame 8:
+  - the two runs are already in very different machine states before the later ROM/helper fallout:
+    - bad/default path:
+      - `PC=B7C6`
+      - `SP=FFDE`
+      - `IY=BDDD`
+    - healthier `32`-delay path:
+      - `PC=1051`
+      - `SP=804C`
+      - `IY=B211`
+- By frame 9:
+  - bad/default path:
+    - returns through `004D..0052`
+    - re-enters game code at `7A76`
+    - then reaches `7AB6`
+    - returns into `FC7F`
+  - healthier `32`-delay path:
+    - returns through `004D..0052`
+    - re-enters the coherent `103E..1056` loop
+- Practical conclusion:
+  - the later `3870` / `3874` ROM helper branch is probably a symptom, not the root cause
+  - by the time both runs reach that area in the later frames, stack and `IY` state are already different
+
+Best current hypothesis:
+- The remaining Exolon bug is a control-flow/state divergence that is already established by frames 2 through 8.
+- The highest-value target is now:
+  - the first frame where stack and `IY` stop matching between the default and `32`-delay runs
+  - not another broad timing tweak across unrelated instructions
+
+Exact next steps to resume later:
+1. Use the focused trace harness on the restored baseline to pinpoint the earliest frame where:
+   - `SP`
+   - `IY`
+   - or the return chain after `0038 -> 386E/3870 -> 004D..0052`
+   first diverges between `delay=0` and `delay=32`
+2. Once that first divergence frame is isolated, compare:
+   - the exact interrupt entry point
+   - the stack contents written during the ROM service
+   - the return address chain
+   - any `IX`/`IY` saves/restores around that boundary
+3. Only after identifying a concrete mismatch, consider a surgical CPU fix.
+   - Avoid broad per-instruction timing changes unless they are strongly supported by the trace.
+4. Keep anti-regression gates in place for every core change:
+   - `zexall`
+   - `zexdoc`
+   - full enabled unit suite
+   - Exolon harness baseline checks for both `delay=0` and `delay=32`
+
+Checkpoint after deeper frame-6 analysis on 2026-04-30:
+- Latest user-confirmed live-app Exolon behavior:
+  - logo still looks good
+  - sound is still wrong
+  - sprites are still corrupted
+  - on a first run, a few frames of animation play before the crash
+- Important interpretation:
+  - this is not an instant frame-0 failure
+  - the default path survives long enough to build some valid state and animate briefly before tipping over
+  - any future fix must preserve the current improved title/logo and early animation while removing the later crash/corruption
+
+What was added in this pass:
+- One debug-only dump enhancement in `Spectrum128Machine`:
+  - `BuildDebugDump()` now includes a 32-byte memory window around `IY-8`
+- This does not alter normal emulation behavior
+
+Most useful new low-level findings:
+- The ROM helper at `386E` was decoded directly from `128-1.rom`:
+  - `386E: DD E5`
+  - `3870: FD CB 01 66`
+  - `3874: 28 03`
+- So the branch at `3874` is:
+  - `BIT 4,(IY+1)`
+  - `JR Z,+3`
+- The branch difference between the bad/default and healthier `delay=32` paths is therefore real data, not a fake flag bug:
+  - bad/default frame-6 path:
+    - `IY=B301`
+    - `B302=78`
+    - bit 4 is set
+    - `JR Z` is not taken
+  - healthier `delay=32` frame-6 path:
+    - `IY=B301`
+    - `B302=0D`
+    - bit 4 is clear
+    - `JR Z` is taken
+
+Where that byte comes from:
+- The startup/data-driven worker around `7981..7992` was decoded from the snapshot:
+  - `7981: ADD HL,DE`
+  - `7982: LD E,(HL)`
+  - `7984: LD D,(HL)`
+  - `7985: LD IX,0000`
+  - `7989: ADD IX,DE`
+  - `798B: LD HL,78DC`
+  - `798E: LD B,10`
+  - `7990: POP DE`
+  - `7991: XOR A`
+  - `7992: JP (IX)`
+  - `79C2: LD (HL),E / INC HL / LD (HL),D / INC HL / LD (HL),A ...`
+- That means the `B301/B302` bytes later tested by the ROM helper are staged earlier by the `79C2` writer loop, which itself is driven by:
+  - the stack word consumed by `POP DE` at `7990`
+  - the jump target selected by the `DE` fetched from the `7AD9` table at `7981..7984`
+
+Earliest concrete fork now identified:
+- The tight pre-interrupt window is:
+  - `7976: LD SP,HL`
+  - `7977: ADD A,A`
+  - `7978: AND 07`
+  - `797A: ADD A,A`
+  - `797B: LD L,A`
+  - `797C: LD H,00`
+  - `797E: LD DE,7AD9`
+  - `7981: ADD HL,DE`
+- In the healthier comparison path, the interrupt is accepted at `PC=7981` and returns to `7981`.
+- In the bad/default path, the interrupt is accepted earlier around `PC=7976`.
+- That earlier interrupt entry is enough to change the later stack payload consumed by `POP DE` at `7990`.
+
+Concrete proof from the focused trace:
+- At frame 6, the default/bad path later reaches:
+  - `7990: POP DE -> DE=78E4`
+- At frame 6, the healthier `delay=32` path later reaches:
+  - `7990: POP DE -> DE=0D78`
+- Those different `DE` values are then written through the `79C2` loop into the `78DC..78DF` staging area.
+- The staged bytes are later copied into the `B301/B302` area, causing the `BIT 4,(IY+1)` difference in ROM.
+
+Best current hypothesis:
+- The remaining Exolon bug is now most likely an interrupt scheduling / interrupt boundary accuracy issue around frame 6, not generic random corruption and not a simple flag bug.
+- The highest-value target is:
+  - why the default path accepts the interrupt one instruction earlier than the healthier path
+  - whether the emulator is presenting the frame interrupt edge slightly too early on that path
+
+One key explanatory insight from the latest pass:
+- The bad/default and healthier paths are not diverging because `79C2` writes differently by itself.
+- They diverge because the interrupt is landing on opposite sides of `7976: LD SP,HL`.
+  - bad/default path:
+    - interrupt is accepted while `PC=7976`
+    - `SP` is still the old value (`FFDE`)
+    - the ROM interrupt stack frame is pushed to the old stack
+    - after returning, `LD SP,HL` then switches `SP` to `FAA0`
+  - healthier comparison path:
+    - `LD SP,HL` executes first
+    - `SP` becomes `FAA0`
+    - interrupt is accepted later around `PC=7981`
+    - the ROM interrupt stack frame is pushed to the new stack
+- That directly explains the later `POP DE` difference at `7990`:
+  - bad/default path reads stack words from the old-stack layout
+  - healthier path reads stack words from the new-stack layout
+- So the wrong `DE` at `7990` is a downstream consequence of interrupt placement relative to `LD SP,HL`, not a separate stack instruction bug.
+
+Exact next steps from here:
+1. Inspect the frame interrupt scheduling path in `Spectrum128Machine.ExecuteFrame()` and `Z80Cpu.ExecuteCycles()` with frame-6 behavior in mind.
+2. Determine whether the emulator should be allowing the interrupt to be seen at a slightly later instruction boundary in this case.
+3. Compare the current interrupt delivery model against the observed good comparison path without changing the default snapshot phase globally.
+4. If a change is attempted, keep it surgical and re-run:
+   - `zexall`
+   - `zexdoc`
+   - full enabled unit suite
+   - Exolon harness checks for `delay=0` and `delay=32`
+   - live Exolon smoke test to confirm logo + early animation are preserved
+
+Checkpoint after plain-loader phase fix on 2026-04-30:
+- Meaningful progression achieved in the normal 48K snapshot load path.
+- The key fix was not a CPU-core timing rewrite; it was snapshot-load phase plumbing:
+  - `Spectrum128Machine.Default48kSnapshotInitialInterruptDelay` is now `39`
+  - `SnapshotLoader.LoadSna48k(...)` reapplies that delay at the end of load
+  - `Z80SnapshotLoader.Load(...)` now does the same for 48K `.z80` loads
+- This matters because `ConfigureFor48kSnapshot(...)` alone was not enough to move the plain loader path; the effective delay was being lost somewhere later in the load sequence.
+
+What the plain Exolon harness does now:
+- Default load of `exolon.sna` no longer goes straight to the old early `FCxx` trap.
+- It now follows the healthier comparison branch automatically:
+  - frame 11: `PC=103E SP=804C IFF1=1`
+  - frame 31: `PC=1051 SP=804C IFF1=1`
+  - frame 61: `PC=103F SP=804C IFF1=1`
+- The next failure is later:
+  - around frame 71 it reaches `PC=11DC SP=8054 IFF1=0 IFF2=0`
+  - later it recovers to a different loop around `15F7/15FF`
+- This is a real step forward because the default app/harness path is now on the later, longer-lived Exolon route rather than the original early-corruption path.
+
+Validation completed:
+- `dotnet test --no-restore Spectrum128kEmulator.Tests\Spectrum128kEmulator.Tests.csproj --filter SnapshotLoaderTests`
+  - passed
+- `dotnet test --no-restore Spectrum128kEmulator.Tests\Spectrum128kEmulator.Tests.csproj --filter MachineCoreTests`
+  - passed
+- `dotnet test --no-restore Spectrum128kEmulator.Tests\Spectrum128kEmulator.Tests.csproj --filter CpuMicroTests`
+  - passed
+- default harness run:
+  - `dotnet run --no-build --project Spectrum128kEmulator.ManualHarness -- 'C:\Users\steve\Desktop\Snapshots\exolon.sna'`
+  - now lands on the later `10xx -> 11DC` path automatically
+
+Most important new diagnosis from the later path:
+- The later Exolon failure is now clearly tied to a ROM/parser escape rather than the old `FCxx` worker path.
+- On the healthier/default-39 path:
+  - interrupts are accepted in the `10xx` loop for many frames
+  - the run later escapes through ROM service and eventually reaches:
+    - `PC=0018`
+    - reads through `HL=FFFF`
+    - then `PC=FFFF -> 0000`
+    - then `DI`
+    - leaving `IFF1=0 IFF2=0`
+- So the next best target is no longer the frame-6 `LD SP,HL` fork alone.
+- The current highest-value next investigation is:
+  - why the later healthy path reaches the ROM/parser route at `0018`
+  - why it is still using a bad `HL/CH_ADD`-style source that leads to `FFFF`
+  - and whether that is due to wrong system-variable state, wrong staged menu data, or a bad return target just before the ROM call
+
+Recommended next work:
+1. Keep the new loader-phase fix in place; it is the first normal-load change that produced meaningful Exolon progress.
+2. Trace the later failure window on the healthy path:
+   - ROM `0038..0052`
+   - `02C2..02DB`
+   - the `0018` path
+   - the transition to `FFFF -> 0000 -> DI`
+3. Compare system-variable state just before the ROM/parser escape, especially any `CH_ADD`-style pointer state and surrounding ROM workspace.
+4. Do not reintroduce the reverted scheduler experiment that subtracted actual elapsed T-states; that caused a worse `B6xx/IFF1=0` regression.
+
+Tape-path breakthrough on 2026-04-30:
+- Added a new hybrid `.tap` bootstrap path for investigation:
+  - `Spectrum128kEmulator.ManualHarness/Program.cs` now supports `.tap`
+  - `Tape/TapLoader.cs` now has `BootstrapBasicProgramAndMountRemaining(...)`
+  - `MountedTape` now supports starting at a non-zero initial block index
+- New regression coverage in `Spectrum128kEmulator.Tests/TapLoaderTests.cs`:
+  - leading BASIC + CODE bootstrap works
+  - mounted tape resumes after consumed bootstrap blocks
+  - non-BASIC leader still rejects cleanly
+- Validation passed after this work:
+  - `dotnet test --no-restore ... --filter TapLoaderTests`
+  - `dotnet test --no-restore ... --filter CpuMicroTests`
+  - `dotnet test --no-restore ... --filter MachineCoreTests`
+
+What `EXOLON.TAP` actually contains:
+- The tape is not purely “weird custom blocks”; it has a standard front end:
+  - blocks `0/1`: `BASIC 'exolon'`, length `457`
+  - blocks `2/3`: `CODE 'exolon'`, length `768`, load address `0xFC00`
+  - blocks `4/5`: `TYPE42 'exolon'`, length `4096`, params `0x8000/0x4000`
+  - blocks `6/7`: `TYPE42 'exolon'`, length `37536`, params `26000/26500`
+- So the most useful clean repro path is now:
+  1. bootstrap/load the leading BASIC + CODE blocks
+  2. mount the remaining tape starting at block `4`
+  3. investigate the custom-loader phase from there
+
+Most important new Exolon diagnosis from the real tape path:
+- Forcing execution to the loaded code block at `PC=0xFC00` is now possible in the harness:
+  - `dotnet run --no-build --project Spectrum128kEmulator.ManualHarness -- 'C:\Users\steve\Desktop\Snapshots\EXOLON.TAP' 39 500 reg=0:PC:FC00`
+- This is important because it gives a second, cleaner Exolon repro independent of the suspect snapshot state.
+- That real tape/code path shows:
+  - one undocumented ED-prefixed opcode hit:
+    - `UNIMPL ED 0xDD at PC=0xFD1C`
+  - then a long live loader phase around `11DE/11E9` with `IFF1=0`
+  - unlike the old snapshot interpretation, this `11DC..11E9` region is not instantly terminal on the tape path
+  - by about frame `91` the tape path recovers with interrupts restored and reaches later ROM/live code again
+- So the `11DC..11E9` loop can be a legitimate long-running loader/memory routine, not automatically the crash by itself.
+
+Useful tape-path observations:
+- The code path around `11EA/11ED` repeatedly writes `1` then `0` across large RAM windows (`AAxx`, `BAxx`, `C5DB..`, `FED8..`), consistent with a loader/clear/setup phase rather than random corruption.
+- After that phase, the run settles into an input-sensitive live loop around `15F7/15FF`.
+- Injected keys (`space`, `enter`, `fire`) perturb that loop temporarily:
+  - `space` produced a temporary `15E8/10AC` variation
+  - `enter` briefly hit `0E5C`
+  - `fire` briefly hit `15ED`
+- That strongly suggests the tape/code path is waiting on some ROM/input/tape-start condition rather than simply dead-crashing at that stage.
+
+Why this matters for the remaining Exolon bug:
+- The real tape/code repro independently reaches the same broad “later” region we were already chasing from the improved snapshot path.
+- That is strong evidence the remaining Exolon issue is a genuine emulator-core compatibility problem, not just poisoned snapshot state.
+- The next best target is now the custom loader path after the standard CODE bootstrap, not the old early `FCxx` snapshot trap.
+
+Recommended next work from this new checkpoint:
+1. Keep the `.tap` hybrid bootstrap support and use it as a second Exolon repro path beside `exolon.sna`.
+2. Investigate the `0xFC00`-started code path around:
+   - `0xFD1C` (`ED DD`)
+   - the long `11DE..11E9` loader phase
+   - the later input-sensitive `15F7/15FF` loop
+3. Determine what condition the `15F7/15FF` loop is waiting for:
+   - key state
+   - tape ROM state
+   - custom EAR/tape-read condition
+   - some system variable that the snapshot path previously bypassed
+4. If a CPU-core change is attempted, verify against both:
+   - improved snapshot path (`exolon.sna`, delay `39`)
+   - real tape/code path (`EXOLON.TAP`, `PC=0xFC00`)

@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Drawing;
 using System.Drawing.Imaging;
 using System.IO;
+using Spectrum128kEmulator.Tap;
 using Spectrum128kEmulator;
 
 string romFolder = Path.Combine(AppContext.BaseDirectory, "ROMs");
@@ -23,12 +24,18 @@ if (args.Length > 0)
     string snapshotPath = args[0];
     int? initialInterruptDelay = null;
     int frameLimit = 300;
+    int? frameTStatesOverride = null;
     int floatingBusDisplayStartAdjust = 0;
     int floatingBusSampleAdjust = 0;
+    (ushort Start, ushort End)? focusedTraceRange = null;
+    int focusedTraceStartFrame = 0;
+    int focusedTraceFrameLimit = 0;
+    int focusedTraceMaxEntries = 2048;
     List<ScheduledKeyEvent> scheduledKeyEvents = new();
     List<ScheduledPcEvent> scheduledPcEvents = new();
     List<ScheduledRegisterEvent> scheduledRegisterEvents = new();
     List<ScheduledMemoryWriteEvent> scheduledMemoryWriteEvents = new();
+    List<ScheduledFrameTimingEvent> scheduledFrameTimingEvents = new();
     if (args.Length > 1)
         initialInterruptDelay = int.Parse(args[1]);
     if (args.Length > 2)
@@ -39,6 +46,10 @@ if (args.Length > 0)
         if (arg.StartsWith("fbstart=", StringComparison.OrdinalIgnoreCase))
         {
             floatingBusDisplayStartAdjust = int.Parse(arg["fbstart=".Length..]);
+        }
+        else if (arg.StartsWith("frametstates=", StringComparison.OrdinalIgnoreCase))
+        {
+            frameTStatesOverride = int.Parse(arg["frametstates=".Length..]);
         }
         else if (arg.StartsWith("fbsample=", StringComparison.OrdinalIgnoreCase))
         {
@@ -56,13 +67,33 @@ if (args.Length > 0)
         {
             scheduledMemoryWriteEvents.Add(ParseMemoryWriteEvent(arg["poke=".Length..]));
         }
+        else if (arg.StartsWith("tracepc=", StringComparison.OrdinalIgnoreCase))
+        {
+            focusedTraceRange = ParseTraceRange(arg["tracepc=".Length..]);
+        }
+        else if (arg.StartsWith("framet=", StringComparison.OrdinalIgnoreCase))
+        {
+            scheduledFrameTimingEvents.Add(ParseFrameTimingEvent(arg["framet=".Length..]));
+        }
+        else if (arg.StartsWith("traceframes=", StringComparison.OrdinalIgnoreCase))
+        {
+            focusedTraceFrameLimit = int.Parse(arg["traceframes=".Length..]);
+        }
+        else if (arg.StartsWith("tracefromframe=", StringComparison.OrdinalIgnoreCase))
+        {
+            focusedTraceStartFrame = int.Parse(arg["tracefromframe=".Length..]);
+        }
+        else if (arg.StartsWith("tracemax=", StringComparison.OrdinalIgnoreCase))
+        {
+            focusedTraceMaxEntries = int.Parse(arg["tracemax=".Length..]);
+        }
         else
         {
             scheduledKeyEvents = ParseKeyScript(arg);
         }
     }
 
-    Console.WriteLine($"Loading snapshot: {snapshotPath}");
+    Console.WriteLine($"Loading image: {snapshotPath}");
 
     string extension = Path.GetExtension(snapshotPath);
     if (extension.Equals(".sna", StringComparison.OrdinalIgnoreCase))
@@ -73,9 +104,26 @@ if (args.Length > 0)
     {
         Z80SnapshotLoader.Load(machine, snapshotPath);
     }
+    else if (extension.Equals(".tap", StringComparison.OrdinalIgnoreCase))
+    {
+        try
+        {
+            TapLoadResult result = TapLoader.Load(machine, snapshotPath);
+            Console.WriteLine(
+                $"TAP fake-load complete: blocks={result.TotalBlockCount} loaded={result.LoadedBlockCount} autoStart={result.AutoStartFileName ?? "(none)"}");
+        }
+        catch (InvalidOperationException ex) when (
+            ex.Message.Contains("Unsupported tape header type", StringComparison.Ordinal) ||
+            ex.Message.Contains("Tape data block length mismatch", StringComparison.Ordinal))
+        {
+            TapBootstrapResult result = TapLoader.BootstrapBasicProgramAndMountRemaining(machine, snapshotPath);
+            Console.WriteLine(
+                $"TAP hybrid bootstrap complete: blocks={result.TotalBlockCount} consumed={result.ConsumedBlockCount} autoStart={result.AutoStartFileName ?? "(none)"} mounted={result.DisplayName}");
+        }
+    }
     else
     {
-        throw new InvalidOperationException($"Unsupported snapshot extension: {extension}");
+        throw new InvalidOperationException($"Unsupported image extension: {extension}");
     }
 
     if (initialInterruptDelay.HasValue)
@@ -84,11 +132,31 @@ if (args.Length > 0)
         Console.WriteLine($"Initial interrupt delay: {initialInterruptDelay.Value} T-states");
     }
 
+    if (frameTStatesOverride.HasValue)
+    {
+        machine.SetFrameTimingForDebug(frameTStatesOverride.Value);
+        Console.WriteLine($"Frame T-states override: {frameTStatesOverride.Value}");
+    }
+
     if (floatingBusDisplayStartAdjust != 0 || floatingBusSampleAdjust != 0)
     {
         machine.Set48kFloatingBusTimingAdjustments(floatingBusDisplayStartAdjust, floatingBusSampleAdjust);
         Console.WriteLine(
             $"Floating bus timing adjust: displayStart={floatingBusDisplayStartAdjust} sample={floatingBusSampleAdjust}");
+    }
+
+    if (focusedTraceRange.HasValue)
+    {
+        int effectiveFocusedTraceFrameLimit = focusedTraceFrameLimit > 0 ? focusedTraceFrameLimit : frameLimit;
+        machine.EnableFocusedInstructionTrace(
+            focusedTraceRange.Value.Start,
+            focusedTraceRange.Value.End,
+            focusedTraceStartFrame,
+            effectiveFocusedTraceFrameLimit,
+            focusedTraceMaxEntries);
+        Console.WriteLine(
+            $"Focused trace: pc=0x{focusedTraceRange.Value.Start:X4}-0x{focusedTraceRange.Value.End:X4} " +
+            $"startFrame={focusedTraceStartFrame} frames={effectiveFocusedTraceFrameLimit} maxEntries={focusedTraceMaxEntries}");
     }
 
     if (scheduledKeyEvents.Count > 0)
@@ -117,6 +185,13 @@ if (args.Length > 0)
         Console.WriteLine("Scheduled memory writes:");
         foreach (ScheduledMemoryWriteEvent memoryWriteEvent in scheduledMemoryWriteEvents)
             Console.WriteLine($"  frame={memoryWriteEvent.Frame} [{memoryWriteEvent.Address:X4}]=0x{memoryWriteEvent.Value:X2}");
+    }
+
+    if (scheduledFrameTimingEvents.Count > 0)
+    {
+        Console.WriteLine("Scheduled frame timing events:");
+        foreach (ScheduledFrameTimingEvent frameTimingEvent in scheduledFrameTimingEvents)
+            Console.WriteLine($"  frame={frameTimingEvent.Frame} frametstates={frameTimingEvent.FrameTStates}");
     }
 
     for (int frame = 0; frame < frameLimit; frame++)
@@ -154,6 +229,15 @@ if (args.Length > 0)
             {
                 machine.Cpu.WriteMemory(memoryWriteEvent.Address, memoryWriteEvent.Value);
                 Console.WriteLine($"POKE frame={frame} [{memoryWriteEvent.Address:X4}]=0x{memoryWriteEvent.Value:X2}");
+            }
+        }
+
+        foreach (ScheduledFrameTimingEvent frameTimingEvent in scheduledFrameTimingEvents)
+        {
+            if (frameTimingEvent.Frame == frame)
+            {
+                machine.SetFrameTimingForDebug(frameTimingEvent.FrameTStates);
+                Console.WriteLine($"FRAMET frame={frame} frametstates={frameTimingEvent.FrameTStates}");
             }
         }
 
@@ -284,6 +368,26 @@ static ScheduledMemoryWriteEvent ParseMemoryWriteEvent(string script)
     return new ScheduledMemoryWriteEvent(frame, address, value);
 }
 
+static ScheduledFrameTimingEvent ParseFrameTimingEvent(string script)
+{
+    string[] parts = script.Split(':', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+    if (parts.Length != 2)
+        throw new InvalidOperationException($"Invalid frame timing event '{script}'. Expected frame:tstates.");
+
+    int frame = int.Parse(parts[0]);
+    int frameTStates = int.Parse(parts[1]);
+    return new ScheduledFrameTimingEvent(frame, frameTStates);
+}
+
+static (ushort Start, ushort End) ParseTraceRange(string script)
+{
+    string[] parts = script.Split('-', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+    if (parts.Length != 2)
+        throw new InvalidOperationException($"Invalid trace range '{script}'. Expected start-end.");
+
+    return (ParseAddress(parts[0]), ParseAddress(parts[1]));
+}
+
 static ushort ParseAddress(string value)
 {
     if (value.StartsWith("0x", StringComparison.OrdinalIgnoreCase))
@@ -388,3 +492,4 @@ readonly record struct ScheduledKeyEvent(int Frame, string KeyName, bool Pressed
 readonly record struct ScheduledPcEvent(int Frame, ushort ProgramCounter);
 readonly record struct ScheduledRegisterEvent(int Frame, string RegisterName, ushort Value);
 readonly record struct ScheduledMemoryWriteEvent(int Frame, ushort Address, byte Value);
+readonly record struct ScheduledFrameTimingEvent(int Frame, int FrameTStates);

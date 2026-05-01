@@ -95,6 +95,118 @@ namespace Spectrum128kEmulator.Tests
         }
 
         [Fact]
+        public void LoadSna48k_Applies_Default_Initial_Interrupt_Delay()
+        {
+            string tempFolder = CreateTempRoms();
+            string snapshotPath = Path.Combine(tempFolder, "delay.sna");
+
+            try
+            {
+                byte[] data = new byte[27 + 49152];
+                data[19] = 0x01; // IFF2 non-zero -> interrupts enabled after load
+                data[23] = 0x00; data[24] = 0xC0; // SP = 0xC000
+                data[25] = 0x01; // IM 1
+                data[27 + 0x8000] = 0x34;
+                data[27 + 0x8001] = 0x12; // PC = 0x1234
+                File.WriteAllBytes(snapshotPath, data);
+
+                var machine = new Spectrum128Machine(tempFolder);
+                SnapshotLoader.LoadSna48k(machine, snapshotPath);
+                machine.Cpu.ClearRecentTrace();
+
+                machine.ExecuteFrame();
+
+                string[] events = machine.Cpu.GetRecentInterruptEventsSnapshot();
+                ulong firstAcceptTStates = ExtractFirstInterruptAcceptTStates(events);
+                Assert.InRange(
+                    firstAcceptTStates,
+                    (ulong)Spectrum128Machine.Default48kSnapshotInitialInterruptDelay,
+                    (ulong)Spectrum128Machine.Default48kSnapshotInitialInterruptDelay + 16UL);
+            }
+            finally
+            {
+                Directory.Delete(tempFolder, true);
+            }
+        }
+
+        [Fact]
+        public void LoadSna48k_Uses_Default_Frame_Cadence_For_Exolon()
+        {
+            string tempFolder = CreateTempRoms();
+            string snapshotPath = Path.Combine(tempFolder, "exolon.sna");
+
+            try
+            {
+                byte[] data = new byte[27 + 49152];
+                data[23] = 0x00; data[24] = 0xC0;
+                data[27 + 0x8000] = 0x34;
+                data[27 + 0x8001] = 0x12;
+                File.WriteAllBytes(snapshotPath, data);
+
+                var machine = new Spectrum128Machine(tempFolder);
+                SnapshotLoader.LoadSna48k(machine, snapshotPath);
+
+                Assert.Equal(Spectrum128Machine.FrameTStates48, machine.FrameTStates);
+            }
+            finally
+            {
+                Directory.Delete(tempFolder, true);
+            }
+        }
+
+        [Fact]
+        public void LoadSna48k_Forces_Interrupts_Off_For_Exolon()
+        {
+            string tempFolder = CreateTempRoms();
+            string snapshotPath = Path.Combine(tempFolder, "exolon.sna");
+
+            try
+            {
+                byte[] data = new byte[27 + 49152];
+                data[19] = 0x01; // IFF2 set in snapshot data
+                data[23] = 0x00; data[24] = 0xC0;
+                data[27 + 0x8000] = 0x34;
+                data[27 + 0x8001] = 0x12;
+                File.WriteAllBytes(snapshotPath, data);
+
+                var machine = new Spectrum128Machine(tempFolder);
+                SnapshotLoader.LoadSna48k(machine, snapshotPath);
+
+                Assert.False(machine.Cpu.IFF1);
+                Assert.False(machine.Cpu.IFF2);
+            }
+            finally
+            {
+                Directory.Delete(tempFolder, true);
+            }
+        }
+
+        [Fact]
+        public void LoadSna48k_Uses_Default_Frame_Cadence_For_Other_Games()
+        {
+            string tempFolder = CreateTempRoms();
+            string snapshotPath = Path.Combine(tempFolder, "other.sna");
+
+            try
+            {
+                byte[] data = new byte[27 + 49152];
+                data[23] = 0x00; data[24] = 0xC0;
+                data[27 + 0x8000] = 0x34;
+                data[27 + 0x8001] = 0x12;
+                File.WriteAllBytes(snapshotPath, data);
+
+                var machine = new Spectrum128Machine(tempFolder);
+                SnapshotLoader.LoadSna48k(machine, snapshotPath);
+
+                Assert.Equal(Spectrum128Machine.FrameTStates48, machine.FrameTStates);
+            }
+            finally
+            {
+                Directory.Delete(tempFolder, true);
+            }
+        }
+
+        [Fact]
         public void LoadSna48k_Rejects_Non48k_File_Size()
         {
             string tempFolder = CreateTempRoms();
@@ -113,6 +225,30 @@ namespace Spectrum128kEmulator.Tests
             {
                 Directory.Delete(tempFolder, true);
             }
+        }
+
+        private static ulong ExtractFirstInterruptAcceptTStates(string[] events)
+        {
+            foreach (string line in events)
+            {
+                int acceptIndex = line.IndexOf("INT_ACCEPT", StringComparison.Ordinal);
+                if (acceptIndex < 0 || line.Contains("return=", StringComparison.Ordinal) == false)
+                    continue;
+
+                int tIndex = line.IndexOf("T=", StringComparison.Ordinal);
+                if (tIndex < 0)
+                    continue;
+
+                int pcIndex = line.IndexOf("PC=", StringComparison.Ordinal);
+                if (pcIndex <= tIndex)
+                    continue;
+
+                string tToken = line.Substring(tIndex + 2, pcIndex - (tIndex + 2)).Trim();
+                if (ulong.TryParse(tToken, out ulong tStates))
+                    return tStates;
+            }
+
+            throw new InvalidOperationException("No INT_ACCEPT event found in interrupt log.");
         }
     }
 }
