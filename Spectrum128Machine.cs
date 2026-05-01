@@ -10,12 +10,13 @@ namespace Spectrum128kEmulator
     public sealed class Spectrum128Machine
     {
         public const int FrameTStates48 = 69888;
+        public const int FrameTStates48Snapshot = 70908;
         public const int FrameTStates128 = 70908;
         public const int CpuClockHz48 = 3500000;
         public const int CpuClockHz128 = 3546900;
-        // 48K .sna snapshots do not encode the current frame phase. A short initial
-        // delay avoids Exolon's ROM-stack interrupt hazard and restores a stable run.
-        public const int Default48kSnapshotInitialInterruptDelay = 512;
+        // 48K snapshots do not encode the current frame phase. A short initial delay
+        // moves Exolon onto the later failure path instead of the early FCxx trap.
+        public const int Default48kSnapshotInitialInterruptDelay = 16;
         public const int CpuClockHz = CpuClockHz128;
         public const int ScreenWidth = 256;
         public const int ScreenHeight = 192;
@@ -60,6 +61,12 @@ namespace Spectrum128kEmulator
         private ushort lastLoopPc;
         private ushort lastObservedPc;
         private ulong? interruptPulseEndTStates;
+        private ushort? focusedTraceStartPc;
+        private ushort? focusedTraceEndPc;
+        private int focusedTraceStartFrame;
+        private int focusedTraceFrameLimit;
+        private int focusedTraceMaxEntries;
+        private readonly Queue<string> focusedInstructionTrace = new Queue<string>();
         private int floatingBusDisplayStartAdjustTStates;
         private int floatingBusSampleAdjustTStates;
         private int frameTStates = FrameTStates128;
@@ -278,6 +285,12 @@ namespace Spectrum128kEmulator
             AppendMemoryWindow(sb, 0xF320, 32, "=== MEMORY F320 ===");
             AppendMemoryWindow(sb, 0xB1A0, 48, "=== MEMORY B1A0 ===");
             AppendMemoryWindow(sb, 0xBEE0, 32, "=== MEMORY BEE0 ===");
+            AppendMemoryWindow(sb, 0x8038, 32, "=== MEMORY 8038 ===");
+            AppendMemoryWindow(sb, 0xAA60, 32, "=== MEMORY AA60 ===");
+            AppendMemoryWindow(sb, 0xBA10, 32, "=== MEMORY BA10 ===");
+            AppendMemoryWindow(sb, 0xD350, 176, "=== MEMORY D350 ===");
+            ushort iyWindowStart = cpu.Regs.IY >= 8 ? (ushort)(cpu.Regs.IY - 8) : (ushort)0;
+            AppendMemoryWindow(sb, iyWindowStart, 32, $"=== MEMORY IY-8 ({iyWindowStart:X4}) ===");
 
             sb.AppendLine("=== KEYBOARD MATRIX ===");
             for (int row = 0; row < keyboardMatrix.Length; row++)
@@ -288,6 +301,14 @@ namespace Spectrum128kEmulator
             foreach (string line in cpu.GetRecentTraceSnapshot())
                 sb.AppendLine(line);
             sb.AppendLine();
+
+            if (focusedInstructionTrace.Count > 0)
+            {
+                sb.AppendLine("=== FOCUSED INSTRUCTION TRACE ===");
+                foreach (string line in focusedInstructionTrace)
+                    sb.AppendLine(line);
+                sb.AppendLine();
+            }
 
             sb.AppendLine("=== INTERRUPT EVENTS ===");
             foreach (string line in cpu.GetRecentInterruptEventsSnapshot())
@@ -489,8 +510,19 @@ namespace Spectrum128kEmulator
             bool inStackWindow = addr >= 0x17C7 && addr <= 0x17E1;
             bool inLdSpSourceWindow = addr >= 0xFED8 && addr <= 0xFEDF;
             bool inTempStackSaveWindow = addr >= 0x78D8 && addr <= 0x78DF;
+            bool inRuntimeStackWindow = addr >= 0x8038 && addr <= 0x8057;
+            bool inBadReturnWindow = addr >= 0xAA60 && addr <= 0xAA7F;
+            bool inRamJumpWindow = addr >= 0xBA10 && addr <= 0xBA2F;
 
-            if (!inPrimaryRange && !inSecondaryRange && !inLegacyRange && !inStackWindow && !inLdSpSourceWindow && !inTempStackSaveWindow)
+            if (!inPrimaryRange &&
+                !inSecondaryRange &&
+                !inLegacyRange &&
+                !inStackWindow &&
+                !inLdSpSourceWindow &&
+                !inTempStackSaveWindow &&
+                !inRuntimeStackWindow &&
+                !inBadReturnWindow &&
+                !inRamJumpWindow)
                 return;
 
             string line =
@@ -540,12 +572,51 @@ namespace Spectrum128kEmulator
 
         public byte[] GetKeyboardMatrixCopy() => (byte[])keyboardMatrix.Clone();
 
+        public void EnableFocusedInstructionTrace(ushort startPc, ushort endPc, int startFrame, int frameLimit, int maxEntries)
+        {
+            if (endPc < startPc)
+                throw new ArgumentOutOfRangeException(nameof(endPc), "End PC must be greater than or equal to start PC.");
+            if (startFrame < 0)
+                throw new ArgumentOutOfRangeException(nameof(startFrame));
+            if (frameLimit < 0)
+                throw new ArgumentOutOfRangeException(nameof(frameLimit));
+            if (maxEntries <= 0)
+                throw new ArgumentOutOfRangeException(nameof(maxEntries));
+
+            focusedTraceStartPc = startPc;
+            focusedTraceEndPc = endPc;
+            focusedTraceStartFrame = startFrame;
+            focusedTraceFrameLimit = frameLimit;
+            focusedTraceMaxEntries = maxEntries;
+            focusedInstructionTrace.Clear();
+        }
+
+        public void DisableFocusedInstructionTrace()
+        {
+            focusedTraceStartPc = null;
+            focusedTraceEndPc = null;
+            focusedTraceStartFrame = 0;
+            focusedTraceFrameLimit = 0;
+            focusedTraceMaxEntries = 0;
+            focusedInstructionTrace.Clear();
+        }
+
         public void SetInitialInterruptDelay(int tStatesUntilNextInterrupt)
         {
             if (tStatesUntilNextInterrupt < 0 || tStatesUntilNextInterrupt > frameTStates)
                 throw new ArgumentOutOfRangeException(nameof(tStatesUntilNextInterrupt));
 
             this.tStatesUntilNextInterrupt = tStatesUntilNextInterrupt;
+        }
+
+        public void SetFrameTimingForDebug(int frameTStates)
+        {
+            if (frameTStates <= 0)
+                throw new ArgumentOutOfRangeException(nameof(frameTStates));
+
+            this.frameTStates = frameTStates;
+            if (tStatesUntilNextInterrupt > frameTStates)
+                tStatesUntilNextInterrupt = frameTStates;
         }
 
         public void Set48kFloatingBusTimingAdjustments(int displayStartAdjustTStates, int sampleAdjustTStates)
@@ -599,6 +670,87 @@ namespace Spectrum128kEmulator
             }
 
             bool pastStartupWindow = z80.TStates >= (ulong)(frameTStates * 2);
+
+            if (focusedTraceStartPc.HasValue &&
+                focusedTraceEndPc.HasValue &&
+                FrameCount >= focusedTraceStartFrame &&
+                FrameCount < focusedTraceStartFrame + focusedTraceFrameLimit &&
+                z80.Regs.PC >= focusedTraceStartPc.Value &&
+                z80.Regs.PC <= focusedTraceEndPc.Value)
+            {
+                focusedInstructionTrace.Enqueue(
+                    $"F={FrameCount,4} T={z80.TStates,10} PC={z80.Regs.PC:X4} " +
+                    $"OP={PeekMemory(z80.Regs.PC):X2} N={PeekMemory((ushort)(z80.Regs.PC + 1)):X2} {PeekMemory((ushort)(z80.Regs.PC + 2)):X2} " +
+                    $"SP={z80.Regs.SP:X4} AF={z80.Regs.AF:X4} BC={z80.Regs.BC:X4} DE={z80.Regs.DE:X4} HL={z80.Regs.HL:X4} " +
+                    $"IX={z80.Regs.IX:X4} IY={z80.Regs.IY:X4} I={z80.Regs.I:X2} R={z80.Regs.R:X2} " +
+                    $"IFF1={(z80.IFF1 ? 1 : 0)} IFF2={(z80.IFF2 ? 1 : 0)} INTP={(z80.InterruptPending ? 1 : 0)}");
+
+                while (focusedInstructionTrace.Count > focusedTraceMaxEntries)
+                    focusedInstructionTrace.Dequeue();
+            }
+
+            if (frameTStates == FrameTStates48 &&
+                pastStartupWindow &&
+                z80.Regs.PC == 0xBA1C &&
+                z80.Regs.SP >= 0x8000 &&
+                z80.Regs.SP <= 0x80FF &&
+                !autoDebugDumpPending &&
+                !autoDebugDumpSuppressed)
+            {
+                RequestAutoDebugDump(
+                    $"Exolon entered BA1C RAM worker: PC={z80.Regs.PC:X4} SP={z80.Regs.SP:X4} " +
+                    $"AF={z80.Regs.AF:X4} BC={z80.Regs.BC:X4} DE={z80.Regs.DE:X4} HL={z80.Regs.HL:X4} " +
+                    $"IX={z80.Regs.IX:X4} IY={z80.Regs.IY:X4} IFF1={(z80.IFF1 ? 1 : 0)} IFF2={(z80.IFF2 ? 1 : 0)} " +
+                    $"PrevPC={lastObservedPc:X4}");
+            }
+
+            if (frameTStates == FrameTStates48 &&
+                pastStartupWindow &&
+                z80.Regs.PC == 0xAA70 &&
+                z80.Regs.SP >= 0x8000 &&
+                z80.Regs.SP <= 0x80FF &&
+                !autoDebugDumpPending &&
+                !autoDebugDumpSuppressed)
+            {
+                RequestAutoDebugDump(
+                    $"Exolon entered AA70 late RAM path: PC={z80.Regs.PC:X4} SP={z80.Regs.SP:X4} " +
+                    $"AF={z80.Regs.AF:X4} BC={z80.Regs.BC:X4} DE={z80.Regs.DE:X4} HL={z80.Regs.HL:X4} " +
+                    $"IX={z80.Regs.IX:X4} IY={z80.Regs.IY:X4} IFF1={(z80.IFF1 ? 1 : 0)} IFF2={(z80.IFF2 ? 1 : 0)} " +
+                    $"PrevPC={lastObservedPc:X4}");
+            }
+
+            if (frameTStates == FrameTStates48 &&
+                pastStartupWindow &&
+                z80.Regs.PC == 0x15DE &&
+                z80.Regs.SP >= 0xFF40 &&
+                z80.Regs.SP <= 0xFF60 &&
+                lastObservedPc != 0x15DE &&
+                lastObservedPc != 0x15E1 &&
+                lastObservedPc != 0x15E2 &&
+                lastObservedPc != 0x15E6 &&
+                lastObservedPc != 0x15E7 &&
+                lastObservedPc != 0x15E8 &&
+                lastObservedPc != 0x15EB &&
+                lastObservedPc != 0x15EC &&
+                lastObservedPc != 0x15ED &&
+                lastObservedPc != 0x15F7 &&
+                lastObservedPc != 0x15F8 &&
+                lastObservedPc != 0x15F9 &&
+                lastObservedPc != 0x15FA &&
+                lastObservedPc != 0x15FB &&
+                lastObservedPc != 0x15FE &&
+                lastObservedPc != 0x15FF &&
+                lastObservedPc != 0x1600 &&
+                lastObservedPc != 0x162C &&
+                !autoDebugDumpPending &&
+                !autoDebugDumpSuppressed)
+            {
+                RequestAutoDebugDump(
+                    $"Exolon entered ROM WAIT-KEY path: PC={z80.Regs.PC:X4} SP={z80.Regs.SP:X4} " +
+                    $"AF={z80.Regs.AF:X4} BC={z80.Regs.BC:X4} DE={z80.Regs.DE:X4} HL={z80.Regs.HL:X4} " +
+                    $"IX={z80.Regs.IX:X4} IY={z80.Regs.IY:X4} IFF1={(z80.IFF1 ? 1 : 0)} IFF2={(z80.IFF2 ? 1 : 0)} " +
+                    $"PrevPC={lastObservedPc:X4}");
+            }
 
             if (frameTStates == FrameTStates48 &&
                 pastStartupWindow &&
@@ -828,6 +980,17 @@ namespace Spectrum128kEmulator
                 !autoDebugDumpPending &&
                 !autoDebugDumpSuppressed)
             {
+                if (PeekMemory(0x804E) == 0xDC &&
+                    PeekMemory(0x804F) == 0xA9 &&
+                    cpu.Regs.SP >= 0x8040 &&
+                    cpu.Regs.SP <= 0x8052)
+                {
+                    RequestAutoDebugDump(
+                        $"Exolon staged A9DC return on live stack: writer={addr:X4} value={value:X2} " +
+                        $"PC={cpu.Regs.PC:X4} SP={cpu.Regs.SP:X4} AF={cpu.Regs.AF:X4} BC={cpu.Regs.BC:X4} " +
+                        $"DE={cpu.Regs.DE:X4} HL={cpu.Regs.HL:X4} IX={cpu.Regs.IX:X4} IY={cpu.Regs.IY:X4}");
+                }
+                else
                 if (addr == 0x5C3B && value != oldValue)
                 {
                     RequestAutoDebugDump(
@@ -881,7 +1044,7 @@ namespace Spectrum128kEmulator
                         result &= keyboardMatrix[row];
                 }
 
-                bool earHigh = mountedTape?.ReadEarBit() ?? true;
+                bool earHigh = mountedTape?.ReadEarBit(cpu.TStates) ?? true;
                 if (earHigh)
                     result |= 0x40;
                 else
@@ -968,7 +1131,7 @@ namespace Spectrum128kEmulator
             CurrentRomBank = 1; // Use the 48 BASIC ROM in your current setup.
             PagingLocked = true;
             BorderColor = borderColor & 0x07;
-            frameTStates = FrameTStates128;
+            frameTStates = FrameTStates48;
             FrameCount = 0;
             floatingBusDisplayStartAdjustTStates = 0;
             floatingBusSampleAdjustTStates = 0;
@@ -978,6 +1141,13 @@ namespace Spectrum128kEmulator
             autoDebugDumpReason = null;
             autoDebugDumpSnapshot = null;
             autoDebugDumpSuppressed = false;
+            tStatesUntilNextInterrupt = Default48kSnapshotInitialInterruptDelay;
+        }
+
+        public void ConfigureFor48kTapeLoad(int borderColor)
+        {
+            ConfigureFor48kSnapshot(borderColor);
+            frameTStates = FrameTStates48;
             tStatesUntilNextInterrupt = 0;
         }
 

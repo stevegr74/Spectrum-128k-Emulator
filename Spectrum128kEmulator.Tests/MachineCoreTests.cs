@@ -134,7 +134,33 @@ namespace Spectrum128kEmulator.Tests
                 var machine = new Spectrum128Machine(romFolder);
                 machine.ConfigureFor48kSnapshot(borderColor: 0);
 
-                Assert.Equal(Spectrum128Machine.FrameTStates128, machine.FrameTStates);
+                Assert.Equal(Spectrum128Machine.FrameTStates48, machine.FrameTStates);
+            }
+            finally
+            {
+                Directory.Delete(romFolder, true);
+            }
+        }
+
+        [Fact]
+        public void ConfigureFor48kSnapshot_AppliesDefaultInitialInterruptDelay()
+        {
+            string romFolder = CreateTempRoms();
+            try
+            {
+                var machine = new Spectrum128Machine(romFolder);
+                machine.ConfigureFor48kSnapshot(borderColor: 0);
+                machine.Cpu.RestoreInterruptState(iff1: true, iff2: true, interruptMode: 1);
+                machine.Cpu.ClearRecentTrace();
+
+                machine.ExecuteFrame();
+
+                string[] events = machine.Cpu.GetRecentInterruptEventsSnapshot();
+                ulong firstAcceptTStates = ExtractFirstInterruptAcceptTStates(events);
+                Assert.InRange(
+                    firstAcceptTStates,
+                    (ulong)Spectrum128Machine.Default48kSnapshotInitialInterruptDelay,
+                    (ulong)Spectrum128Machine.Default48kSnapshotInitialInterruptDelay + 4UL);
             }
             finally
             {
@@ -156,7 +182,7 @@ namespace Spectrum128kEmulator.Tests
 
                 ulong after = machine.Cpu.TStates;
 
-                Assert.InRange(after - before, (ulong)Spectrum128Machine.FrameTStates128, (ulong)Spectrum128Machine.FrameTStates128 + 32UL);
+                Assert.InRange(after - before, (ulong)Spectrum128Machine.FrameTStates48, (ulong)Spectrum128Machine.FrameTStates48 + 32UL);
             }
             finally
             {

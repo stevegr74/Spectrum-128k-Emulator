@@ -32,6 +32,22 @@ namespace Spectrum128kEmulator.Tap
         public string DisplayName { get; }
     }
 
+    public sealed class TapBootstrapResult
+    {
+        public TapBootstrapResult(int totalBlockCount, int consumedBlockCount, string displayName, string? autoStartFileName)
+        {
+            TotalBlockCount = totalBlockCount;
+            ConsumedBlockCount = consumedBlockCount;
+            DisplayName = displayName;
+            AutoStartFileName = autoStartFileName;
+        }
+
+        public int TotalBlockCount { get; }
+        public int ConsumedBlockCount { get; }
+        public string DisplayName { get; }
+        public string? AutoStartFileName { get; }
+    }
+
     public sealed class MountedTape
     {
         private const ushort RomTapeReturnAddress = 0x053F;
@@ -39,13 +55,27 @@ namespace Spectrum128kEmulator.Tap
         private const byte FlagCarry = 0x01;
         private const byte HeaderFlag = 0x00;
         private const byte DataFlag = 0xFF;
+        private const int HeaderPilotPulseCount = 8063;
+        private const int DataPilotPulseCount = 3223;
+        private const int PilotPulseLengthTStates = 2168;
+        private const int SyncFirstPulseLengthTStates = 667;
+        private const int SyncSecondPulseLengthTStates = 735;
+        private const int ZeroBitPulseLengthTStates = 855;
+        private const int OneBitPulseLengthTStates = 1710;
 
         private readonly IReadOnlyList<TapLoader.TapBlock> blocks;
+        private readonly int initialBlockIndex;
         private int nextBlockIndex;
-        private int earBlockIndex;
-        private int earByteIndex;
+        private int earPlaybackBlockIndex;
+        private int earStreamByteIndex;
         private int earBitIndex;
-        private int earSubPhase;
+        private int earPulseRepeatCount;
+        private int earPilotPulsesRemaining;
+        private int earPulseLengthTStates;
+        private ulong lastEarSampleTStates;
+        private bool earLevel;
+        private bool earPlaybackStarted;
+        private EarPlaybackState earPlaybackState;
         private TapeState state;
         private int? expectedDataLength;
         private string? pendingHeaderName;
@@ -57,10 +87,23 @@ namespace Spectrum128kEmulator.Tap
             ExpectData
         }
 
-        public MountedTape(string displayName, IReadOnlyList<TapLoader.TapBlock> blocks)
+        private enum EarPlaybackState
+        {
+            Idle,
+            Pilot,
+            SyncFirst,
+            SyncSecond,
+            Data
+        }
+
+        public MountedTape(string displayName, IReadOnlyList<TapLoader.TapBlock> blocks, int initialBlockIndex = 0)
         {
             DisplayName = string.IsNullOrWhiteSpace(displayName) ? "unnamed.tap" : displayName;
             this.blocks = blocks ?? throw new ArgumentNullException(nameof(blocks));
+            if (initialBlockIndex < 0 || initialBlockIndex > blocks.Count)
+                throw new ArgumentOutOfRangeException(nameof(initialBlockIndex));
+
+            this.initialBlockIndex = initialBlockIndex;
             Reset();
         }
 
@@ -70,50 +113,62 @@ namespace Spectrum128kEmulator.Tap
 
         public void Reset()
         {
-            nextBlockIndex = 0;
-            earBlockIndex = 0;
-            earByteIndex = 0;
+            nextBlockIndex = initialBlockIndex;
+            earPlaybackBlockIndex = initialBlockIndex;
+            earStreamByteIndex = 0;
             earBitIndex = 0;
-            earSubPhase = 0;
+            earPulseRepeatCount = 0;
+            earPilotPulsesRemaining = 0;
+            earPulseLengthTStates = 0;
+            lastEarSampleTStates = 0;
+            earLevel = true;
+            earPlaybackStarted = false;
+            earPlaybackState = EarPlaybackState.Idle;
             expectedDataLength = null;
             pendingHeaderName = null;
 
-            if (blocks.Count == 0)
+            if (blocks.Count == 0 || initialBlockIndex >= blocks.Count)
             {
                 state = TapeState.Idle;
                 return;
             }
 
-            state = IsHeaderBlock(blocks[0]) ? TapeState.ExpectHeader : TapeState.ExpectData;
+            state = IsHeaderBlock(blocks[initialBlockIndex]) ? TapeState.ExpectHeader : TapeState.ExpectData;
+            StartEarPlaybackBlock(initialBlockIndex);
+        }
+
+        public bool ReadEarBit(ulong currentTStates)
+        {
+            if (earPlaybackState == EarPlaybackState.Idle)
+                return true;
+
+            if (!earPlaybackStarted)
+            {
+                earPlaybackStarted = true;
+                lastEarSampleTStates = currentTStates;
+                return earLevel;
+            }
+
+            if (currentTStates < lastEarSampleTStates)
+            {
+                lastEarSampleTStates = currentTStates;
+                return earLevel;
+            }
+
+            ulong elapsed = currentTStates - lastEarSampleTStates;
+            while (earPlaybackState != EarPlaybackState.Idle && elapsed >= (ulong)earPulseLengthTStates)
+            {
+                elapsed -= (ulong)earPulseLengthTStates;
+                AdvanceEarPulse();
+            }
+
+            lastEarSampleTStates = currentTStates - elapsed;
+            return earLevel;
         }
 
         public bool ReadEarBit()
         {
-            if (blocks.Count == 0)
-                return true;
-
-            TapLoader.TapBlock block = blocks[earBlockIndex % blocks.Count];
-            byte streamByte = block.GetStreamByte(earByteIndex);
-            bool bit = ((streamByte >> (7 - earBitIndex)) & 0x01) != 0;
-
-            earSubPhase++;
-            if (earSubPhase >= 4)
-            {
-                earSubPhase = 0;
-                earBitIndex++;
-                if (earBitIndex >= 8)
-                {
-                    earBitIndex = 0;
-                    earByteIndex++;
-                    if (earByteIndex >= block.StreamByteCount)
-                    {
-                        earByteIndex = 0;
-                        earBlockIndex = (earBlockIndex + 1) % blocks.Count;
-                    }
-                }
-            }
-
-            return bit;
+            return ReadEarBit(lastEarSampleTStates + 1024UL);
         }
 
         public bool TryHandleRomLoadTrap(Spectrum128Machine machine, Z80Cpu cpu)
@@ -218,6 +273,97 @@ namespace Spectrum128kEmulator.Tap
         }
 
         private static bool IsHeaderBlock(TapLoader.TapBlock block) => block.Flag == HeaderFlag;
+
+        private void StartEarPlaybackBlock(int blockIndex)
+        {
+            if (blockIndex < 0 || blockIndex >= blocks.Count)
+            {
+                earPlaybackState = EarPlaybackState.Idle;
+                earPulseLengthTStates = 0;
+                earLevel = true;
+                return;
+            }
+
+            earPlaybackBlockIndex = blockIndex;
+            earStreamByteIndex = 0;
+            earBitIndex = 0;
+            earPulseRepeatCount = 0;
+            earPilotPulsesRemaining = IsHeaderBlock(blocks[blockIndex]) ? HeaderPilotPulseCount : DataPilotPulseCount;
+            earPlaybackState = EarPlaybackState.Pilot;
+            earPulseLengthTStates = PilotPulseLengthTStates;
+            earLevel = true;
+            earPlaybackStarted = false;
+        }
+
+        private void AdvanceEarPulse()
+        {
+            earLevel = !earLevel;
+
+            switch (earPlaybackState)
+            {
+                case EarPlaybackState.Pilot:
+                    earPilotPulsesRemaining--;
+                    if (earPilotPulsesRemaining > 0)
+                    {
+                        earPulseLengthTStates = PilotPulseLengthTStates;
+                        return;
+                    }
+
+                    earPlaybackState = EarPlaybackState.SyncFirst;
+                    earPulseLengthTStates = SyncFirstPulseLengthTStates;
+                    return;
+
+                case EarPlaybackState.SyncFirst:
+                    earPlaybackState = EarPlaybackState.SyncSecond;
+                    earPulseLengthTStates = SyncSecondPulseLengthTStates;
+                    return;
+
+                case EarPlaybackState.SyncSecond:
+                    earPlaybackState = EarPlaybackState.Data;
+                    earPulseRepeatCount = 0;
+                    earPulseLengthTStates = GetCurrentBitPulseLengthTStates();
+                    return;
+
+                case EarPlaybackState.Data:
+                    earPulseRepeatCount++;
+                    if (earPulseRepeatCount < 2)
+                    {
+                        earPulseLengthTStates = GetCurrentBitPulseLengthTStates();
+                        return;
+                    }
+
+                    earPulseRepeatCount = 0;
+                    earBitIndex++;
+                    if (earBitIndex >= 8)
+                    {
+                        earBitIndex = 0;
+                        earStreamByteIndex++;
+                    }
+
+                    if (earStreamByteIndex < blocks[earPlaybackBlockIndex].StreamByteCount)
+                    {
+                        earPulseLengthTStates = GetCurrentBitPulseLengthTStates();
+                        return;
+                    }
+
+                    StartEarPlaybackBlock(earPlaybackBlockIndex + 1);
+                    return;
+
+                default:
+                    earPlaybackState = EarPlaybackState.Idle;
+                    earPulseLengthTStates = 0;
+                    earLevel = true;
+                    return;
+            }
+        }
+
+        private int GetCurrentBitPulseLengthTStates()
+        {
+            TapLoader.TapBlock block = blocks[earPlaybackBlockIndex];
+            byte streamByte = block.GetStreamByte(earStreamByteIndex);
+            bool bitSet = ((streamByte >> (7 - earBitIndex)) & 0x01) != 0;
+            return bitSet ? OneBitPulseLengthTStates : ZeroBitPulseLengthTStates;
+        }
 
         private static void CompleteTrap(Z80Cpu cpu, bool success)
         {
@@ -334,6 +480,74 @@ namespace Spectrum128kEmulator.Tap
             return new TapMountResult(blocks.Count, Path.GetFileName(path));
         }
 
+        public static TapBootstrapResult BootstrapBasicProgramAndMountRemaining(Spectrum128Machine machine, string path)
+        {
+            if (machine == null)
+                throw new ArgumentNullException(nameof(machine));
+            if (string.IsNullOrWhiteSpace(path))
+                throw new ArgumentException("Tape path must be provided.", nameof(path));
+
+            byte[] fileData = File.ReadAllBytes(path);
+            IReadOnlyList<TapBlock> blocks = ParseBlocks(fileData);
+            if (blocks.Count < 2)
+                throw new InvalidOperationException("The .tap file does not contain enough blocks to bootstrap a BASIC loader.");
+
+            InitializeMachineForFake48kTapeLoad(machine);
+            int consumedBlockCount = 0;
+            string? autoStartFileName = null;
+
+            while (consumedBlockCount + 1 < blocks.Count)
+            {
+                TapBlock headerBlock = blocks[consumedBlockCount];
+                TapBlock dataBlock = blocks[consumedBlockCount + 1];
+
+                if (!IsStandardHeaderBlock(headerBlock) || dataBlock.Flag != DataFlag)
+                {
+                    if (consumedBlockCount == 0)
+                        throw new InvalidOperationException("The .tap file does not begin with a standard BASIC header/data pair.");
+
+                    break;
+                }
+
+                TapHeaderInfo header = ParseHeaderInfo(headerBlock);
+                if (consumedBlockCount == 0 && header.Type != ProgramType)
+                    throw new InvalidOperationException($"The leading tape header must be BASIC, but was type {header.Type}.");
+
+                if (header.Type == ProgramType)
+                {
+                    ushort effectiveProgramLength = (ushort)Math.Min(header.ProgramLength, dataBlock.Payload.Length);
+                    var effectiveHeader = new TapHeaderInfo(
+                        header.Type,
+                        header.FileName,
+                        (ushort)dataBlock.Payload.Length,
+                        header.AutoStartLine,
+                        effectiveProgramLength);
+
+                    LoadBasicProgram(machine, effectiveHeader, dataBlock.Payload);
+                    if (effectiveHeader.AutoStartLine < 32768)
+                        autoStartFileName = effectiveHeader.FileName;
+                }
+                else if (header.Type == CodeType)
+                {
+                    LoadBytes(machine, header.StartAddress, dataBlock.Payload);
+                }
+                else
+                {
+                    break;
+                }
+
+                consumedBlockCount += 2;
+            }
+
+            if (consumedBlockCount == 0)
+                throw new InvalidOperationException("The .tap file did not contain any supported leading bootstrap blocks.");
+
+            var tape = new MountedTape(Path.GetFileName(path), blocks, initialBlockIndex: consumedBlockCount);
+            machine.MountTape(tape);
+            LogMountedTape(tape, blocks);
+            return new TapBootstrapResult(blocks.Count, consumedBlockCount, Path.GetFileName(path), autoStartFileName);
+        }
+
         private static void LogMountedTape(MountedTape tape, IReadOnlyList<TapBlock> blocks)
         {
             Console.WriteLine($"[TAP] Mounted '{tape.DisplayName}' with {blocks.Count} blocks.");
@@ -404,7 +618,7 @@ namespace Spectrum128kEmulator.Tap
         private static void InitializeMachineForFake48kTapeLoad(Spectrum128Machine machine)
         {
             machine.Reset();
-            machine.ConfigureFor48kSnapshot(borderColor: 0);
+            machine.ConfigureFor48kTapeLoad(borderColor: 0);
 
             machine.Cpu.Regs.PC = MainExecutionLoopAddress;
             machine.Cpu.Regs.SP = DefaultStackPointer;
@@ -533,6 +747,11 @@ namespace Spectrum128kEmulator.Tap
         private static ushort ReadWord(byte[] data, int offset)
         {
             return (ushort)(data[offset] | (data[offset + 1] << 8));
+        }
+
+        private static bool IsStandardHeaderBlock(TapBlock block)
+        {
+            return block.Flag == HeaderFlag && block.Payload.Length == TapHeaderPayloadLength;
         }
 
         private static void WriteWord(Spectrum128Machine machine, ushort address, ushort value)

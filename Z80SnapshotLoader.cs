@@ -114,6 +114,9 @@ namespace Spectrum128kEmulator
             }
 
             FinalizeLoad(machine, iff1, iff2, interruptMode);
+
+            if (Is48kHardware(additionalHeaderLength, hardwareMode))
+                machine.SetInitialInterruptDelay(Spectrum128Machine.Default48kSnapshotInitialInterruptDelay);
         }
 
         private static void RestoreCommonRegisters(Z80Registers regs, byte[] data, ushort programCounter)
