@@ -98,8 +98,10 @@ namespace Spectrum128kEmulator.Z80
 
         private void WritePortTimed(ushort port, byte value, int instructionTStates)
         {
-            TStates += (ulong)instructionTStates;
+            const int portCycleTStates = 4;
+            TStates += (ulong)(instructionTStates - portCycleTStates);
             WritePort(port, value);
+            TStates += portCycleTStates;
         }
 
         // =========================================================
@@ -162,7 +164,6 @@ namespace Spectrum128kEmulator.Z80
                     // Preserve IFF2 on maskable interrupt acknowledge.
                     // RETN/RETI restore IFF1 from IFF2.
 
-                    Regs.R = (byte)((Regs.R & 0x80) | ((Regs.R + 1) & 0x7F));
                     TStates += 7;
                     Push(Regs.PC);
 

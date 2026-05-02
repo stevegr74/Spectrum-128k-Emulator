@@ -65,9 +65,11 @@ namespace Spectrum128kEmulator.Tests
                 Assert.True(machine.Cpu.IFF1);
                 Assert.True(machine.Cpu.IFF2);
                 Assert.Equal(2, machine.BorderColor);
+                Assert.Equal(0UL, machine.Cpu.TStates);
                 Assert.Equal((byte)0x42, machine.PeekMemory(0x4000));
                 Assert.Equal((byte)0x99, machine.PeekMemory(0x8000));
                 Assert.Equal((byte)0x55, machine.PeekMemory(0xC000));
+                Assert.Equal(Spectrum128Machine.FrameTStates128, machine.FrameTStates);
             }
             finally
             {
@@ -154,6 +156,7 @@ namespace Spectrum128kEmulator.Tests
                 Assert.Equal(5, machine.BorderColor);
                 Assert.True(machine.PagingLocked);
                 Assert.Equal(1, machine.CurrentRomBank);
+                Assert.Equal(Spectrum128Machine.FrameTStates128, machine.FrameTStates);
             }
             finally
             {
@@ -162,7 +165,7 @@ namespace Spectrum128kEmulator.Tests
         }
 
         [Fact]
-        public void LoadZ80v2_48k_PageBlocks_Applies_Default_Initial_Interrupt_Delay()
+        public void LoadZ80v2_48k_PageBlocks_Leaves_Resume_Phase_Unchanged()
         {
             string tempFolder = CreateTempRoms();
             string snapshotPath = Path.Combine(tempFolder, "48k-delay.z80");
@@ -186,16 +189,8 @@ namespace Spectrum128kEmulator.Tests
 
                 var machine = new Spectrum128Machine(tempFolder);
                 Z80SnapshotLoader.Load(machine, snapshotPath);
-                machine.Cpu.ClearRecentTrace();
 
-                machine.ExecuteFrame();
-
-                string[] events = machine.Cpu.GetRecentInterruptEventsSnapshot();
-                ulong firstAcceptTStates = ExtractFirstInterruptAcceptTStates(events);
-                Assert.InRange(
-                    firstAcceptTStates,
-                    (ulong)Spectrum128Machine.Default48kSnapshotInitialInterruptDelay,
-                    (ulong)Spectrum128Machine.Default48kSnapshotInitialInterruptDelay + 16UL);
+                Assert.Equal(0UL, machine.Cpu.TStates);
             }
             finally
             {

@@ -1,5 +1,31 @@
 Project: ZX Spectrum 128K Emulator (C# WinForms)
 
+Current checkpoint on 2026-05-02:
+- Snapshot handling is functionally complete for supported `.sna` and `.z80` formats.
+  - No snapshot-name hacks remain.
+  - `.sna` uses the generic 48K snapshot path in `SnapshotLoader`.
+  - 48K `.z80` uses the generic format-based `ConfigureFor48kZ80Snapshot(...)` path in `Z80SnapshotLoader`.
+  - `.sna` restores `IFF2` from header offset `0x13` bit `2`, mirrors `IFF1` to match it, restores `IM` from `0x19`, and restores `PC` from the stacked snapshot state.
+  - `.z80` restores `I`, `R`, `IFF1`, `IFF2`, `IM`, `PC`, memory, and paging from the supported v1/v2/v3 formats.
+- User-verified good state:
+  - `exolon.sna` works
+  - `Exolon.z80` works
+  - `JSWAPRIL.Z80` menu music and in-game music are now correct again
+- Remaining app-side issue is only partial:
+  - JSW `ENTER` on the menu is improved but still not perfectly reliable after waiting a few seconds
+  - this now looks like a host-input-to-Spectrum-keyboard bridging issue, not a snapshot-format issue
+- Current input bridge direction:
+  - `Spectrum128Machine` tracks keyboard row scan counts during `IN` reads of port `0xFE`
+  - `MainForm` keeps host key releases pending until the relevant Spectrum keyboard row has been scanned at least once
+  - this is more principled than arbitrary time-based key stretching, but still needs user validation/polish
+- Regression coverage now includes:
+  - `.sna` and `.z80` loader tests
+  - 48K `.z80` frame-cadence split tests
+  - keyboard row scan count tests in `MachineCoreTests`
+
+Best next step when resuming:
+- Either finish polishing the JSW menu `ENTER` responsiveness in the WinForms/input bridge, or move on to the remaining `.z80` loader gap previously reported for `Renegade (Hit Squad) 128K.z80` (`headerLength=31`, `hardwareMode=4`).
+
 Current issue:
 Exolon is materially improved and no longer resets into 48K BASIC on the accepted latest build, but it still needs further gameplay/audio validation and comparison against the clean `.z80` control snapshot.
 
@@ -8,6 +34,17 @@ Accepted checkpoint on 2026-05-01:
   - `exolon.sna` now stays on a healthy title/menu path
   - the earlier `48K BASIC` reset is gone
   - logo/sprites start correctly and the accepted regression target is cleared
+- Pass 1 cleanup completed after this checkpoint:
+  - removed hard-coded Exolon runtime traps and one-off dump windows from `Spectrum128Machine`
+  - kept generic debug foundations:
+    - `BuildDebugDump(...)`
+    - focused instruction trace
+    - recent memory/port history
+    - harness scheduling controls
+  - made the manual harness quiet by default:
+    - no default trace spam
+    - no built-in low-stack abort
+  - ignored local investigation artifacts in `.gitignore`
 - The accepted loader rule for `exolon.sna` is now:
   - force `IFF1/IFF2` off on load
   - use normal 48K cadence (`69888`), not the earlier Exolon-only `70908` experiment

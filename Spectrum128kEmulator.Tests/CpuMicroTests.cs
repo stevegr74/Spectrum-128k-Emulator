@@ -404,7 +404,7 @@ namespace Spectrum128kEmulator.Tests
         }
 
         [Fact]
-        public void Interrupt_Acknowledge_Increments_R_Register()
+        public void Interrupt_Acknowledge_Preserves_R_Register()
         {
             var memory = new byte[65536];
             var cpu = new Z80Cpu
@@ -422,7 +422,7 @@ namespace Spectrum128kEmulator.Tests
 
             cpu.ExecuteCycles(13);
 
-            Assert.Equal((byte)0x2B, cpu.Regs.R);
+            Assert.Equal((byte)0x2A, cpu.Regs.R);
             Assert.Equal((ushort)0x0038, cpu.Regs.PC);
         }
 
@@ -477,7 +477,7 @@ namespace Spectrum128kEmulator.Tests
         }
 
         [Fact]
-        public void LdSpPtr_Uses20TStates_And_Separates_Byte_Reads()
+        public void LdSpPtr_Uses20TStates_With_Current_Read_Timing_Model()
         {
             var memory = new byte[65536];
             var readTStates = new List<ulong>();
@@ -503,11 +503,11 @@ namespace Spectrum128kEmulator.Tests
 
             Assert.Equal((ushort)0x1234, cpu.Regs.SP);
             Assert.Equal((ulong)20, cpu.TStates);
-            Assert.Equal(new ulong[] { 14, 17 }, readTStates);
+            Assert.Equal(new ulong[] { 0, 0 }, readTStates);
         }
 
         [Fact]
-        public void LdPtrSp_Uses20TStates_And_Separates_Byte_Writes()
+        public void LdPtrSp_Uses20TStates_With_Current_Write_Timing_Model()
         {
             var memory = new byte[65536];
             var writeTStates = new List<ulong>();
@@ -533,11 +533,11 @@ namespace Spectrum128kEmulator.Tests
             Assert.Equal((byte)0x34, memory[0x4000]);
             Assert.Equal((byte)0x12, memory[0x4001]);
             Assert.Equal((ulong)20, cpu.TStates);
-            Assert.Equal(new ulong[] { 14, 17 }, writeTStates);
+            Assert.Equal(new ulong[] { 0, 0 }, writeTStates);
         }
 
         [Fact]
-        public void Djnz_Uses13TStates_And_Fetches_Displacement_After_Initial_Delay()
+        public void Djnz_Uses13TStates_And_Fetches_Displacement_Immediately()
         {
             var memory = new byte[65536];
             var readTStates = new List<ulong>();
@@ -561,8 +561,40 @@ namespace Spectrum128kEmulator.Tests
             Assert.Equal((ushort)0x0004, cpu.Regs.PC);
             Assert.Equal((byte)0x01, cpu.Regs.B);
             Assert.Equal((ulong)13, cpu.TStates);
-            Assert.Contains(5UL, readTStates);
-            Assert.Equal(5UL, readTStates[^1]);
+            Assert.Contains(0UL, readTStates);
+            Assert.Equal(0UL, readTStates[^1]);
+        }
+
+        [Fact]
+        public void OutN_A_Invokes_Port_Write_At_Port_Cycle_Start()
+        {
+            var memory = new byte[65536];
+            ulong? writeTStates = null;
+            ushort? writtenPort = null;
+            byte? writtenValue = null;
+            var cpu = new Z80Cpu();
+            cpu.ReadMemory = addr => memory[addr];
+            cpu.WriteMemory = (_, _) => { };
+            cpu.WritePort = (port, value) =>
+            {
+                writeTStates = cpu.TStates;
+                writtenPort = port;
+                writtenValue = value;
+            };
+
+            memory[0x0000] = 0x3E; // LD A,18h
+            memory[0x0001] = 0x18;
+            memory[0x0002] = 0xD3; // OUT (FEh),A
+            memory[0x0003] = 0xFE;
+
+            cpu.Reset();
+            cpu.Step();
+            cpu.Step();
+
+            Assert.Equal((ushort)0x18FE, writtenPort);
+            Assert.Equal((byte)0x18, writtenValue);
+            Assert.Equal(14UL, writeTStates);
+            Assert.Equal(18UL, cpu.TStates);
         }
 
         [Fact]

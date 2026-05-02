@@ -30,6 +30,9 @@ namespace Spectrum128kEmulator
         private readonly Label fpsLabel = new Label();
 
         private readonly Spectrum128Machine machine;
+        private readonly HashSet<Keys> pressedSpectrumKeys = new();
+        private readonly Dictionary<Keys, (int[] Rows, ulong[] ScanCounts)> activeSpectrumKeyScans = new();
+        private readonly Dictionary<Keys, (int[] Rows, ulong[] ScanCounts)> pendingSpectrumKeyReleases = new();
         private AudioPipeline audioPipeline;
 
         public MainForm()
@@ -84,20 +87,38 @@ namespace Spectrum128kEmulator
         private void InitializeKeyboard()
         {
             KeyPreview = true;
+            PreviewKeyDown += MainForm_PreviewKeyDown;
             KeyDown += MainForm_KeyDown;
             KeyUp += MainForm_KeyUp;
             Deactivate += MainForm_Deactivate;
             screenBox.MouseClick += (_, _) => screenBox.Focus();
+            screenBox.PreviewKeyDown += MainForm_PreviewKeyDown;
             Shown += (_, _) => screenBox.Focus();
         }
 
         private void MainForm_Deactivate(object? sender, EventArgs e)
         {
+            pressedSpectrumKeys.Clear();
+            activeSpectrumKeyScans.Clear();
+            pendingSpectrumKeyReleases.Clear();
             machine.ClearKeyboard();
+        }
+
+        private void MainForm_PreviewKeyDown(object? sender, PreviewKeyDownEventArgs e)
+        {
+            if (IsSpectrumMappedKey(e.KeyCode))
+                e.IsInputKey = true;
         }
 
         private void MainForm_KeyDown(object? sender, KeyEventArgs e)
         {
+            if (pressedSpectrumKeys.Contains(e.KeyCode))
+            {
+                e.Handled = true;
+                e.SuppressKeyPress = true;
+                return;
+            }
+
             HandleKey(e.KeyCode, true);
             e.Handled = true;
             e.SuppressKeyPress = true;
@@ -105,27 +126,54 @@ namespace Spectrum128kEmulator
 
         private void MainForm_KeyUp(object? sender, KeyEventArgs e)
         {
+            pressedSpectrumKeys.Remove(e.KeyCode);
             HandleKey(e.KeyCode, false);
             e.Handled = true;
             e.SuppressKeyPress = true;
+        }
+
+        protected override bool ProcessCmdKey(ref Message msg, Keys keyData)
+        {
+            const int WM_KEYDOWN = 0x0100;
+            const int WM_SYSKEYDOWN = 0x0104;
+
+            Keys keyCode = keyData & Keys.KeyCode;
+            if ((msg.Msg == WM_KEYDOWN || msg.Msg == WM_SYSKEYDOWN) &&
+                IsSpectrumMappedKey(keyCode))
+            {
+                if (pressedSpectrumKeys.Add(keyCode))
+                    HandleKey(keyCode, true);
+                return true;
+            }
+
+            return base.ProcessCmdKey(ref msg, keyData);
         }
 
         private void HandleKey(Keys key, bool pressed)
         {
             if (pressed && key == Keys.F9)
             {
+                pressedSpectrumKeys.Clear();
+                activeSpectrumKeyScans.Clear();
+                pendingSpectrumKeyReleases.Clear();
                 LoadSnaSnapshotFromDialog();
                 return;
             }
 
             if (pressed && key == Keys.F10)
             {
+                pressedSpectrumKeys.Clear();
+                activeSpectrumKeyScans.Clear();
+                pendingSpectrumKeyReleases.Clear();
                 LoadZ80SnapshotFromDialog();
                 return;
             }
 
             if (pressed && key == Keys.F11)
             {
+                pressedSpectrumKeys.Clear();
+                activeSpectrumKeyScans.Clear();
+                pendingSpectrumKeyReleases.Clear();
                 MountTapFromDialog();
                 return;
             }
@@ -136,6 +184,130 @@ namespace Spectrum128kEmulator
                 return;
             }
 
+            if (pressed)
+            {
+                pendingSpectrumKeyReleases.Remove(key);
+                ApplySpectrumKeyState(key, true);
+
+                int[] rows = GetSpectrumKeyRows(key);
+                if (rows.Length != 0)
+                {
+                    ulong[] scanCounts = new ulong[rows.Length];
+                    for (int i = 0; i < rows.Length; i++)
+                        scanCounts[i] = machine.GetKeyboardRowScanCount(rows[i]);
+                    activeSpectrumKeyScans[key] = (rows, scanCounts);
+                }
+            }
+            else
+            {
+                if (!activeSpectrumKeyScans.TryGetValue(key, out var scanState) || scanState.Rows.Length == 0)
+                {
+                    ApplySpectrumKeyState(key, false);
+                }
+                else if (RowsScannedSinceKeyDown(scanState.Rows, scanState.ScanCounts))
+                {
+                    activeSpectrumKeyScans.Remove(key);
+                    ApplySpectrumKeyState(key, false);
+                }
+                else
+                {
+                    pendingSpectrumKeyReleases[key] = scanState;
+                }
+            }
+
+            if (LogKeyEvents)
+            {
+                Console.WriteLine(
+                    $"KEYEVENT key={key} pressed={pressed} PC=0x{machine.Cpu.Regs.PC:X4} SP=0x{machine.Cpu.Regs.SP:X4} IFF1={machine.Cpu.IFF1} MATRIX={string.Join(" ", machine.GetKeyboardMatrixCopy().Select(b => $"0x{b:X2}"))}");
+                Console.Out.Flush();
+            }
+        }
+
+        private bool IsSpectrumMappedKey(Keys key)
+        {
+            return key switch
+            {
+                Keys.Left or Keys.Down or Keys.Up or Keys.Right or Keys.Back => true,
+                Keys.ShiftKey or Keys.LShiftKey or Keys.RShiftKey => true,
+                Keys.Z or Keys.X or Keys.C or Keys.V => true,
+                Keys.A or Keys.S or Keys.D or Keys.F or Keys.G => true,
+                Keys.Q or Keys.W or Keys.E or Keys.R or Keys.T => true,
+                Keys.D1 or Keys.NumPad1 or Keys.D2 or Keys.NumPad2 or Keys.D3 or Keys.NumPad3 or
+                Keys.D4 or Keys.NumPad4 or Keys.D5 or Keys.NumPad5 => true,
+                Keys.D0 or Keys.NumPad0 or Keys.D9 or Keys.NumPad9 or Keys.D8 or Keys.NumPad8 or
+                Keys.D7 or Keys.NumPad7 or Keys.D6 or Keys.NumPad6 => true,
+                Keys.P or Keys.O or Keys.I or Keys.U or Keys.Y => true,
+                Keys.Enter or Keys.L or Keys.K or Keys.J or Keys.H => true,
+                Keys.Space or Keys.ControlKey or Keys.LControlKey or Keys.RControlKey or
+                Keys.Menu or Keys.LMenu or Keys.RMenu or Keys.M or Keys.N or Keys.B => true,
+                _ => false
+            };
+        }
+
+        private int[] GetSpectrumKeyRows(Keys key)
+        {
+            return key switch
+            {
+                Keys.Left => new[] { 0, 3 },
+                Keys.Down => new[] { 0, 4 },
+                Keys.Up => new[] { 0, 4 },
+                Keys.Right => new[] { 0, 4 },
+                Keys.Back => new[] { 0, 4 },
+                Keys.ShiftKey or Keys.LShiftKey or Keys.RShiftKey or
+                Keys.Z or Keys.X or Keys.C or Keys.V => new[] { 0 },
+                Keys.A or Keys.S or Keys.D or Keys.F or Keys.G => new[] { 1 },
+                Keys.Q or Keys.W or Keys.E or Keys.R or Keys.T => new[] { 2 },
+                Keys.D1 or Keys.NumPad1 or Keys.D2 or Keys.NumPad2 or Keys.D3 or Keys.NumPad3 or
+                Keys.D4 or Keys.NumPad4 or Keys.D5 or Keys.NumPad5 => new[] { 3 },
+                Keys.D0 or Keys.NumPad0 or Keys.D9 or Keys.NumPad9 or Keys.D8 or Keys.NumPad8 or
+                Keys.D7 or Keys.NumPad7 or Keys.D6 or Keys.NumPad6 => new[] { 4 },
+                Keys.P or Keys.O or Keys.I or Keys.U or Keys.Y => new[] { 5 },
+                Keys.Enter or Keys.L or Keys.K or Keys.J or Keys.H => new[] { 6 },
+                Keys.Space or Keys.ControlKey or Keys.LControlKey or Keys.RControlKey or
+                Keys.Menu or Keys.LMenu or Keys.RMenu or Keys.M or Keys.N or Keys.B => new[] { 7 },
+                _ => Array.Empty<int>()
+            };
+        }
+
+        private bool RowsScannedSinceKeyDown(int[] rows, ulong[] scanCounts)
+        {
+            for (int i = 0; i < rows.Length; i++)
+            {
+                if (machine.GetKeyboardRowScanCount(rows[i]) <= scanCounts[i])
+                    return false;
+            }
+
+            return true;
+        }
+
+        private void ProcessPendingSpectrumKeyReleases()
+        {
+            if (pendingSpectrumKeyReleases.Count == 0)
+                return;
+
+            List<Keys>? releasableKeys = null;
+            foreach (var entry in pendingSpectrumKeyReleases)
+            {
+                if (!RowsScannedSinceKeyDown(entry.Value.Rows, entry.Value.ScanCounts))
+                    continue;
+
+                releasableKeys ??= new List<Keys>();
+                releasableKeys.Add(entry.Key);
+            }
+
+            if (releasableKeys == null)
+                return;
+
+            foreach (Keys key in releasableKeys)
+            {
+                pendingSpectrumKeyReleases.Remove(key);
+                activeSpectrumKeyScans.Remove(key);
+                ApplySpectrumKeyState(key, false);
+            }
+        }
+
+        private void ApplySpectrumKeyState(Keys key, bool pressed)
+        {
             switch (key)
             {
                 case Keys.Left:
@@ -263,13 +435,6 @@ namespace Spectrum128kEmulator
                     machine.SetKey(7, 3, pressed); break;
                 case Keys.B:
                     machine.SetKey(7, 4, pressed); break;
-            }
-
-            if (LogKeyEvents)
-            {
-                Console.WriteLine(
-                    $"KEYEVENT key={key} pressed={pressed} PC=0x{machine.Cpu.Regs.PC:X4} SP=0x{machine.Cpu.Regs.SP:X4} IFF1={machine.Cpu.IFF1} MATRIX={string.Join(" ", machine.GetKeyboardMatrixCopy().Select(b => $"0x{b:X2}"))}");
-                Console.Out.Flush();
             }
         }
 
@@ -463,6 +628,7 @@ namespace Spectrum128kEmulator
                 while (accumulatedTicks >= ticksPerFrame && executedFrames < MaxCatchUpFramesPerTick)
                 {
                     machine.ExecuteFrame();
+                    ProcessPendingSpectrumKeyReleases();
                     audioPipeline.SubmitFrame(machine.DrainAudioFrame());
 
                     if (machine.TryConsumeAutoDebugDump(out string autoReason, out string autoDump))
