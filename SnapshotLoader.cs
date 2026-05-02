@@ -48,7 +48,7 @@ namespace Spectrum128kEmulator
             regs.IY = ReadWord(data, 15);
             regs.IX = ReadWord(data, 17);
 
-            bool iff2 = data[19] != 0;
+            bool iff2 = (data[19] & 0x04) != 0;
             regs.R = data[20];
 
             regs.F = data[21];
@@ -69,29 +69,15 @@ namespace Spectrum128kEmulator
             regs.PC = pc;
             regs.SP += 2;
 
-            bool forceExolonInterruptsOff = IsExolonSnapshotPath(path);
             machine.Cpu.RestoreInterruptState(
-                iff1: forceExolonInterruptsOff ? false : iff2,
-                iff2: forceExolonInterruptsOff ? false : iff2,
+                iff1: iff2,
+                iff2: iff2,
                 interruptMode: interruptMode);
 
             machine.Cpu.ClearSnapshotExecutionState();
             machine.ClearLogs();
             machine.ClearKeyboard();
-            ApplyGameSpecificLoadOverrides(machine, path);
-            machine.SetInitialInterruptDelay(Spectrum128Machine.Default48kSnapshotInitialInterruptDelay);
-        }
-
-        private static void ApplyGameSpecificLoadOverrides(Spectrum128Machine machine, string path)
-        {
-            if (IsExolonSnapshotPath(path))
-                machine.SetFrameTimingForDebug(Spectrum128Machine.FrameTStates48);
-        }
-
-        private static bool IsExolonSnapshotPath(string path)
-        {
-            string fileName = Path.GetFileName(path);
-            return fileName.Equals("exolon.sna", StringComparison.OrdinalIgnoreCase);
+            machine.SetSnapshotResumeFramePhase(Spectrum128Machine.Default48kSnapshotResumeFramePhase);
         }
 
         private static ushort ReadWord(byte[] data, int offset)

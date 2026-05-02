@@ -40,7 +40,7 @@ namespace Spectrum128kEmulator.Tests
                 data[15] = 0x88; data[16] = 0x77; // IY
                 data[17] = 0xAA; data[18] = 0x99; // IX
 
-                data[19] = 0x04; // IFF2 non-zero
+                data[19] = 0x04; // IFF2 bit set
                 data[20] = 0x2B; // R
 
                 data[21] = 0xCC; data[22] = 0xBB; // AF
@@ -95,7 +95,7 @@ namespace Spectrum128kEmulator.Tests
         }
 
         [Fact]
-        public void LoadSna48k_Applies_Default_Initial_Interrupt_Delay()
+        public void LoadSna48k_Applies_Default_Resume_Frame_Phase_For_General_48k_Snapshots()
         {
             string tempFolder = CreateTempRoms();
             string snapshotPath = Path.Combine(tempFolder, "delay.sna");
@@ -103,7 +103,7 @@ namespace Spectrum128kEmulator.Tests
             try
             {
                 byte[] data = new byte[27 + 49152];
-                data[19] = 0x01; // IFF2 non-zero -> interrupts enabled after load
+                data[19] = 0x04; // IFF2 bit set -> interrupts enabled after load
                 data[23] = 0x00; data[24] = 0xC0; // SP = 0xC000
                 data[25] = 0x01; // IM 1
                 data[27 + 0x8000] = 0x34;
@@ -112,16 +112,10 @@ namespace Spectrum128kEmulator.Tests
 
                 var machine = new Spectrum128Machine(tempFolder);
                 SnapshotLoader.LoadSna48k(machine, snapshotPath);
-                machine.Cpu.ClearRecentTrace();
 
-                machine.ExecuteFrame();
-
-                string[] events = machine.Cpu.GetRecentInterruptEventsSnapshot();
-                ulong firstAcceptTStates = ExtractFirstInterruptAcceptTStates(events);
-                Assert.InRange(
-                    firstAcceptTStates,
-                    (ulong)Spectrum128Machine.Default48kSnapshotInitialInterruptDelay,
-                    (ulong)Spectrum128Machine.Default48kSnapshotInitialInterruptDelay + 16UL);
+                Assert.Equal(
+                    (ulong)Spectrum128Machine.Default48kSnapshotResumeFramePhase,
+                    machine.Cpu.TStates);
             }
             finally
             {
@@ -130,7 +124,7 @@ namespace Spectrum128kEmulator.Tests
         }
 
         [Fact]
-        public void LoadSna48k_Uses_Default_Frame_Cadence_For_Exolon()
+        public void LoadSna48k_Restores_Iff1_And_Iff2_From_Iff2_Bit()
         {
             string tempFolder = CreateTempRoms();
             string snapshotPath = Path.Combine(tempFolder, "exolon.sna");
@@ -138,6 +132,7 @@ namespace Spectrum128kEmulator.Tests
             try
             {
                 byte[] data = new byte[27 + 49152];
+                data[19] = 0x04; // Only bit 2 should control IFF restore.
                 data[23] = 0x00; data[24] = 0xC0;
                 data[27 + 0x8000] = 0x34;
                 data[27 + 0x8001] = 0x12;
@@ -146,7 +141,8 @@ namespace Spectrum128kEmulator.Tests
                 var machine = new Spectrum128Machine(tempFolder);
                 SnapshotLoader.LoadSna48k(machine, snapshotPath);
 
-                Assert.Equal(Spectrum128Machine.FrameTStates48, machine.FrameTStates);
+                Assert.True(machine.Cpu.IFF1);
+                Assert.True(machine.Cpu.IFF2);
             }
             finally
             {
@@ -155,16 +151,17 @@ namespace Spectrum128kEmulator.Tests
         }
 
         [Fact]
-        public void LoadSna48k_Forces_Interrupts_Off_For_Exolon()
+        public void LoadSna48k_Ignores_NonControl_Bits_In_Iff2_Byte()
         {
             string tempFolder = CreateTempRoms();
-            string snapshotPath = Path.Combine(tempFolder, "exolon.sna");
+            string snapshotPath = Path.Combine(tempFolder, "flags.sna");
 
             try
             {
                 byte[] data = new byte[27 + 49152];
-                data[19] = 0x01; // IFF2 set in snapshot data
+                data[19] = 0x01; // Nonzero, but bit 2 is clear.
                 data[23] = 0x00; data[24] = 0xC0;
+                data[25] = 0x01;
                 data[27 + 0x8000] = 0x34;
                 data[27 + 0x8001] = 0x12;
                 File.WriteAllBytes(snapshotPath, data);
@@ -227,28 +224,5 @@ namespace Spectrum128kEmulator.Tests
             }
         }
 
-        private static ulong ExtractFirstInterruptAcceptTStates(string[] events)
-        {
-            foreach (string line in events)
-            {
-                int acceptIndex = line.IndexOf("INT_ACCEPT", StringComparison.Ordinal);
-                if (acceptIndex < 0 || line.Contains("return=", StringComparison.Ordinal) == false)
-                    continue;
-
-                int tIndex = line.IndexOf("T=", StringComparison.Ordinal);
-                if (tIndex < 0)
-                    continue;
-
-                int pcIndex = line.IndexOf("PC=", StringComparison.Ordinal);
-                if (pcIndex <= tIndex)
-                    continue;
-
-                string tToken = line.Substring(tIndex + 2, pcIndex - (tIndex + 2)).Trim();
-                if (ulong.TryParse(tToken, out ulong tStates))
-                    return tStates;
-            }
-
-            throw new InvalidOperationException("No INT_ACCEPT event found in interrupt log.");
-        }
     }
 }

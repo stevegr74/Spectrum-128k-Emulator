@@ -54,7 +54,7 @@ namespace Spectrum128kEmulator
         private static void LoadV1(Spectrum128Machine machine, byte[] data, ushort programCounter)
         {
             machine.Reset();
-            machine.ConfigureFor48kSnapshot(borderColor: (NormalizeFlagsByte(data[12]) >> 1) & 0x07);
+            machine.ConfigureFor48kZ80Snapshot(borderColor: (NormalizeFlagsByte(data[12]) >> 1) & 0x07);
 
             RestoreCommonRegisters(machine.Cpu.Regs, data, programCounter);
 
@@ -100,7 +100,7 @@ namespace Spectrum128kEmulator
             if (Is48kHardware(additionalHeaderLength, hardwareMode))
             {
                 Load48kPageBlocks(machine, data, blockOffset);
-                machine.ConfigureFor48kSnapshot(borderColor);
+                machine.ConfigureFor48kZ80Snapshot(borderColor);
             }
             else if (Is128kHardware(additionalHeaderLength, hardwareMode))
             {
@@ -114,9 +114,6 @@ namespace Spectrum128kEmulator
             }
 
             FinalizeLoad(machine, iff1, iff2, interruptMode);
-
-            if (Is48kHardware(additionalHeaderLength, hardwareMode))
-                machine.SetInitialInterruptDelay(Spectrum128Machine.Default48kSnapshotInitialInterruptDelay);
         }
 
         private static void RestoreCommonRegisters(Z80Registers regs, byte[] data, ushort programCounter)

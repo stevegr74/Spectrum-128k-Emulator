@@ -7,17 +7,7 @@ using Spectrum128kEmulator.Tap;
 using Spectrum128kEmulator;
 
 string romFolder = Path.Combine(AppContext.BaseDirectory, "ROMs");
-var machine = new Spectrum128Machine(romFolder)
-{
-    Trace = s =>
-    {
-        if (s.StartsWith("UNIMPL", StringComparison.Ordinal) ||
-            s.StartsWith("[7FFD]", StringComparison.Ordinal))
-        {
-            Console.WriteLine(s);
-        }
-    }
-};
+var machine = new Spectrum128Machine(romFolder);
 
 if (args.Length > 0)
 {
@@ -25,6 +15,7 @@ if (args.Length > 0)
     int? initialInterruptDelay = null;
     int frameLimit = 300;
     int? frameTStatesOverride = null;
+    uint? initialTStatesOverride = null;
     int floatingBusDisplayStartAdjust = 0;
     int floatingBusSampleAdjust = 0;
     (ushort Start, ushort End)? focusedTraceRange = null;
@@ -50,6 +41,10 @@ if (args.Length > 0)
         else if (arg.StartsWith("frametstates=", StringComparison.OrdinalIgnoreCase))
         {
             frameTStatesOverride = int.Parse(arg["frametstates=".Length..]);
+        }
+        else if (arg.StartsWith("tstates=", StringComparison.OrdinalIgnoreCase))
+        {
+            initialTStatesOverride = uint.Parse(arg["tstates=".Length..]);
         }
         else if (arg.StartsWith("fbsample=", StringComparison.OrdinalIgnoreCase))
         {
@@ -136,6 +131,12 @@ if (args.Length > 0)
     {
         machine.SetFrameTimingForDebug(frameTStatesOverride.Value);
         Console.WriteLine($"Frame T-states override: {frameTStatesOverride.Value}");
+    }
+
+    if (initialTStatesOverride.HasValue)
+    {
+        machine.Cpu.AdvanceTStates(initialTStatesOverride.Value);
+        Console.WriteLine($"Initial T-states override: {initialTStatesOverride.Value}");
     }
 
     if (floatingBusDisplayStartAdjust != 0 || floatingBusSampleAdjust != 0)
@@ -248,16 +249,6 @@ if (args.Length > 0)
             WriteHarnessArtifacts(machine, dump, "auto");
             Console.WriteLine(reason);
             Console.WriteLine(dump);
-            return;
-        }
-
-        if (machine.Cpu.Regs.SP < 0x0100)
-        {
-            string lowStackReason = $"ManualHarness low-stack trap at frame {machine.FrameCount}: PC=0x{machine.Cpu.Regs.PC:X4} SP=0x{machine.Cpu.Regs.SP:X4}";
-            string lowStackDump = machine.BuildDebugDump(lowStackReason);
-            WriteHarnessArtifacts(machine, lowStackDump, "low-stack");
-            Console.WriteLine(lowStackReason);
-            Console.WriteLine(lowStackDump);
             return;
         }
 

@@ -36,6 +36,52 @@ namespace Spectrum128kEmulator.Tests
         }
 
         [Fact]
+        public void ReadingKeyboardPort_Increments_Only_Selected_Row_Scan_Count()
+        {
+            string romFolder = CreateTempRoms();
+            try
+            {
+                var machine = new Spectrum128Machine(romFolder);
+
+                ulong row0Before = machine.GetKeyboardRowScanCount(0);
+                ulong row1Before = machine.GetKeyboardRowScanCount(1);
+
+                machine.DebugReadPort(0xFEFE);
+
+                Assert.Equal(row0Before + 1, machine.GetKeyboardRowScanCount(0));
+                Assert.Equal(row1Before, machine.GetKeyboardRowScanCount(1));
+            }
+            finally
+            {
+                Directory.Delete(romFolder, true);
+            }
+        }
+
+        [Fact]
+        public void ReadingKeyboardPort_With_Multiple_Selected_Rows_Increments_Each_Selected_Row()
+        {
+            string romFolder = CreateTempRoms();
+            try
+            {
+                var machine = new Spectrum128Machine(romFolder);
+
+                ulong row0Before = machine.GetKeyboardRowScanCount(0);
+                ulong row1Before = machine.GetKeyboardRowScanCount(1);
+                ulong row2Before = machine.GetKeyboardRowScanCount(2);
+
+                machine.DebugReadPort(0xFCFE);
+
+                Assert.Equal(row0Before + 1, machine.GetKeyboardRowScanCount(0));
+                Assert.Equal(row1Before + 1, machine.GetKeyboardRowScanCount(1));
+                Assert.Equal(row2Before, machine.GetKeyboardRowScanCount(2));
+            }
+            finally
+            {
+                Directory.Delete(romFolder, true);
+            }
+        }
+
+        [Fact]
         public void Paging_Port_Changes_Rom_And_Screen_Bank()
         {
             string romFolder = CreateTempRoms();
@@ -143,24 +189,32 @@ namespace Spectrum128kEmulator.Tests
         }
 
         [Fact]
-        public void ConfigureFor48kSnapshot_AppliesDefaultInitialInterruptDelay()
+        public void ConfigureFor48kZ80Snapshot_UsesLegacyZ80FrameTiming()
+        {
+            string romFolder = CreateTempRoms();
+            try
+            {
+                var machine = new Spectrum128Machine(romFolder);
+                machine.ConfigureFor48kZ80Snapshot(borderColor: 0);
+
+                Assert.Equal(Spectrum128Machine.FrameTStates128, machine.FrameTStates);
+            }
+            finally
+            {
+                Directory.Delete(romFolder, true);
+            }
+        }
+
+        [Fact]
+        public void ConfigureFor48kSnapshot_DoesNot_Arm_A_Snapshot_Resume_Phase_By_Itself()
         {
             string romFolder = CreateTempRoms();
             try
             {
                 var machine = new Spectrum128Machine(romFolder);
                 machine.ConfigureFor48kSnapshot(borderColor: 0);
-                machine.Cpu.RestoreInterruptState(iff1: true, iff2: true, interruptMode: 1);
-                machine.Cpu.ClearRecentTrace();
 
-                machine.ExecuteFrame();
-
-                string[] events = machine.Cpu.GetRecentInterruptEventsSnapshot();
-                ulong firstAcceptTStates = ExtractFirstInterruptAcceptTStates(events);
-                Assert.InRange(
-                    firstAcceptTStates,
-                    (ulong)Spectrum128Machine.Default48kSnapshotInitialInterruptDelay,
-                    (ulong)Spectrum128Machine.Default48kSnapshotInitialInterruptDelay + 4UL);
+                Assert.Equal(0UL, machine.Cpu.TStates);
             }
             finally
             {
@@ -183,6 +237,28 @@ namespace Spectrum128kEmulator.Tests
                 ulong after = machine.Cpu.TStates;
 
                 Assert.InRange(after - before, (ulong)Spectrum128Machine.FrameTStates48, (ulong)Spectrum128Machine.FrameTStates48 + 32UL);
+            }
+            finally
+            {
+                Directory.Delete(romFolder, true);
+            }
+        }
+
+        [Fact]
+        public void DrainAudioFrame_Uses_Actual_Elapsed_TStates_For_Frame_Audio()
+        {
+            string romFolder = CreateTempRoms();
+            try
+            {
+                var machine = new Spectrum128Machine(romFolder);
+                machine.ConfigureFor48kSnapshot(borderColor: 0);
+
+                machine.ExecuteFrame();
+                ulong elapsed = machine.Cpu.TStates;
+                var frame = machine.DrainAudioFrame();
+
+                Assert.InRange(elapsed, (ulong)Spectrum128Machine.FrameTStates48, (ulong)Spectrum128Machine.FrameTStates48 + 32UL);
+                Assert.Equal((int)elapsed, frame.FrameTStates);
             }
             finally
             {
@@ -236,6 +312,79 @@ namespace Spectrum128kEmulator.Tests
                     secondAcceptTStates - firstAcceptTStates,
                     (ulong)Spectrum128Machine.FrameTStates128,
                     (ulong)Spectrum128Machine.FrameTStates128 + 4UL);
+            }
+            finally
+            {
+                Directory.Delete(romFolder, true);
+            }
+        }
+
+        [Fact]
+        public void SetSnapshotInitialInterruptDelay_Delays_First_Interrupt_Then_Realigns_To_Frame_Boundary()
+        {
+            string romFolder = CreateTempRoms();
+            try
+            {
+                var machine = new Spectrum128Machine(romFolder);
+                machine.ConfigureFor48kSnapshot(borderColor: 0);
+                machine.Cpu.RestoreInterruptState(iff1: true, iff2: true, interruptMode: 1);
+                machine.SetSnapshotInitialInterruptDelay(32);
+                machine.Cpu.ClearRecentTrace();
+
+                machine.ExecuteFrame();
+                string[] firstFrameEvents = machine.Cpu.GetRecentInterruptEventsSnapshot();
+                ulong firstAcceptTStates = ExtractFirstInterruptAcceptTStates(firstFrameEvents);
+                Assert.InRange(firstAcceptTStates, 32UL, 36UL);
+
+                machine.Cpu.RestoreInterruptState(iff1: true, iff2: true, interruptMode: 1);
+                machine.Cpu.ClearRecentTrace();
+                machine.ExecuteFrame();
+                string[] secondFrameEvents = machine.Cpu.GetRecentInterruptEventsSnapshot();
+                ulong secondAcceptTStates = ExtractFirstInterruptAcceptTStates(secondFrameEvents);
+                Assert.InRange(
+                    secondAcceptTStates - firstAcceptTStates,
+                    (ulong)(Spectrum128Machine.FrameTStates48 - 32),
+                    (ulong)(Spectrum128Machine.FrameTStates48 - 28));
+
+                machine.Cpu.RestoreInterruptState(iff1: true, iff2: true, interruptMode: 1);
+                machine.Cpu.ClearRecentTrace();
+                machine.ExecuteFrame();
+                string[] thirdFrameEvents = machine.Cpu.GetRecentInterruptEventsSnapshot();
+                ulong thirdAcceptTStates = ExtractFirstInterruptAcceptTStates(thirdFrameEvents);
+                Assert.InRange(
+                    thirdAcceptTStates - secondAcceptTStates,
+                    (ulong)Spectrum128Machine.FrameTStates48,
+                    (ulong)Spectrum128Machine.FrameTStates48 + 4UL);
+            }
+            finally
+            {
+                Directory.Delete(romFolder, true);
+            }
+        }
+
+        [Fact]
+        public void SetSnapshotResumeFramePhase_Advances_TStates_And_Schedules_Next_Interrupt_From_Phase()
+        {
+            string romFolder = CreateTempRoms();
+            try
+            {
+                var machine = new Spectrum128Machine(romFolder);
+                machine.ConfigureFor48kSnapshot(borderColor: 0);
+                machine.SetSnapshotResumeFramePhase(Spectrum128Machine.Default48kSnapshotResumeFramePhase);
+
+                Assert.Equal(
+                    (ulong)Spectrum128Machine.Default48kSnapshotResumeFramePhase,
+                    machine.Cpu.TStates);
+
+                ulong before = machine.Cpu.TStates;
+                machine.Cpu.RestoreInterruptState(iff1: true, iff2: true, interruptMode: 1);
+                machine.Cpu.ClearRecentTrace();
+                machine.ExecuteFrame();
+
+                string[] events = machine.Cpu.GetRecentInterruptEventsSnapshot();
+                ulong firstAcceptTStates = ExtractFirstInterruptAcceptTStates(events);
+                ulong expectedDelay = (ulong)(Spectrum128Machine.FrameTStates48 - Spectrum128Machine.Default48kSnapshotResumeFramePhase);
+                Assert.InRange(firstAcceptTStates - before, expectedDelay, expectedDelay + 4UL);
             }
             finally
             {

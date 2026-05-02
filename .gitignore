@@ -228,6 +228,13 @@ ClientBin/
 *.sln.docstates
 *.tlog
 
+# Local Codex/runtime scratch files
+.dotnet_cli/
+debug-*.png
+exolon-*.txt
+exolon-basic-payload.bin
+exolon-firstblock.tap
+
 # Including strong name files can present a security risk
 # (https://github.com/github/gitignore/blob/main/GitIgnoreTemplate.VisualStudio.gitignore#strong-name-files)
 #*.snk

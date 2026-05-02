@@ -85,17 +85,16 @@ namespace Spectrum128kEmulator.Z80
 
             opcodeTable[0x10] = () => // DJNZ e
             {
-                TStates += 5;
                 sbyte e = (sbyte)FetchByte();
                 Regs.B--;
                 if (Regs.B != 0)
                 {
                     Regs.PC = (ushort)(Regs.PC + e);
-                    TStates += 8;
+                    TStates += 13;
                 }
                 else
                 {
-                    TStates += 3;
+                    TStates += 8;
                 }
             };
 
