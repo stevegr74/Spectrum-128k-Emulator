@@ -11,6 +11,7 @@ namespace Spectrum128kEmulator
         private static readonly bool LogUnimplementedOpcodes = true;
         private static readonly bool LogPagingWrites = false;
         private static readonly bool LogKeyEvents = false;
+        private const int MaxDeferredSpectrumKeyReleaseFrames = 8;
 
         private int framesRenderedThisSecond;
         private long lastStatsTicks;
@@ -32,8 +33,10 @@ namespace Spectrum128kEmulator
         private readonly Spectrum128Machine machine;
         private readonly HashSet<Keys> pressedSpectrumKeys = new();
         private readonly Dictionary<Keys, (int[] Rows, ulong[] ScanCounts)> activeSpectrumKeyScans = new();
-        private readonly Dictionary<Keys, (int[] Rows, ulong[] ScanCounts)> pendingSpectrumKeyReleases = new();
+        private readonly Dictionary<Keys, PendingSpectrumKeyRelease> pendingSpectrumKeyReleases = new();
         private AudioPipeline audioPipeline;
+
+        private readonly record struct PendingSpectrumKeyRelease(int[] Rows, ulong[] ScanCounts, int ReleaseFrame);
 
         public MainForm()
         {
@@ -211,7 +214,10 @@ namespace Spectrum128kEmulator
                 }
                 else
                 {
-                    pendingSpectrumKeyReleases[key] = scanState;
+                    pendingSpectrumKeyReleases[key] = new PendingSpectrumKeyRelease(
+                        scanState.Rows,
+                        scanState.ScanCounts,
+                        machine.FrameCount);
                 }
             }
 
@@ -288,7 +294,9 @@ namespace Spectrum128kEmulator
             List<Keys>? releasableKeys = null;
             foreach (var entry in pendingSpectrumKeyReleases)
             {
-                if (!RowsScannedSinceKeyDown(entry.Value.Rows, entry.Value.ScanCounts))
+                bool rowsScanned = RowsScannedSinceKeyDown(entry.Value.Rows, entry.Value.ScanCounts);
+                bool releaseExpired = machine.FrameCount - entry.Value.ReleaseFrame >= MaxDeferredSpectrumKeyReleaseFrames;
+                if (!rowsScanned && !releaseExpired)
                     continue;
 
                 releasableKeys ??= new List<Keys>();

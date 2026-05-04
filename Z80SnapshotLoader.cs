@@ -256,6 +256,8 @@ namespace Spectrum128kEmulator
         {
             if (additionalHeaderLength == 23)
                 return hardwareMode == 0 || hardwareMode == 1;
+            if (additionalHeaderLength == 31)
+                return hardwareMode == 0 || hardwareMode == 1;
             if (additionalHeaderLength == 54 || additionalHeaderLength == 55)
                 return hardwareMode == 0 || hardwareMode == 1 || hardwareMode == 3;
             return false;
@@ -264,6 +266,8 @@ namespace Spectrum128kEmulator
         private static bool Is128kHardware(int additionalHeaderLength, byte hardwareMode)
         {
             if (additionalHeaderLength == 23)
+                return hardwareMode == 3 || hardwareMode == 4;
+            if (additionalHeaderLength == 31)
                 return hardwareMode == 3 || hardwareMode == 4;
             if (additionalHeaderLength == 54 || additionalHeaderLength == 55)
                 return hardwareMode == 4 || hardwareMode == 5 || hardwareMode == 12;

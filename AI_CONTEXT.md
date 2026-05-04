@@ -1,5 +1,21 @@
 Project: ZX Spectrum 128K Emulator (C# WinForms)
 
+Current checkpoint on 2026-05-04:
+- Input bridge polish:
+  - `MainForm` still uses the row-scan-aware host-input bridge rather than arbitrary key stretching.
+  - Host key releases now stay pending until the relevant Spectrum keyboard row has been scanned, but deferred releases also have an 8-frame safety cap so keys cannot remain logically held forever if a game stops scanning that row.
+  - This is meant as a general bridge polish, not a JSW-specific hack.
+- Remaining `.z80` loader gap fixed:
+  - `Z80SnapshotLoader` now accepts the previously-missing 31-byte extended header on the generic 128K path for hardware mode `4` (and the matching old-style 48K/128K mode grouping for header length `31`).
+  - Added focused regression coverage in `Z80SnapshotLoaderTests`.
+- Focused local verification after these changes:
+  - `MachineCoreTests` passed
+  - `Z80SnapshotLoaderTests` passed
+  - WinForms app build passed
+- Best next user verification:
+  - `JSWAPRIL.Z80` menu `ENTER` responsiveness after waiting on the menu
+  - `Renegade (Hit Squad) 128K.z80` now loading successfully
+
 Current checkpoint on 2026-05-02:
 - Snapshot handling is functionally complete for supported `.sna` and `.z80` formats.
   - No snapshot-name hacks remain.
