@@ -254,6 +254,52 @@ namespace Spectrum128kEmulator.Tests
         }
 
         [Fact]
+        public void LoadZ80v3_128k_With_31_Byte_Header_Loads_Generic_128k_Path()
+        {
+            string tempFolder = CreateTempRoms();
+            string snapshotPath = Path.Combine(tempFolder, "128k-v3-31.z80");
+
+            try
+            {
+                var pages = new List<(int pageNumber, byte[] data)>();
+                for (int page = 3; page <= 10; page++)
+                {
+                    byte[] bank = CreateFilledBank((byte)(0x20 + page));
+                    bank[page] = (byte)(0xB0 + page);
+                    pages.Add((page, bank));
+                }
+
+                byte last7ffd = 0x17;
+                byte[] data = BuildExtendedSnapshot(
+                    additionalHeaderLength: 31,
+                    hardwareMode: 4,
+                    last7ffd: last7ffd,
+                    compressedBlocks: false,
+                    pages.ToArray());
+
+                File.WriteAllBytes(snapshotPath, data);
+
+                var machine = new Spectrum128Machine(tempFolder);
+                Z80SnapshotLoader.Load(machine, snapshotPath);
+
+                Assert.Equal((ushort)0x3456, machine.Cpu.Regs.PC);
+                Assert.Equal(7, machine.PagedRamBank);
+                Assert.Equal(5, machine.ScreenBank);
+                Assert.Equal(1, machine.CurrentRomBank);
+                Assert.False(machine.PagingLocked);
+                Assert.Equal((byte)0x28, machine.PeekMemory(0x4000));
+                Assert.Equal((byte)0x25, machine.PeekMemory(0x8000));
+                Assert.Equal((byte)0x2A, machine.PeekMemory(0xC000));
+                Assert.Equal((byte)0xB3, machine.GetRamBankCopy(0)[3]);
+                Assert.Equal((byte)0xBA, machine.GetRamBankCopy(7)[10]);
+            }
+            finally
+            {
+                Directory.Delete(tempFolder, true);
+            }
+        }
+
+        [Fact]
         public void LoadZ80_Rejects_Unsupported_Hardware_Mode()
         {
             string tempFolder = CreateTempRoms();

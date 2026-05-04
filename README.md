@@ -68,7 +68,8 @@ Milestone 7 In Progress - Audio Output Working, Snapshot Compatibility Stabilize
 - 48K `.z80` snapshots now use a dedicated format-based restore path that restores correct `JSWAPRIL.Z80` audio behaviour
 - Jet Set Willy menu and in-game music now play with correct pitch and sequencing again
 - Exolon now works correctly from both `exolon.sna` and `Exolon.z80`
-- Remaining JSW issue is limited to occasional `ENTER` responsiveness on the menu after waiting a few seconds
+- Remaining JSW polish is limited to occasional `ENTER` responsiveness on the menu after waiting a few seconds
+- App-side keyboard bridging now defers host key release until the relevant Spectrum keyboard row has been scanned, with a bounded fallback to avoid sticky keys
 - Z80 core refactored into focused partial files without intended behaviour changes
 
 CPU Compliance
@@ -338,7 +339,6 @@ Notes:
 - Higher-fidelity tape timing
 - Extended tape compatibility
 - Remaining menu/input responsiveness polish for games like Jet Set Willy
-- Support additional `.z80` hardware modes such as the remaining `headerLength=31` / `hardwareMode=4` loader gap
 - Broader real-game validation
 
 ---
