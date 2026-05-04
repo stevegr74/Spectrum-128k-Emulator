@@ -16,8 +16,8 @@ This project focuses on correctness, clean architecture, and incremental develop
 - `.z80` snapshot support
   - v1 loading implemented
   - v2/v3 page-block support implemented
-- Keyboard matrix (8×5, active low)
-- Screen rendering (`256×192`)
+- Keyboard matrix (8x5, active low)
+- Screen rendering (`256x192`)
 - Attribute handling (INK, PAPER, BRIGHT, FLASH)
 - Frame-based FLASH implementation
 - Frame pacing (~50Hz)
@@ -45,7 +45,7 @@ This project focuses on correctness, clean architecture, and incremental develop
 
 ## Current Status
 
-Milestone 7 In Progress — Audio Output Working, 48K Snapshot Compatibility Improving
+Milestone 7 In Progress - Audio Output Working, Snapshot Compatibility Stabilized
 
 - Emulator boots into 128K menu
 - Menu navigation works
@@ -55,18 +55,20 @@ Milestone 7 In Progress — Audio Output Working, 48K Snapshot Compatibility Imp
 - FLASH behaviour implemented correctly
 - Frame pacing stable (~50 FPS baseline)
 - Interrupt cadence implemented
-- 48K .sna snapshots load correctly
-- .z80 snapshots load with v1 and v2/v3 support
-- robocop128k.z80 has been tested successfully and is playable
-- .tap loading works through the ROM-driven path
+- 48K `.sna` snapshots load correctly
+- `.z80` snapshots load with v1 and v2/v3 support
+- `robocop128k.z80` has been tested successfully and is playable
+- `.tap` loading works through the ROM-driven path
 - AY register model implemented and wired to ports
-- 48K beeper implemented via port 0xFE (speaker state + edge detection)
+- 48K beeper implemented via port `0xFE` (speaker state + edge detection)
 - AY tone, envelope, and noise output implemented
 - Basic audio mixing implemented
 - CPU/frame timing and interrupt handling improved through real-game testing
-- 48K snapshot audio path improved through JSWAPRIL.Z80 regression testing
-- Jet Set Willy now has broadly correct tone and speed again
-- Exolon now gets past the earlier corrupted logo/title state and progresses into music and animation before crashing
+- Snapshot restore semantics now follow generic `.sna` and `.z80` format paths without snapshot-name hacks
+- 48K `.z80` snapshots now use a dedicated format-based restore path that restores correct `JSWAPRIL.Z80` audio behaviour
+- Jet Set Willy menu and in-game music now play with correct pitch and sequencing again
+- Exolon now works correctly from both `exolon.sna` and `Exolon.z80`
+- Remaining JSW issue is limited to occasional `ENTER` responsiveness on the menu after waiting a few seconds
 - Z80 core refactored into focused partial files without intended behaviour changes
 
 CPU Compliance
@@ -78,15 +80,18 @@ CPU Compliance
 ZEXDOC and ZEXALL are used as the authoritative validation sources for CPU correctness.
 
 Snapshot Support Progress (Milestone 5)
-- 48K .sna loading implemented and verified (real game runs)
-- .z80 snapshot support implemented (v1 + v2/v3)
+- 48K `.sna` loading implemented and verified (real game runs)
+- `.z80` snapshot support implemented (v1 + v2/v3)
 - 128K paging and memory restoration working
-- robocop128k.z80 verified working and playable
+- `robocop128k.z80` verified working and playable
+- Snapshot restore now uses format-based generic paths
+  - `.sna` restores interrupt state from header semantics
+  - 48K `.z80` uses the dedicated generic 48K `.z80` machine path
 
 Tape Loading Progress (Milestone 6)
-- .tap parsing implemented
+- `.tap` parsing implemented
 - fake loader path implemented
-- ROM-driven LD-BYTES path implemented
+- ROM-driven `LD-BYTES` path implemented
 - VERIFY path implemented
 - deterministic header/data sequencing implemented
 - mounted tape rewind and multi-block progression implemented
@@ -95,8 +100,8 @@ Timing is still deliberately simplified at this stage. Pulse-level and higher-fi
 
 Audio Progress (Milestone 7)
 - AY register model implemented
-- AY port wiring implemented (0xFFFD / 0xBFFD)
-- 48K beeper signal implemented via port 0xFE
+- AY port wiring implemented (`0xFFFD` / `0xBFFD`)
+- 48K beeper signal implemented via port `0xFE`
 - Shared audio output pipeline implemented
 - PCM audio output implemented using Windows APIs only
 - AY tone generation implemented
@@ -106,7 +111,9 @@ Audio Progress (Milestone 7)
 - 48K beeper frame-boundary regression coverage added
 - 48K audio clock handling aligned with snapshot mode
 - Output buffering tuned to reduce low-level crackle
+- `JSWAPRIL.Z80` regression testing restored correct music pitch and sequencing
 - Timing/performance polish still in progress
+- Remaining polish is mostly app-side input responsiveness rather than core audio generation
 
 ---
 
@@ -172,13 +179,13 @@ The emulator is structured for clarity and testability:
 
 Run the emulator:
 
-```
+```text
 dotnet run
 ```
 
 ROM files must be placed in:
 
-```
+```text
 /ROMs
 ```
 
@@ -193,7 +200,7 @@ Expected ROMs:
 
 Run all tests:
 
-```
+```text
 dotnet test
 ```
 
@@ -225,10 +232,14 @@ Current snapshot status:
 
 - `.sna`
   - 48K loading implemented and verified
+  - interrupt state restored from snapshot header semantics
+  - generic format-based load path in use
 
 - `.z80`
   - v1 loading implemented
   - v2/v3 page-block support implemented
+  - interrupt state and interrupt mode restored from snapshot metadata
+  - 48K `.z80` uses a dedicated generic restore path
 
 Snapshots can be loaded via keyboard shortcuts in the UI.
 
@@ -238,7 +249,7 @@ Snapshots can be loaded via keyboard shortcuts in the UI.
 
 A simple headless harness is included for debugging:
 
-```
+```text
 dotnet run --project Spectrum128kEmulator.ManualHarness
 ```
 
@@ -252,7 +263,7 @@ This runs the emulator without UI and logs state.
 
 A dedicated headless runner is included for CPU validation:
 
-```
+```text
 dotnet run -c Release --project Spectrum128kEmulator.Z80Compliance -- test-assets/z80/zexdoc.com 7000000000
 ```
 
@@ -267,40 +278,41 @@ Notes:
 
 ## Roadmap
 
-### Milestone 1 — Keyboard & Menu ✅
+### Milestone 1 - Keyboard & Menu Complete
 - Keyboard matrix implemented
 - 128K menu navigation working
 - BASIC entry functional
 
-### Milestone 2 — Rendering & FLASH ✅
+### Milestone 2 - Rendering & FLASH Complete
 - Attribute rendering (INK, PAPER, BRIGHT)
 - FLASH behaviour implemented correctly
 - Renderer optimisation
 
-### Milestone 3 — Timing Baseline ✅
+### Milestone 3 - Timing Baseline Complete
 - Stable frame pacing (~50Hz)
 - Frame-based execution loop
 - Interrupt cadence established
 
-### Milestone 4 — Z80 Compliance ✅
+### Milestone 4 - Z80 Compliance Complete
 - ZEXDOC runs to completion
 - ZEXALL runs to completion
 - All instruction groups passing
 - CPU behaviour validated against hardware-derived tests
 
-### Milestone 5 — Snapshots ✅
+### Milestone 5 - Snapshots Complete
 - 48K `.sna` loading complete and verified
 - `.z80` support implemented (v1 + v2/v3)
-- Real snapshot validated (robocop128k.z80 playable)
+- Real snapshot validated (`robocop128k.z80` playable)
+- Snapshot-format-specific restore paths now stabilised for current `.sna` and `.z80` support
 
-### Milestone 6 — Tape Loading ✅
+### Milestone 6 - Tape Loading Complete
 - `.tap` parsing implemented
 - fake loader path available
 - ROM-driven tape loading path implemented
 - VERIFY path implemented
 - deterministic sequencing and rewind implemented
 
-### Milestone 7 — Audio (In Progress)
+### Milestone 7 - Audio (In Progress)
 - AY-3-8912 register emulation
 - AY port wiring implemented
 - 48K beeper implemented
@@ -311,7 +323,9 @@ Notes:
 - AY noise support implemented
 - Basic mixing implemented
 - 48K snapshot audio path improved through regression testing
+- `JSWAPRIL.Z80` music pitch and sequencing restored
 - Timing/performance polish still in progress
+- Remaining input responsiveness polish is outside the core audio path
 
 ---
 
@@ -323,8 +337,8 @@ Notes:
 - Demo compatibility improvements
 - Higher-fidelity tape timing
 - Extended tape compatibility
-- Remaining 48K beeper crackle/consistency polish
-- Exolon crash investigation from the now-improved baseline
+- Remaining menu/input responsiveness polish for games like Jet Set Willy
+- Support additional `.z80` hardware modes such as the remaining `headerLength=31` / `hardwareMode=4` loader gap
 - Broader real-game validation
 
 ---
