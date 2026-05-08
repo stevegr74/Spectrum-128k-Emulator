@@ -19,7 +19,15 @@ namespace Spectrum128kEmulator
             if (string.IsNullOrWhiteSpace(path))
                 throw new ArgumentException("Snapshot path must be provided.", nameof(path));
 
-            byte[] data = File.ReadAllBytes(path);
+            Load(machine, File.ReadAllBytes(path));
+        }
+
+        public static void Load(Spectrum128Machine machine, byte[] data)
+        {
+            if (machine == null)
+                throw new ArgumentNullException(nameof(machine));
+            if (data == null)
+                throw new ArgumentNullException(nameof(data));
             if (data.Length < HeaderSizeV1)
                 throw new InvalidOperationException("File is too small to be a valid .z80 snapshot.");
 

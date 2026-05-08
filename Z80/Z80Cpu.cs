@@ -8,6 +8,7 @@ namespace Spectrum128kEmulator.Z80
     {
         public Z80Registers Regs { get; } = new Z80Registers();
         public ulong TStates { get; private set; } = 0;
+        public ulong InstructionFetchCount { get; private set; } = 0;
 
         public Func<ushort, byte> ReadMemory { get; set; } = _ => 0xFF;
         public Action<ushort, byte> WriteMemory { get; set; } = (_, _) => { };
@@ -131,6 +132,7 @@ namespace Spectrum128kEmulator.Z80
             recentTrace.Clear();
             recentInterruptEvents.Clear();
             TStates = 0;
+            InstructionFetchCount = 0;
             LastInterruptProgressTStates = 0;
 
             flagsChangedLastInstruction = false;
@@ -191,6 +193,67 @@ namespace Spectrum128kEmulator.Z80
                 if (halted)
                 {
                     TStates += 4;
+                    InstructionFetchCount++;
+                    continue;
+                }
+
+                Step();
+            }
+        }
+
+        public void ExecuteInstructionFetches(ulong fetches)
+        {
+            ulong target = InstructionFetchCount + fetches;
+
+            while (InstructionFetchCount < target)
+            {
+                if (BeforeInstruction != null && BeforeInstruction(this))
+                    continue;
+
+                if (InterruptPending && IFF1)
+                {
+                    if (Regs.SP < 0x4000)
+                    {
+                        Trace?.Invoke($"INT with BAD SP: PC={Regs.PC:X4} SP={Regs.SP:X4} IX={Regs.IX:X4} IY={Regs.IY:X4}");
+                    }
+
+                    ushort returnPc = Regs.PC;
+                    RecordInterruptEvent($"INT_ACCEPT return={returnPc:X4}", true);
+                    RecordInterruptEvent("INT_ACCEPT");
+                    LastInterruptProgressTStates = TStates;
+                    InterruptPending = false;
+                    halted = false;
+
+                    IFF1 = false;
+
+                    TStates += 7;
+                    Push(Regs.PC);
+
+                    switch (interruptMode)
+                    {
+                        case 0:
+                        case 1:
+                            Regs.PC = 0x0038;
+                            RecordInterruptEvent($"INT_VECTOR target={Regs.PC:X4}");
+                            break;
+
+                        case 2:
+                            ushort vector = (ushort)((Regs.I << 8) | 0xFF);
+                            byte low = ReadMemory(vector);
+                            byte high = ReadMemory((ushort)(vector + 1));
+                            Regs.PC = (ushort)(low | (high << 8));
+                            RecordInterruptEvent($"INT_VECTOR target={Regs.PC:X4}");
+                            break;
+                    }
+
+                    RecordInterruptEvent($"INT_VECTOR {Regs.PC:X4}");
+                    continue;
+                }
+
+                if (halted)
+                {
+                    TStates += 4;
+                    InstructionFetchCount++;
                     continue;
                 }
 
@@ -446,6 +509,7 @@ namespace Spectrum128kEmulator.Z80
             halted = false;
             InterruptPending = false;
             TStates = 0;
+            InstructionFetchCount = 0;
 
             flagsChangedLastInstruction = false;
             lastFlagsBeforeInstruction = 0;

@@ -17,7 +17,16 @@ namespace Spectrum128kEmulator
             if (string.IsNullOrWhiteSpace(path))
                 throw new ArgumentException("Snapshot path must be provided.", nameof(path));
 
-            byte[] data = File.ReadAllBytes(path);
+            LoadSna48k(machine, File.ReadAllBytes(path));
+        }
+
+        public static void LoadSna48k(Spectrum128Machine machine, byte[] data)
+        {
+            if (machine == null)
+                throw new ArgumentNullException(nameof(machine));
+            if (data == null)
+                throw new ArgumentNullException(nameof(data));
+
             if (data.Length != Sna48FileSize)
                 throw new InvalidOperationException(
                     $"Only 48K .sna snapshots are supported right now. Expected {Sna48FileSize} bytes, got {data.Length}.");

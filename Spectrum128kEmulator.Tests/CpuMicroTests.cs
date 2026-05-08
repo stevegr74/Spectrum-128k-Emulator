@@ -598,6 +598,27 @@ namespace Spectrum128kEmulator.Tests
         }
 
         [Fact]
+        public void ExecuteInstructionFetches_Counts_Halt_Cycles_As_Fetches()
+        {
+            var memory = new byte[65536];
+            var cpu = new Z80Cpu
+            {
+                ReadMemory = addr => memory[addr],
+                WriteMemory = (_, _) => { }
+            };
+
+            memory[0x0000] = 0x76; // HALT
+
+            cpu.Reset();
+            cpu.ExecuteInstructionFetches(2);
+
+            Assert.True(cpu.IsHalted);
+            Assert.Equal((ushort)0x0001, cpu.Regs.PC);
+            Assert.Equal(2UL, cpu.InstructionFetchCount);
+            Assert.Equal(8UL, cpu.TStates);
+        }
+
+        [Fact]
         public void IncIxd_CopiesUndocumentedFlagsFromResult()
         {
             var memory = new byte[65536];

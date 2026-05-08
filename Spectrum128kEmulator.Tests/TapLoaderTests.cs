@@ -1,6 +1,8 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Reflection;
+using System.Text;
 using Spectrum128kEmulator.Tap;
 using Xunit;
 
@@ -133,6 +135,49 @@ namespace Spectrum128kEmulator.Tests
         }
 
         [Fact]
+        public void MountedTap_EndOfTape_Preserves_FinalEarLevel()
+        {
+            string tempFolder = CreateTempRoms();
+
+            try
+            {
+                var machine = new Spectrum128Machine(tempFolder);
+                var tape = new MountedTape(
+                    "final-ear",
+                    new TapeBlock[]
+                    {
+                        TapeBlock.CreateSetSignalLevel(false),
+                        TapeBlock.CreatePause(1)
+                    });
+                machine.MountTape(tape);
+
+                object mountedTape = machine.MountedTape!;
+                FieldInfo stateField = mountedTape.GetType().GetField("earPlaybackState", BindingFlags.Instance | BindingFlags.NonPublic)!;
+                FieldInfo levelField = mountedTape.GetType().GetField("earLevel", BindingFlags.Instance | BindingFlags.NonPublic)!;
+
+                for (int i = 0; i < 10 && !string.Equals(stateField.GetValue(mountedTape)?.ToString(), "Idle", StringComparison.Ordinal); i++)
+                {
+                    machine.Cpu.AddTStates(5000);
+                    _ = machine.DebugReadPort(0x00FE);
+                }
+
+                Assert.Equal("Idle", stateField.GetValue(mountedTape)?.ToString());
+
+                bool finalLevel = (bool)levelField.GetValue(mountedTape)!;
+                bool sampleAtIdle = (machine.DebugReadPort(0x00FE) & 0x40) != 0;
+                machine.Cpu.AddTStates(20000);
+                bool sampleLater = (machine.DebugReadPort(0x00FE) & 0x40) != 0;
+
+                Assert.Equal(finalLevel, sampleAtIdle);
+                Assert.Equal(sampleAtIdle, sampleLater);
+            }
+            finally
+            {
+                Directory.Delete(tempFolder, true);
+            }
+        }
+
+        [Fact]
         public void MountedTap_RomTrap_Loads_Header_Block_And_Returns_To_Rom()
         {
             string tempFolder = CreateTempRoms();
@@ -222,6 +267,38 @@ namespace Spectrum128kEmulator.Tests
                 var machine = new Spectrum128Machine(tempFolder);
 
                 Assert.Throws<InvalidOperationException>(() => TapLoader.Load(machine, tapePath));
+            }
+            finally
+            {
+                Directory.Delete(tempFolder, true);
+            }
+        }
+
+        [Fact]
+        public void BootstrapTap_Mounts_Nonstandard_Remainder_Playback_From_Data_Block()
+        {
+            string tempFolder = CreateTempRoms();
+            string tapePath = Path.Combine(tempFolder, "bootstrap-nonstandard.tap");
+
+            try
+            {
+                byte[] tap = BuildTap(
+                    BuildHeaderBlock(type: 0, fileName: "BOOT", dataLength: 4, parameter1: 32768, parameter2: 4),
+                    BuildDataBlock(new byte[] { 0, 0, 0, 0 }),
+                    BuildHeaderBlock(type: 42, fileName: "FAST", dataLength: 1, parameter1: 0x8000, parameter2: 0),
+                    BuildDataBlock(new byte[] { 0x99 }));
+
+                File.WriteAllBytes(tapePath, tap);
+
+                var machine = new Spectrum128Machine(tempFolder);
+                TapLoader.BootstrapBasicProgramAndMountRemaining(machine, tapePath);
+
+                object mountedTape = GetPrivateField(machine, "mountedTape");
+                int playbackBlockIndex = (int)GetPrivateField(mountedTape, "earPlaybackBlockIndex");
+                int nextBlockIndex = (int)GetPrivateField(mountedTape, "nextBlockIndex");
+
+                Assert.Equal(2, nextBlockIndex);
+                Assert.Equal(3, playbackBlockIndex);
             }
             finally
             {
@@ -495,18 +572,34 @@ namespace Spectrum128kEmulator.Tests
                 TapBootstrapResult result = TapLoader.BootstrapBasicProgramAndMountRemaining(machine, tapePath);
 
                 Assert.Equal(5, result.TotalBlockCount);
-                Assert.Equal(4, result.ConsumedBlockCount);
+                Assert.Equal(2, result.ConsumedBlockCount);
                 Assert.Equal("BOOT", result.AutoStartFileName);
                 Assert.True(machine.HasMountedTape);
                 Assert.True(machine.MountedTape!.HasRemainingBlocks);
                 Assert.Equal((byte)0x0A, machine.PeekMemory(23755));
                 Assert.Equal((byte)0xF7, machine.PeekMemory(23759));
-                Assert.Equal((byte)0x3E, machine.PeekMemory(0x9000));
-                Assert.Equal((byte)0x42, machine.PeekMemory(0x9001));
+                Assert.Equal((byte)0x00, machine.PeekMemory(0x9000));
+                Assert.Equal((byte)0x00, machine.PeekMemory(0x9001));
                 Assert.Equal((ushort)10, ReadWord(machine, 23618));
 
                 machine.PokeMemory(0x9000, 0x3F);
                 machine.PokeMemory(0x9001, 0x05);
+                machine.Cpu.Regs.PC = 0x056B;
+                machine.Cpu.Regs.SP = 0x9000;
+                machine.Cpu.Regs.IX = 0xA000;
+                machine.Cpu.Regs.DE = 17;
+                machine.Cpu.Regs.A = 0x00;
+                machine.Cpu.Regs.F = 0x01;
+                Assert.True(machine.TryServiceTapeTrap());
+
+                machine.Cpu.Regs.PC = 0x056B;
+                machine.Cpu.Regs.SP = 0x9000;
+                machine.Cpu.Regs.IX = 0x9000;
+                machine.Cpu.Regs.DE = (ushort)codeLoader.Length;
+                machine.Cpu.Regs.A = 0xFF;
+                machine.Cpu.Regs.F = 0x01;
+                Assert.True(machine.TryServiceTapeTrap());
+
                 machine.Cpu.Regs.PC = 0x056B;
                 machine.Cpu.Regs.SP = 0x9000;
                 machine.Cpu.Regs.IX = 0x8000;
@@ -520,6 +613,8 @@ namespace Spectrum128kEmulator.Tests
                 Assert.Equal((byte)0x44, machine.PeekMemory(0x8000));
                 Assert.Equal((byte)0x55, machine.PeekMemory(0x8001));
                 Assert.Equal((byte)0x66, machine.PeekMemory(0x8002));
+                Assert.Equal((byte)0x3E, machine.PeekMemory(0x9000));
+                Assert.Equal((byte)0x42, machine.PeekMemory(0x9001));
                 Assert.False(machine.MountedTape!.HasRemainingBlocks);
             }
             finally
@@ -553,9 +648,403 @@ namespace Spectrum128kEmulator.Tests
             }
         }
 
+        [Fact]
+        public void BootstrapBasicProgramAndMountRemaining_Executes_AutoStart_Statements()
+        {
+            string tempFolder = CreateTempRoms();
+            string tapePath = Path.Combine(tempFolder, "autorun.tap");
+
+            try
+            {
+                byte[] basicLoader = BuildBasicProgram(
+                    BuildBasicLine(10,
+                        Token(253), Ascii("25999"), NumberMarker(25999),
+                        Colon(),
+                        Token(239), QuoteQuote(), Ascii(" "), Token(175),
+                        Colon(),
+                        Token(244), Ascii("40000"), NumberMarker(40000), Comma(), Ascii("1"), NumberMarker(1),
+                        Colon(),
+                        Token(235), Ascii("f"), Equals(), Ascii("40001"), NumberMarker(40001), Ascii(" "), Token(204), Ascii("40003"), NumberMarker(40003),
+                        Colon(),
+                        Token(227), Ascii("a"),
+                        Colon(),
+                        Token(244), Ascii("f"), Comma(), Ascii("a"),
+                        Colon(),
+                        Token(243), Ascii("f"),
+                        Colon(),
+                        Token(249), Ascii(" "), Token(192), Ascii("32768"), NumberMarker(32768)),
+                    BuildBasicLine(20,
+                        Token(228), Ascii("2"), NumberMarker(2), Comma(), Ascii("3"), NumberMarker(3), Comma(), Ascii("4"), NumberMarker(4)));
+
+                byte[] codeLoader = new byte[] { 0x00, 0x01, 0x02 };
+
+                byte[] tap = BuildTap(
+                    BuildHeaderBlock(type: 0, fileName: "AUTO", dataLength: (ushort)basicLoader.Length, parameter1: 10, parameter2: (ushort)basicLoader.Length),
+                    BuildDataBlock(basicLoader),
+                    BuildHeaderBlock(type: 3, fileName: "CODE", dataLength: (ushort)codeLoader.Length, parameter1: 0x8000, parameter2: 0),
+                    BuildDataBlock(codeLoader));
+
+                File.WriteAllBytes(tapePath, tap);
+
+                var machine = new Spectrum128Machine(tempFolder);
+                TapBootstrapResult result = TapLoader.BootstrapBasicProgramAndMountRemaining(machine, tapePath);
+
+                Assert.Equal(2, result.ConsumedBlockCount);
+                Assert.Equal((ushort)0x8000, machine.Cpu.Regs.PC);
+                Assert.Equal((ushort)10, ReadWord(machine, 23618));
+                Assert.True(machine.HasMountedTape);
+                Assert.False(machine.MountedTape!.HasRemainingBlocks);
+                Assert.Equal((byte)1, machine.PeekMemory(0x9C40));
+                Assert.Equal((byte)2, machine.PeekMemory(0x9C41));
+                Assert.Equal((byte)3, machine.PeekMemory(0x9C42));
+                Assert.Equal((byte)4, machine.PeekMemory(0x9C43));
+                Assert.Equal((ushort)25999, ReadWord(machine, 23730));
+                Assert.Equal((byte)0x00, machine.PeekMemory(0x8000));
+                Assert.Equal((byte)0x01, machine.PeekMemory(0x8001));
+                Assert.Equal((byte)0x02, machine.PeekMemory(0x8002));
+            }
+            finally
+            {
+                Directory.Delete(tempFolder, true);
+            }
+        }
+
+        [Fact]
+        public void BootstrapBasicProgramAndMountRemaining_Executes_ExolonStyle_Basic_Loader()
+        {
+            string tempFolder = CreateTempRoms();
+            string tapePath = Path.Combine(tempFolder, "exolon-style.tap");
+
+            try
+            {
+                byte[] basicLoader = BuildBasicProgram(
+                    BuildBasicLine(10,
+                        Token(231), Ascii("0"), NumberMarker(0),
+                        Colon(),
+                        Token(218), Ascii("0"), NumberMarker(0),
+                        Colon(),
+                        Token(217), Ascii("7"), NumberMarker(7),
+                        Colon(),
+                        Token(253), Ascii("25999"), NumberMarker(25999),
+                        Colon(),
+                        Token(239), QuoteQuote(), Ascii(" "), Token(175),
+                        Colon(),
+                        Token(244), Ascii("64659"), NumberMarker(64659), Comma(), Ascii("0"), NumberMarker(0),
+                        Colon(),
+                        Token(244), Ascii("65105"), NumberMarker(65105), Comma(), Ascii("195"), NumberMarker(195),
+                        Colon(),
+                        Token(244), Ascii("65106"), NumberMarker(65106), Comma(), Ascii("153"), NumberMarker(153),
+                        Colon(),
+                        Token(244), Ascii("65107"), NumberMarker(65107), Comma(), Ascii("252"), NumberMarker(252),
+                        Colon(),
+                        Token(235), Ascii("f"), Equals(), Ascii("64662"), NumberMarker(64662), Ascii(" "), Token(204), Ascii("64689"), NumberMarker(64689),
+                        Colon(),
+                        Token(227), Ascii("a"),
+                        Colon(),
+                        Token(244), Ascii("f"), Comma(), Ascii("a"),
+                        Colon(),
+                        Token(243), Ascii("f"),
+                        Colon(),
+                        Token(249), Ascii(" "), Token(192), Ascii("65082"), NumberMarker(65082)),
+                    BuildBasicLine(20,
+                        Token(228),
+                        Ascii("195"), NumberMarker(195), Comma(),
+                        Ascii("98"), NumberMarker(98), Comma(),
+                        Ascii("5"), NumberMarker(5), Comma(),
+                        Ascii("243"), NumberMarker(243), Comma(),
+                        Ascii("205"), NumberMarker(205), Comma(),
+                        Ascii("142"), NumberMarker(142), Comma(),
+                        Ascii("2"), NumberMarker(2), Comma(),
+                        Ascii("28"), NumberMarker(28), Comma(),
+                        Ascii("40"), NumberMarker(40), Comma(),
+                        Ascii("250"), NumberMarker(250), Comma(),
+                        Ascii("62"), NumberMarker(62), Comma(),
+                        Ascii("33"), NumberMarker(33), Comma(),
+                        Ascii("50"), NumberMarker(50), Comma(),
+                        Ascii("81"), NumberMarker(81), Comma(),
+                        Ascii("254"), NumberMarker(254), Comma(),
+                        Ascii("62"), NumberMarker(62), Comma(),
+                        Ascii("95"), NumberMarker(95), Comma(),
+                        Ascii("50"), NumberMarker(50), Comma(),
+                        Ascii("82"), NumberMarker(82), Comma(),
+                        Ascii("254"), NumberMarker(254), Comma(),
+                        Ascii("62"), NumberMarker(62), Comma(),
+                        Ascii("254"), NumberMarker(254), Comma(),
+                        Ascii("50"), NumberMarker(50), Comma(),
+                        Ascii("83"), NumberMarker(83), Comma(),
+                        Ascii("254"), NumberMarker(254), Comma(),
+                        Ascii("195"), NumberMarker(195), Comma(),
+                        Ascii("81"), NumberMarker(81), Comma(),
+                        Ascii("254"), NumberMarker(254)));
+
+                byte[] codeLoader = new byte[768];
+
+                byte[] tap = BuildTap(
+                    BuildHeaderBlock(type: 0, fileName: "EXOLON", dataLength: (ushort)basicLoader.Length, parameter1: 10, parameter2: (ushort)basicLoader.Length),
+                    BuildDataBlock(basicLoader),
+                    BuildHeaderBlock(type: 3, fileName: "EXOLON", dataLength: (ushort)codeLoader.Length, parameter1: 0xFC00, parameter2: 0),
+                    BuildDataBlock(codeLoader));
+
+                File.WriteAllBytes(tapePath, tap);
+
+                var machine = new Spectrum128Machine(tempFolder);
+                TapBootstrapResult result = TapLoader.BootstrapBasicProgramAndMountRemaining(machine, tapePath);
+
+                Assert.Equal(2, result.ConsumedBlockCount);
+                Assert.Equal((ushort)0xFE3A, machine.Cpu.Regs.PC);
+                Assert.Equal((byte)0x00, machine.PeekMemory(64659));
+                Assert.Equal((byte)0xC3, machine.PeekMemory(65105));
+                Assert.Equal((byte)0x99, machine.PeekMemory(65106));
+                Assert.Equal((byte)0xFC, machine.PeekMemory(65107));
+
+                byte[] expectedPatch =
+                {
+                    195,98,5,243,205,142,2,28,40,250,62,33,50,81,254,62,95,50,82,254,62,254,50,83,254,195,81,254
+                };
+
+                for (int i = 0; i < expectedPatch.Length; i++)
+                    Assert.Equal(expectedPatch[i], machine.PeekMemory((ushort)(64662 + i)));
+            }
+            finally
+            {
+                Directory.Delete(tempFolder, true);
+            }
+        }
+
+        [Fact]
+        public void LoadAllStandardBlocksAndAutoStart_Executes_MultiLoad_Basic_Without_Mounted_Tape()
+        {
+            string tempFolder = CreateTempRoms();
+            string tapePath = Path.Combine(tempFolder, "fullload.tap");
+
+            try
+            {
+                byte[] basicLoader = BuildBasicProgram(
+                    BuildBasicLine(10,
+                        Token(235), Ascii("i"), Equals(), Ascii("1"), NumberMarker(1), Ascii(" "), Token(204), Ascii("2"), NumberMarker(2),
+                        Colon(),
+                        Token(239), QuoteQuote(), Ascii(" "), Token(175),
+                        Colon(),
+                        Token(243), Ascii("i"),
+                        Colon(),
+                        Token(249), Ascii(" "), Token(192), Ascii("32768"), NumberMarker(32768)));
+
+                byte[] codeOne = new byte[] { 0xAA };
+                byte[] codeTwo = new byte[] { 0x00, 0x01, 0x02 };
+
+                byte[] tap = BuildTap(
+                    BuildHeaderBlock(type: 0, fileName: "FULL", dataLength: (ushort)basicLoader.Length, parameter1: 10, parameter2: (ushort)basicLoader.Length),
+                    BuildDataBlock(basicLoader),
+                    BuildHeaderBlock(type: 3, fileName: "ONE", dataLength: (ushort)codeOne.Length, parameter1: 0x9000, parameter2: 0),
+                    BuildDataBlock(codeOne),
+                    BuildHeaderBlock(type: 3, fileName: "TWO", dataLength: (ushort)codeTwo.Length, parameter1: 0x8000, parameter2: 0),
+                    BuildDataBlock(codeTwo));
+
+                File.WriteAllBytes(tapePath, tap);
+
+                var machine = new Spectrum128Machine(tempFolder);
+                TapBootstrapResult result = TapLoader.LoadAllStandardBlocksAndAutoStart(machine, tapePath);
+
+                Assert.Equal(6, result.ConsumedBlockCount);
+                Assert.Equal("FULL", result.AutoStartFileName);
+                Assert.Equal((ushort)0x8000, machine.Cpu.Regs.PC);
+                Assert.False(machine.HasMountedTape);
+                Assert.Equal((byte)0xAA, machine.PeekMemory(0x9000));
+                Assert.Equal((byte)0x00, machine.PeekMemory(0x8000));
+                Assert.Equal((byte)0x01, machine.PeekMemory(0x8001));
+                Assert.Equal((byte)0x02, machine.PeekMemory(0x8002));
+            }
+            finally
+            {
+                Directory.Delete(tempFolder, true);
+            }
+        }
+
+        [Fact]
+        public void LoadAllStandardBlocksAndAutoStart_Loads_Custom_Header_Data_To_Parameter1_Address_And_Mounts_Custom_Remainder()
+        {
+            string tempFolder = CreateTempRoms();
+            string tapePath = Path.Combine(tempFolder, "custom-full.tap");
+
+            try
+            {
+                byte[] basicLoader = BuildBasicProgram(
+                    BuildBasicLine(10, Token(249), Ascii(" "), Token(192), Ascii("32768"), NumberMarker(32768)));
+                byte[] customData = new byte[] { 0xC3, 0x34, 0x12, 0x99 };
+
+                byte[] tap = BuildTap(
+                    BuildHeaderBlock(type: 0, fileName: "FULL", dataLength: (ushort)basicLoader.Length, parameter1: 10, parameter2: (ushort)basicLoader.Length),
+                    BuildDataBlock(basicLoader),
+                    BuildHeaderBlock(type: 42, fileName: "FAST", dataLength: (ushort)customData.Length, parameter1: 0x9000, parameter2: 0),
+                    BuildDataBlock(customData));
+
+                File.WriteAllBytes(tapePath, tap);
+
+                var machine = new Spectrum128Machine(tempFolder);
+                TapBootstrapResult result = TapLoader.LoadAllStandardBlocksAndAutoStart(machine, tapePath);
+
+                Assert.Equal(4, result.ConsumedBlockCount);
+                Assert.True(machine.HasMountedTape);
+                Assert.Equal("custom-full.tap", machine.MountedTapeName);
+                Assert.Equal((byte)0xC3, machine.PeekMemory(0x9000));
+                Assert.Equal((byte)0x34, machine.PeekMemory(0x9001));
+                Assert.Equal((byte)0x12, machine.PeekMemory(0x9002));
+                Assert.Equal((byte)0x99, machine.PeekMemory(0x9003));
+            }
+            finally
+            {
+                Directory.Delete(tempFolder, true);
+            }
+        }
+
+        [Fact]
+        public void LoadAllStandardBlocksAndAutoStart_Uses_Code_Payload_For_Custom_Resume_Search_After_Basic_Patches_Ram()
+        {
+            string tempFolder = CreateTempRoms();
+            string tapePath = Path.Combine(tempFolder, "custom-resume.tap");
+
+            try
+            {
+                byte[] basicLoader = BuildBasicProgram(
+                    BuildBasicLine(10,
+                        Token(239), QuoteQuote(), Ascii(" "), Token(175),
+                        Colon(),
+                        Token(244), Ascii("64659"), NumberMarker(64659), Comma(), Ascii("0"), NumberMarker(0),
+                        Colon(),
+                        Token(244), Ascii("65105"), NumberMarker(65105), Comma(), Ascii("195"), NumberMarker(195),
+                        Colon(),
+                        Token(244), Ascii("65106"), NumberMarker(65106), Comma(), Ascii("153"), NumberMarker(153),
+                        Colon(),
+                        Token(244), Ascii("65107"), NumberMarker(65107), Comma(), Ascii("252"), NumberMarker(252),
+                        Colon(),
+                        Token(235), Ascii("f"), Equals(), Ascii("64662"), NumberMarker(64662), Ascii(" "), Token(204), Ascii("64689"), NumberMarker(64689),
+                        Colon(),
+                        Token(227), Ascii("a"),
+                        Colon(),
+                        Token(244), Ascii("f"), Comma(), Ascii("a"),
+                        Colon(),
+                        Token(243), Ascii("f"),
+                        Colon(),
+                        Token(249), Ascii(" "), Token(192), Ascii("65082"), NumberMarker(65082)),
+                    BuildBasicLine(20,
+                        Token(228),
+                        Ascii("195"), NumberMarker(195), Comma(),
+                        Ascii("98"), NumberMarker(98), Comma(),
+                        Ascii("5"), NumberMarker(5), Comma(),
+                        Ascii("243"), NumberMarker(243), Comma(),
+                        Ascii("205"), NumberMarker(205), Comma(),
+                        Ascii("142"), NumberMarker(142), Comma(),
+                        Ascii("2"), NumberMarker(2), Comma(),
+                        Ascii("28"), NumberMarker(28), Comma(),
+                        Ascii("40"), NumberMarker(40), Comma(),
+                        Ascii("250"), NumberMarker(250), Comma(),
+                        Ascii("62"), NumberMarker(62), Comma(),
+                        Ascii("33"), NumberMarker(33), Comma(),
+                        Ascii("50"), NumberMarker(50), Comma(),
+                        Ascii("81"), NumberMarker(81), Comma(),
+                        Ascii("254"), NumberMarker(254), Comma(),
+                        Ascii("62"), NumberMarker(62), Comma(),
+                        Ascii("95"), NumberMarker(95), Comma(),
+                        Ascii("50"), NumberMarker(50), Comma(),
+                        Ascii("82"), NumberMarker(82), Comma(),
+                        Ascii("254"), NumberMarker(254), Comma(),
+                        Ascii("62"), NumberMarker(62), Comma(),
+                        Ascii("254"), NumberMarker(254), Comma(),
+                        Ascii("50"), NumberMarker(50), Comma(),
+                        Ascii("83"), NumberMarker(83), Comma(),
+                        Ascii("254"), NumberMarker(254), Comma(),
+                        Ascii("195"), NumberMarker(195), Comma(),
+                        Ascii("81"), NumberMarker(81), Comma(),
+                        Ascii("254"), NumberMarker(254)));
+
+                byte[] codeLoader = new byte[768];
+                codeLoader[0xA8] = 0x10;
+                codeLoader[0xA9] = 0xFE;
+                codeLoader[0x182] = 0x10;
+                codeLoader[0x183] = 0xFE;
+
+                byte[] customData = new byte[] { 0xAA, 0xBB, 0xCC, 0xDD };
+                byte[] tap = BuildTap(
+                    BuildHeaderBlock(type: 0, fileName: "EXOLON", dataLength: (ushort)basicLoader.Length, parameter1: 10, parameter2: (ushort)basicLoader.Length),
+                    BuildDataBlock(basicLoader),
+                    BuildHeaderBlock(type: 3, fileName: "EXOLON", dataLength: (ushort)codeLoader.Length, parameter1: 0xFC00, parameter2: 0),
+                    BuildDataBlock(codeLoader),
+                    BuildHeaderBlock(type: 42, fileName: "FAST", dataLength: (ushort)customData.Length, parameter1: 0x9000, parameter2: 0),
+                    BuildDataBlock(customData));
+
+                File.WriteAllBytes(tapePath, tap);
+
+                var machine = new Spectrum128Machine(tempFolder);
+                TapBootstrapResult result = TapLoader.LoadAllStandardBlocksAndAutoStart(machine, tapePath);
+
+                Assert.Equal(6, result.ConsumedBlockCount);
+                Assert.Equal((ushort)0xFCA8, machine.Cpu.Regs.PC);
+                Assert.NotEqual((byte)0x10, machine.PeekMemory(0xFCA8));
+                Assert.True(machine.HasMountedTape);
+            }
+            finally
+            {
+                Directory.Delete(tempFolder, true);
+            }
+        }
+
         private static ushort ReadWord(Spectrum128Machine machine, ushort address)
         {
             return (ushort)(machine.PeekMemory(address) | (machine.PeekMemory((ushort)(address + 1)) << 8));
+        }
+
+        private static object GetPrivateField(object target, string fieldName)
+        {
+            FieldInfo? field = target.GetType().GetField(fieldName, BindingFlags.Instance | BindingFlags.NonPublic);
+            Assert.NotNull(field);
+            object? value = field!.GetValue(target);
+            Assert.NotNull(value);
+            return value!;
+        }
+
+        private static byte[] BuildBasicProgram(params byte[][] lines)
+        {
+            var bytes = new List<byte>();
+            foreach (byte[] line in lines)
+                bytes.AddRange(line);
+            return bytes.ToArray();
+        }
+
+        private static byte[] BuildBasicLine(ushort lineNumber, params byte[][] bodyParts)
+        {
+            var body = new List<byte>();
+            foreach (byte[] part in bodyParts)
+                body.AddRange(part);
+            body.Add(0x0D);
+
+            var bytes = new List<byte>
+            {
+                (byte)(lineNumber >> 8),
+                (byte)(lineNumber & 0xFF),
+                (byte)(body.Count & 0xFF),
+                (byte)(body.Count >> 8)
+            };
+            bytes.AddRange(body);
+            return bytes.ToArray();
+        }
+
+        private static byte[] Token(byte value) => new[] { value };
+        private static byte[] Ascii(string text) => System.Text.Encoding.ASCII.GetBytes(text);
+        private static byte[] Colon() => new byte[] { (byte)':' };
+        private static byte[] Comma() => new byte[] { (byte)',' };
+        private static byte[] Equals() => new byte[] { (byte)'=' };
+        private static byte[] QuoteQuote() => new byte[] { (byte)'"', (byte)'"' };
+        private static byte[] NumberMarker(int value)
+        {
+            return new byte[]
+            {
+                0x0E,
+                0x00,
+                0x00,
+                (byte)(value & 0xFF),
+                (byte)((value >> 8) & 0xFF),
+                0x00
+            };
         }
 
         private static byte[] BuildTap(params byte[][] blocks)
@@ -607,6 +1096,65 @@ namespace Spectrum128kEmulator.Tests
                 checksum ^= data[offset + i];
 
             return checksum;
+        }
+
+        [Fact]
+        public void LoadAllStandardBlocksAndAutoStart_Uses_Mounted_Path_For_Poke_Selected_128k_Loads()
+        {
+            string tempFolder = CreateTempRoms();
+            string tapePath = Path.Combine(tempFolder, "banked-standard.tap");
+
+            try
+            {
+                byte[] basicLoader = BuildBasicProgram(
+                    BuildBasicLine(10,
+                        Token(227), Ascii("a"),
+                        Colon(),
+                        Token(244), Ascii("23388"), NumberMarker(23388), Comma(), Ascii("16"), NumberMarker(16), Ascii("+"), Ascii("a"),
+                        Colon(),
+                        Token(239), QuoteQuote(),
+                        Colon(),
+                        Token(227), Ascii("a"),
+                        Colon(),
+                        Token(244), Ascii("23388"), NumberMarker(23388), Comma(), Ascii("16"), NumberMarker(16), Ascii("+"), Ascii("a"),
+                        Colon(),
+                        Token(239), QuoteQuote(),
+                        Colon(),
+                        Token(249), Ascii(" "), Token(192), Ascii("49152"), NumberMarker(49152)),
+                    BuildBasicLine(20,
+                        Token(228),
+                        Ascii("3"), NumberMarker(3), Comma(),
+                        Ascii("4"), NumberMarker(4)));
+
+                byte[] firstCode = new byte[] { 0xAA, 0xAB };
+                byte[] secondCode = new byte[] { 0xBB, 0xBC };
+                byte[] tap = BuildTap(
+                    BuildHeaderBlock(type: 0, fileName: "BANKED", dataLength: (ushort)basicLoader.Length, parameter1: 10, parameter2: (ushort)basicLoader.Length),
+                    BuildDataBlock(basicLoader),
+                    BuildHeaderBlock(type: 3, fileName: "ONE", dataLength: (ushort)firstCode.Length, parameter1: 0xC000, parameter2: 0),
+                    BuildDataBlock(firstCode),
+                    BuildHeaderBlock(type: 3, fileName: "TWO", dataLength: (ushort)secondCode.Length, parameter1: 0xC000, parameter2: 0),
+                    BuildDataBlock(secondCode));
+
+                File.WriteAllBytes(tapePath, tap);
+
+                var machine = new Spectrum128Machine(tempFolder);
+                TapBootstrapResult result = TapLoader.LoadAllStandardBlocksAndAutoStart(machine, tapePath);
+
+                Assert.Equal(2, result.ConsumedBlockCount);
+                Assert.Equal((ushort)0xC000, machine.Cpu.Regs.PC);
+                Assert.False(machine.PagingLocked);
+                Assert.Equal(Spectrum128Machine.FrameTStates128, machine.FrameTStates);
+                Assert.Equal(1, machine.CurrentRomBank);
+                Assert.Equal((byte)0xAA, machine.GetRamBankCopy(3)[0]);
+                Assert.Equal((byte)0xAB, machine.GetRamBankCopy(3)[1]);
+                Assert.Equal((byte)0xBB, machine.GetRamBankCopy(4)[0]);
+                Assert.Equal((byte)0xBC, machine.GetRamBankCopy(4)[1]);
+            }
+            finally
+            {
+                Directory.Delete(tempFolder, true);
+            }
         }
     }
 }

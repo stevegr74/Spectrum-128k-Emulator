@@ -44,6 +44,7 @@ namespace Spectrum128kEmulator
 
         private byte lastAyRegister;
         private bool speakerHigh;
+        private bool micHigh;
         private bool frameStartSpeakerHigh;
         private ulong frameStartTStates;
         private int lastAudioFrameTStates = FrameTStates128;
@@ -96,6 +97,7 @@ namespace Spectrum128kEmulator
 
         private byte last7ffdValue = 0xFF;
         private MountedTape? mountedTape;
+        private RzxPlaybackSession? rzxPlayback;
         public MountedTape? MountedTape => mountedTape;
 
         public Spectrum128Machine(string romFolder)
@@ -153,6 +155,8 @@ namespace Spectrum128kEmulator
         public int LastAboveWriteFrame { get; private set; } = -1;
         public bool HasMountedTape => mountedTape != null;
         public string? MountedTapeName => mountedTape?.DisplayName;
+        public bool HasRzxPlayback => rzxPlayback != null;
+        public string? RzxPlaybackName => rzxPlayback?.DisplayName;
 
         public void Reset()
         {
@@ -165,7 +169,9 @@ namespace Spectrum128kEmulator
             LastAboveWriteFrame = -1;
             last7ffdValue = 0xFF;
             mountedTape = null;
+            rzxPlayback = null;
             speakerHigh = false;
+            micHigh = false;
             SpeakerEdge = false;
             frameTStates = FrameTStates128;
             floatingBusDisplayStartAdjustTStates = 0;
@@ -190,6 +196,12 @@ namespace Spectrum128kEmulator
 
         public void ExecuteFrame()
         {
+            if (rzxPlayback != null)
+            {
+                ExecuteRzxFrame();
+                return;
+            }
+
             BeginFrameAudioCapture();
             int remainingFrameTStates = frameTStates;
 
@@ -210,6 +222,23 @@ namespace Spectrum128kEmulator
                 tStatesUntilNextInterrupt -= executionChunk;
             }
 
+            lastAudioFrameTStates = (int)Math.Min((ulong)int.MaxValue, cpu.TStates - frameStartTStates);
+            FrameCount++;
+        }
+
+        private void ExecuteRzxFrame()
+        {
+            BeginFrameAudioCapture();
+
+            if (rzxPlayback == null || !rzxPlayback.TryBeginNextFrame(out ushort instructionFetchCount))
+            {
+                rzxPlayback = null;
+                ExecuteFrame();
+                return;
+            }
+
+            cpu.ExecuteInstructionFetches(instructionFetchCount);
+            TriggerFrameInterrupt();
             lastAudioFrameTStates = (int)Math.Min((ulong)int.MaxValue, cpu.TStates - frameStartTStates);
             FrameCount++;
         }
@@ -281,6 +310,8 @@ namespace Spectrum128kEmulator
             sb.AppendLine("=== MACHINE STATE ===");
             sb.AppendLine($"Frame={FrameCount} Border={BorderColor} PagedRamBank={PagedRamBank} ScreenBank={ScreenBank} RomBank={CurrentRomBank} PagingLocked={PagingLocked}");
             sb.AppendLine($"SpeakerHigh={speakerHigh} SpeakerEdge={SpeakerEdge} FlashPhase={FlashPhase} MountedTape={mountedTape?.DisplayName ?? "(none)"}");
+            if (mountedTape != null)
+                sb.AppendLine($"TapeDebug={mountedTape.DebugPlaybackState}");
             sb.AppendLine();
 
             sb.AppendLine("=== CPU STATE ===");
@@ -612,6 +643,28 @@ namespace Spectrum128kEmulator
 
         public byte[] GetScreenBankData() => ramBanks[ScreenBank];
 
+        public void ForceApply7ffdValue(byte value)
+        {
+            int oldRam = PagedRamBank;
+            int oldScreen = ScreenBank;
+            int oldRom = CurrentRomBank;
+
+            PagedRamBank = value & 0x07;
+            ScreenBank = ((value & 0x08) != 0) ? 7 : 5;
+            CurrentRomBank = ((value & 0x10) != 0) ? 1 : 0;
+
+            if ((value & 0x20) != 0)
+                PagingLocked = true;
+
+            byte newPaging = (byte)(value & 0x3F);
+            if (newPaging != last7ffdValue)
+            {
+                last7ffdValue = newPaging;
+                Trace?.Invoke(
+                    $"[7FFD*] PC=0x{cpu.Regs.PC:X4} Frame={FrameCount} RAM {oldRam}->{PagedRamBank} SCREEN {oldScreen}->{ScreenBank} ROM {oldRom}->{CurrentRomBank} VAL=0x{value:X2}");
+            }
+        }
+
         public byte[] GetRamBankCopy(int bank)
         {
             if ((uint)bank >= ramBanks.Length)
@@ -625,6 +678,7 @@ namespace Spectrum128kEmulator
         public void PokeMemory(ushort addr, byte value) => WriteMemory(addr, value);
 
         public byte DebugReadPort(ushort port) => ReadPort(port);
+        public string GetMountedTapeDebugState() => mountedTape?.DebugPlaybackState ?? "(none)";
 
         public void DebugWritePort(ushort port, byte value) => WritePort(port, value);
 
@@ -632,6 +686,16 @@ namespace Spectrum128kEmulator
         {
             mountedTape = tape ?? throw new ArgumentNullException(nameof(tape));
             mountedTape.Reset();
+        }
+
+        public void AttachRzxPlayback(RzxPlaybackSession playback)
+        {
+            rzxPlayback = playback ?? throw new ArgumentNullException(nameof(playback));
+        }
+
+        public void DetachRzxPlayback()
+        {
+            rzxPlayback = null;
         }
 
         public void EjectTape()
@@ -642,6 +706,11 @@ namespace Spectrum128kEmulator
         public bool TryServiceTapeTrap()
         {
             return mountedTape != null && mountedTape.TryHandleRomLoadTrap(this, cpu);
+        }
+
+        public bool TryConsumeBootstrapTapeLoad()
+        {
+            return mountedTape != null && mountedTape.TryConsumeBootstrapLoad(this);
         }
 
         private bool HandleBeforeInstruction(Z80Cpu z80)
@@ -756,27 +825,11 @@ namespace Spectrum128kEmulator
 
         public byte ReadPort(ushort port)
         {
+            if (rzxPlayback != null && rzxPlayback.TryReadPortValue(out byte replayValue))
+                return replayValue;
+
             if ((port & 0x0001) == 0)
-            {
-                byte result = 0xFF;
-                byte high = (byte)(port >> 8);
-
-                for (int row = 0; row < 8; row++)
-                {
-                    if ((high & (1 << row)) == 0)
-                    {
-                        keyboardRowScanCounts[row]++;
-                        result &= keyboardMatrix[row];
-                    }
-                }
-
-                bool earHigh = mountedTape?.ReadEarBit(cpu.TStates) ?? true;
-                if (earHigh)
-                    result |= 0x40;
-                else
-                    result = (byte)(result & ~0x40);
-                return result;
-            }
+                return ReadKeyboardEarPort(port, cpu.TStates);
 
             if (frameTStates == FrameTStates48)
                 return ReadFloatingBus48(cpu.TStates);
@@ -791,7 +844,11 @@ namespace Spectrum128kEmulator
                 cpu.AddTStates(contentionDelay);
 
             if ((port & 0x0001) == 0)
-                return ReadPort(port);
+            {
+                long adjustedSampleTStates = (long)cpu.TStates + sampleOffsetTStates;
+                ulong sampleTStates = adjustedSampleTStates > 0 ? (ulong)adjustedSampleTStates : 0UL;
+                return ReadKeyboardEarPort(port, sampleTStates);
+            }
 
             if (frameTStates == FrameTStates48)
             {
@@ -801,6 +858,32 @@ namespace Spectrum128kEmulator
             }
 
             return 0xFF;
+        }
+
+        private byte ReadKeyboardEarPort(ushort port, ulong sampleTStates)
+        {
+            byte result = 0xFF;
+            byte high = (byte)(port >> 8);
+
+            for (int row = 0; row < 8; row++)
+            {
+                if ((high & (1 << row)) == 0)
+                {
+                    keyboardRowScanCounts[row]++;
+                    result &= keyboardMatrix[row];
+                }
+            }
+
+            bool tapeEarHigh = mountedTape?.ReadEarBit(sampleTStates) ?? true;
+            // On Issue 3-era Spectrum hardware the FE input bit follows the EAR/speaker
+            // line, while MIC-only output does not read back as a stable high level.
+            bool earHigh = tapeEarHigh || speakerHigh;
+            if (earHigh)
+                result |= 0x40;
+            else
+                result = (byte)(result & ~0x40);
+
+            return result;
         }
 
         private byte ReadFloatingBus48(ulong sampleTStates)
@@ -862,6 +945,26 @@ namespace Spectrum128kEmulator
             ConfigureFor48kSnapshot(borderColor);
             frameTStates = FrameTStates48;
             tStatesUntilNextInterrupt = 0;
+        }
+
+        public void ConfigureFor128kTapeLoad(int borderColor)
+        {
+            PagedRamBank = 0;
+            ScreenBank = 5;
+            CurrentRomBank = 1;
+            PagingLocked = false;
+            BorderColor = borderColor & 0x07;
+            frameTStates = FrameTStates128;
+            FrameCount = 0;
+            floatingBusDisplayStartAdjustTStates = 0;
+            floatingBusSampleAdjustTStates = 0;
+            last7ffdValue = 0x10;
+            autoDebugDumpPending = false;
+            autoDebugDumpReason = null;
+            autoDebugDumpSnapshot = null;
+            autoDebugDumpSuppressed = false;
+            tStatesUntilNextInterrupt = 0;
+            realignInterruptPhaseAfterNextAccept = false;
         }
 
         private void Configure48kSnapshotCore(int borderColor, int targetFrameTStates)
@@ -942,6 +1045,7 @@ namespace Spectrum128kEmulator
             if ((port & 0x0001) == 0)
             {
                 BorderColor = value & 0x07;
+                micHigh = (value & 0x08) != 0;
 
                 bool newSpeakerHigh = (value & 0x10) != 0;
                 if (newSpeakerHigh != speakerHigh)

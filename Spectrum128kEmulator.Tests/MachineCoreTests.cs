@@ -523,6 +523,36 @@ namespace Spectrum128kEmulator.Tests
             }
         }
 
+        [Fact]
+        public void KeyboardEarPort_Does_Not_Read_Mic_Bit_Back_As_High_By_Itself()
+        {
+            string romFolder = CreateTempRoms();
+            try
+            {
+                var machine = new Spectrum128Machine(romFolder);
+                machine.MountTape(new Tap.MountedTape(
+                    "low-ear",
+                    new[]
+                    {
+                        Tap.TapeBlock.CreateSetSignalLevel(false),
+                        Tap.TapeBlock.CreatePause(1)
+                    }));
+
+                machine.Cpu.WritePort!(0x00FE, 0x08);
+                byte micOnly = machine.DebugReadPort(0x00FE);
+
+                machine.Cpu.WritePort!(0x00FE, 0x10);
+                byte speakerOnly = machine.DebugReadPort(0x00FE);
+
+                Assert.Equal(0, micOnly & 0x40);
+                Assert.Equal(0x40, speakerOnly & 0x40);
+            }
+            finally
+            {
+                Directory.Delete(romFolder, true);
+            }
+        }
+
         private static void SetCpuTStates(Spectrum128Machine machine, ulong value)
         {
             PropertyInfo? property = typeof(Z80.Z80Cpu).GetProperty(
