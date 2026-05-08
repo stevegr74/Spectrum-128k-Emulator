@@ -103,18 +103,54 @@ if (args.Length > 0)
     {
         try
         {
-            TapLoadResult result = TapLoader.Load(machine, snapshotPath);
+            TapBootstrapResult result = TapLoader.LoadAllStandardBlocksAndAutoStart(machine, snapshotPath);
             Console.WriteLine(
-                $"TAP fake-load complete: blocks={result.TotalBlockCount} loaded={result.LoadedBlockCount} autoStart={result.AutoStartFileName ?? "(none)"}");
+                $"TAP full-load complete: blocks={result.TotalBlockCount} consumed={result.ConsumedBlockCount} autoStart={result.AutoStartFileName ?? "(none)"}");
         }
-        catch (InvalidOperationException ex) when (
-            ex.Message.Contains("Unsupported tape header type", StringComparison.Ordinal) ||
-            ex.Message.Contains("Tape data block length mismatch", StringComparison.Ordinal))
+        catch (InvalidOperationException ex) when (ex.Message.Contains("cannot be fully fake-loaded", StringComparison.Ordinal))
         {
-            TapBootstrapResult result = TapLoader.BootstrapBasicProgramAndMountRemaining(machine, snapshotPath);
-            Console.WriteLine(
-                $"TAP hybrid bootstrap complete: blocks={result.TotalBlockCount} consumed={result.ConsumedBlockCount} autoStart={result.AutoStartFileName ?? "(none)"} mounted={result.DisplayName}");
+            try
+            {
+                TapBootstrapResult result = TapLoader.BootstrapBasicProgramAndMountRemaining(machine, snapshotPath);
+                Console.WriteLine(
+                    $"TAP hybrid bootstrap complete: blocks={result.TotalBlockCount} consumed={result.ConsumedBlockCount} autoStart={result.AutoStartFileName ?? "(none)"} mounted={result.DisplayName}");
+            }
+            catch (InvalidOperationException bootstrapEx)
+            {
+                Console.WriteLine($"TAP bootstrap fallback: {bootstrapEx.Message}");
+                TapMountResult result = TapLoader.Mount(machine, snapshotPath);
+                Console.WriteLine($"TAP mounted: blocks={result.TotalBlockCount} display={result.DisplayName}");
+            }
         }
+    }
+    else if (extension.Equals(".tzx", StringComparison.OrdinalIgnoreCase))
+    {
+        try
+        {
+            TapBootstrapResult result = TzxLoader.LoadAllStandardBlocksAndAutoStart(machine, snapshotPath);
+            Console.WriteLine(
+                $"TZX full-load complete: blocks={result.TotalBlockCount} consumed={result.ConsumedBlockCount} autoStart={result.AutoStartFileName ?? "(none)"}");
+        }
+        catch (InvalidOperationException ex) when (ex.Message.Contains("cannot be fully fake-loaded", StringComparison.Ordinal))
+        {
+            try
+            {
+                TapBootstrapResult result = TzxLoader.BootstrapBasicProgramAndMountRemaining(machine, snapshotPath);
+                Console.WriteLine(
+                    $"TZX hybrid bootstrap complete: blocks={result.TotalBlockCount} consumed={result.ConsumedBlockCount} autoStart={result.AutoStartFileName ?? "(none)"} mounted={result.DisplayName}");
+            }
+            catch (InvalidOperationException bootstrapEx)
+            {
+                Console.WriteLine($"TZX bootstrap fallback: {bootstrapEx.Message}");
+                TapMountResult result = TzxLoader.Mount(machine, snapshotPath);
+                Console.WriteLine($"TZX mounted: blocks={result.TotalBlockCount} display={result.DisplayName}");
+            }
+        }
+    }
+    else if (extension.Equals(".rzx", StringComparison.OrdinalIgnoreCase))
+    {
+        RzxLoader.Load(machine, snapshotPath);
+        Console.WriteLine($"RZX playback loaded: {Path.GetFileName(snapshotPath)}");
     }
     else
     {
@@ -255,7 +291,9 @@ if (args.Length > 0)
         if (frame % 10 == 0)
         {
             Console.WriteLine(
-                $"Frame {machine.FrameCount}: PC=0x{machine.Cpu.Regs.PC:X4} SP=0x{machine.Cpu.Regs.SP:X4} IFF1={machine.Cpu.IFF1} IFF2={machine.Cpu.IFF2} INTP={machine.Cpu.InterruptPending}");
+                $"Frame {machine.FrameCount}: PC=0x{machine.Cpu.Regs.PC:X4} SP=0x{machine.Cpu.Regs.SP:X4} " +
+                $"IFF1={machine.Cpu.IFF1} IFF2={machine.Cpu.IFF2} INTP={machine.Cpu.InterruptPending} " +
+                $"Tape={machine.GetMountedTapeDebugState()}");
         }
     }
 
@@ -432,6 +470,8 @@ static IEnumerable<(int row, int bit)> ResolveKey(string keyName)
         case "8": yield return (4, 2); yield break;
         case "7": yield return (4, 3); yield break;
         case "6": yield return (4, 4); yield break;
+        case "y": yield return (5, 4); yield break;
+        case "n": yield return (7, 3); yield break;
         case "enter": yield return (6, 0); yield break;
         case "space": yield return (7, 0); yield break;
         case "shift": yield return (0, 0); yield break;

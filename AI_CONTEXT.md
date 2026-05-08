@@ -1,5 +1,35 @@
 Project: ZX Spectrum 128K Emulator (C# WinForms)
 
+Current checkpoint on 2026-05-08:
+- Tape loading status is materially better and now split cleanly by generic behaviour rather than per-game hacks.
+- User-verified good tape/replay state:
+  - `exolon.tap` works
+  - `Exolon.tzx` works and reaches a working game
+  - `Where Time Stood Still.tap` now works and starts gameplay correctly
+  - `aufmonty.rzx` playback works
+- Important generic tape-loader change kept:
+  - `TapLoader` now detects when an autorun BASIC loader is genuinely a 128K banked tape loader by parsing the BASIC and spotting `POKE 23388,...`
+  - only those tapes opt into a real 128K tape-load machine mode
+  - standard 48K-style tapes still stay on the existing 48K tape-load path
+- Machine-side support kept:
+  - `Spectrum128Machine.ConfigureFor128kTapeLoad(...)`
+  - unlocked paging
+  - 128K frame cadence
+  - ROM 1 selected by default for the tape bootstrap environment
+- Guard coverage now includes tape tests that prove banked standard loaders:
+  - use the mounted-path semantics
+  - run with `PagingLocked == false`
+  - run with `FrameTStates == FrameTStates128`
+- Important non-goal reminder:
+  - no Exolon-specific ROM or filename hacks should be reintroduced for tape handling
+  - the accepted behaviour is now driven by format and loader semantics only
+- Remaining tape work after this checkpoint:
+  - `Target Renegade (Imagine, OR) 128k.tzx` is still not fixed
+  - if resuming tape work, start from the current working Exolon TAP/TZX and WTSS baseline and do not regress it
+- Best next verification focus after this checkpoint:
+  - `Target Renegade (Imagine, OR) 128k.tzx`
+  - broader `.tzx` compatibility once the current good tape baseline is committed
+
 Current checkpoint on 2026-05-04:
 - Input bridge polish:
   - `MainForm` still uses the row-scan-aware host-input bridge rather than arbitrary key stretching.

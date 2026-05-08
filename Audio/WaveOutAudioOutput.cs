@@ -72,7 +72,19 @@ namespace Spectrum128kEmulator.Audio
             }
 
             if (slot.ByteCapacity < byteCount)
+            {
+                if (slot.IsPrepared)
+                {
+                    int unprepareResult = waveOutUnprepareHeader(deviceHandle, slot.HeaderPtr, (uint)Marshal.SizeOf<WaveHdr>());
+                    if (unprepareResult != MmNoError)
+                        throw new InvalidOperationException($"waveOutUnprepareHeader failed with MMRESULT={unprepareResult}.");
+
+                    slot.IsPrepared = false;
+                    slot.RefreshHeader();
+                }
+
                 slot.EnsureCapacity(byteCount);
+            }
 
             Buffer.BlockCopy(monoSamples, 0, slot.Data!, 0, byteCount);
             slot.Header.dwBufferLength = (uint)byteCount;

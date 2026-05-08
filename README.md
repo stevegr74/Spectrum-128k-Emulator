@@ -23,11 +23,12 @@ This project focuses on correctness, clean architecture, and incremental develop
 - Frame pacing (~50Hz)
 - Per-frame interrupt scheduling
 - `.tap` tape loading
-  - block parsing implemented
-  - fake loader path available for direct testing/debugging
-  - ROM-driven `LD-BYTES` loading path implemented
-  - VERIFY path implemented
-  - deterministic multi-block sequencing implemented
+- `.tzx` tape loading
+- `.rzx` replay loading
+- tape bootstrap and mounted-tape playback paths
+- ROM-driven `LD-BYTES` loading path implemented
+- VERIFY path implemented
+- deterministic multi-block sequencing implemented
 - Shared audio output pipeline
 - 48K beeper audio output
 - AY-3-8912 audio support
@@ -45,7 +46,7 @@ This project focuses on correctness, clean architecture, and incremental develop
 
 ## Current Status
 
-Milestone 7 In Progress - Audio Output Working, Snapshot Compatibility Stabilized
+Milestone 7 In Progress - Audio Output Working, Snapshot And Tape Compatibility Stabilized
 
 - Emulator boots into 128K menu
 - Menu navigation works
@@ -59,6 +60,9 @@ Milestone 7 In Progress - Audio Output Working, Snapshot Compatibility Stabilize
 - `.z80` snapshots load with v1 and v2/v3 support
 - `robocop128k.z80` has been tested successfully and is playable
 - `.tap` loading works through the ROM-driven path
+- `.tap` loading now works for real game cases including `exolon.tap` and `Where Time Stood Still.tap`
+- `.tzx` support is implemented and `Exolon.tzx` is verified working
+- `.rzx` replay support is implemented and `aufmonty.rzx` plays back successfully
 - AY register model implemented and wired to ports
 - 48K beeper implemented via port `0xFE` (speaker state + edge detection)
 - AY tone, envelope, and noise output implemented
@@ -68,6 +72,8 @@ Milestone 7 In Progress - Audio Output Working, Snapshot Compatibility Stabilize
 - 48K `.z80` snapshots now use a dedicated format-based restore path that restores correct `JSWAPRIL.Z80` audio behaviour
 - Jet Set Willy menu and in-game music now play with correct pitch and sequencing again
 - Exolon now works correctly from both `exolon.sna` and `Exolon.z80`
+- Exolon now also works from both `exolon.tap` and `Exolon.tzx`
+- `Where Time Stood Still.tap` now loads and starts gameplay correctly
 - Remaining JSW polish is limited to occasional `ENTER` responsiveness on the menu after waiting a few seconds
 - App-side keyboard bridging now defers host key release until the relevant Spectrum keyboard row has been scanned, with a bounded fallback to avoid sticky keys
 - Z80 core refactored into focused partial files without intended behaviour changes
@@ -91,13 +97,22 @@ Snapshot Support Progress (Milestone 5)
 
 Tape Loading Progress (Milestone 6)
 - `.tap` parsing implemented
+- `.tzx` parsing implemented
+- `.rzx` replay loading implemented
 - fake loader path implemented
 - ROM-driven `LD-BYTES` path implemented
 - VERIFY path implemented
 - deterministic header/data sequencing implemented
 - mounted tape rewind and multi-block progression implemented
+- format-based tape bootstrap paths implemented
+- generic 128K tape-loader detection implemented for BASIC loaders that bank-switch via `POKE 23388,...`
+- working verified examples now include:
+  - `exolon.tap`
+  - `Exolon.tzx`
+  - `Where Time Stood Still.tap`
+  - `aufmonty.rzx`
 
-Timing is still deliberately simplified at this stage. Pulse-level and higher-fidelity tape behaviour remain future work.
+Timing is still deliberately simplified at this stage. Broader `.tzx` compatibility work remains, especially for harder custom loaders not yet verified.
 
 Audio Progress (Milestone 7)
 - AY register model implemented
@@ -162,8 +177,11 @@ The emulator is structured for clarity and testability:
 - `SnapshotLoader` / `Z80SnapshotLoader`  
   Snapshot loading support
 
-- `Tape/TapLoader`  
-  `.tap` parsing, fake loading support, mounted tape state, and ROM-driven tape integration
+- `Tape/TapLoader` / `Tape/TzxLoader` / `Tape/TapeBlock`  
+  `.tap` / `.tzx` parsing, fake loading support, mounted tape state, ROM-driven tape integration, and tape bootstrap handling
+
+- `RzxLoader` / `RzxPlaybackSession`  
+  `.rzx` replay loading and playback orchestration
 
 - `MainForm`  
   Thin WinForms UI layer
@@ -216,8 +234,11 @@ Test coverage includes:
 - Focused opcode regression tests
 - Snapshot loading
 - Tape parsing
+- TZX parsing
+- RZX replay parsing
 - VERIFY handling
 - Tape sequencing and reset behaviour
+- banked tape-loader regression coverage
 - AY register behaviour
 - Audio sample generation
 - Audio pipeline behaviour

@@ -168,7 +168,7 @@ namespace Spectrum128kEmulator
                 pressedSpectrumKeys.Clear();
                 activeSpectrumKeyScans.Clear();
                 pendingSpectrumKeyReleases.Clear();
-                LoadZ80SnapshotFromDialog();
+                LoadSnapshotOrRecordingFromDialog();
                 return;
             }
 
@@ -492,7 +492,7 @@ namespace Spectrum128kEmulator
             using var dialog = new OpenFileDialog
             {
                 Title = "Mount .tap Tape Image",
-                Filter = "Spectrum tape images (*.tap)|*.tap|All files (*.*)|*.*",
+                Filter = "Spectrum tape images (*.tap;*.tzx)|*.tap;*.tzx|All files (*.*)|*.*",
                 CheckFileExists = true,
                 Multiselect = false
             };
@@ -502,8 +502,50 @@ namespace Spectrum128kEmulator
 
             try
             {
-                Tap.TapMountResult result = Tap.TapLoader.Mount(machine, dialog.FileName);
-                fpsLabel.Text = $"TAP mounted: {Path.GetFileName(dialog.FileName)} ({result.TotalBlockCount} blocks)";
+                string extension = Path.GetExtension(dialog.FileName);
+                string displayName = Path.GetFileName(dialog.FileName);
+                if (extension.Equals(".tzx", StringComparison.OrdinalIgnoreCase))
+                {
+                    try
+                    {
+                        Tap.TapBootstrapResult bootstrap = Tap.TzxLoader.LoadAllStandardBlocksAndAutoStart(machine, dialog.FileName);
+                        fpsLabel.Text = $"TZX loaded: {displayName} ({bootstrap.ConsumedBlockCount}/{bootstrap.TotalBlockCount} blocks)";
+                    }
+                    catch (InvalidOperationException)
+                    {
+                        try
+                        {
+                            Tap.TapBootstrapResult bootstrap = Tap.TzxLoader.BootstrapBasicProgramAndMountRemaining(machine, dialog.FileName);
+                            fpsLabel.Text = $"TZX bootstrapped: {displayName} ({bootstrap.ConsumedBlockCount}/{bootstrap.TotalBlockCount} blocks)";
+                        }
+                        catch (InvalidOperationException)
+                        {
+                            Tap.TapMountResult result = Tap.TzxLoader.Mount(machine, dialog.FileName);
+                            fpsLabel.Text = $"TZX mounted: {displayName} ({result.TotalBlockCount} blocks)";
+                        }
+                    }
+                }
+                else
+                {
+                    try
+                    {
+                        Tap.TapBootstrapResult bootstrap = Tap.TapLoader.LoadAllStandardBlocksAndAutoStart(machine, dialog.FileName);
+                        fpsLabel.Text = $"TAP loaded: {displayName} ({bootstrap.ConsumedBlockCount}/{bootstrap.TotalBlockCount} blocks)";
+                    }
+                    catch (InvalidOperationException)
+                    {
+                        try
+                        {
+                            Tap.TapBootstrapResult bootstrap = Tap.TapLoader.BootstrapBasicProgramAndMountRemaining(machine, dialog.FileName);
+                            fpsLabel.Text = $"TAP bootstrapped: {displayName} ({bootstrap.ConsumedBlockCount}/{bootstrap.TotalBlockCount} blocks)";
+                        }
+                        catch (InvalidOperationException)
+                        {
+                            Tap.TapMountResult result = Tap.TapLoader.Mount(machine, dialog.FileName);
+                            fpsLabel.Text = $"TAP mounted: {displayName} ({result.TotalBlockCount} blocks)";
+                        }
+                    }
+                }
                 ResetFrameScheduler();
                 machine.ClearDebugHistory();
                 screenBox.Focus();
@@ -519,12 +561,12 @@ namespace Spectrum128kEmulator
             }
         }
 
-        private void LoadZ80SnapshotFromDialog()
+        private void LoadSnapshotOrRecordingFromDialog()
         {
             using var dialog = new OpenFileDialog
             {
-                Title = "Load .z80 Snapshot",
-                Filter = "Z80 snapshots (*.z80)|*.z80|All files (*.*)|*.*",
+                Title = "Load .z80 Snapshot or .rzx Recording",
+                Filter = "Z80 snapshots and recordings (*.z80;*.rzx)|*.z80;*.rzx|All files (*.*)|*.*",
                 CheckFileExists = true,
                 Multiselect = false
             };
@@ -534,7 +576,11 @@ namespace Spectrum128kEmulator
 
             try
             {
-                Z80SnapshotLoader.Load(machine, dialog.FileName);
+                string extension = Path.GetExtension(dialog.FileName);
+                if (extension.Equals(".rzx", StringComparison.OrdinalIgnoreCase))
+                    RzxLoader.Load(machine, dialog.FileName);
+                else
+                    Z80SnapshotLoader.Load(machine, dialog.FileName);
 
                 SpectrumRenderer.RenderToBitmap(
                     screenBitmap,
