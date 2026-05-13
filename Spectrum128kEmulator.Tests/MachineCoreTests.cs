@@ -172,6 +172,30 @@ namespace Spectrum128kEmulator.Tests
         }
 
         [Fact]
+        public void ExecuteTimeSlice_Completes_Frame_Across_Multiple_Slices()
+        {
+            string romFolder = CreateTempRoms();
+            try
+            {
+                var machine = new Spectrum128Machine(romFolder);
+
+                int firstSlice = Spectrum128Machine.FrameTStates128 / 3;
+                int secondSlice = Spectrum128Machine.FrameTStates128 - firstSlice;
+
+                Assert.Equal(0, machine.ExecuteTimeSlice(firstSlice));
+                Assert.Equal(0, machine.FrameCount);
+
+                Assert.Equal(1, machine.ExecuteTimeSlice(secondSlice));
+                Assert.Equal(1, machine.FrameCount);
+                Assert.True(machine.TryDequeueCompletedAudioFrame(out _));
+            }
+            finally
+            {
+                Directory.Delete(romFolder, true);
+            }
+        }
+
+        [Fact]
         public void ConfigureFor48kSnapshot_UsesBaselineFrameTiming()
         {
             string romFolder = CreateTempRoms();

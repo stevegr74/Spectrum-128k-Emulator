@@ -47,10 +47,12 @@ namespace Spectrum128kEmulator
         private bool micHigh;
         private bool frameStartSpeakerHigh;
         private ulong frameStartTStates;
+        private int currentFrameExecutedTStates;
         private int lastAudioFrameTStates = FrameTStates128;
         private readonly List<Audio.BeeperEvent> beeperEvents = new List<Audio.BeeperEvent>();
         private readonly List<Audio.AyRegisterWrite> ayWrites = new List<Audio.AyRegisterWrite>();
         private Audio.AyAudioState? frameStartAyState;
+        private readonly Queue<Audio.AudioFrame> completedAudioFrames = new Queue<Audio.AudioFrame>();
 
         private const int DebugHistoryCapacity = 8192;
         private readonly Queue<string> recentMemoryEvents = new Queue<string>();
@@ -127,6 +129,8 @@ namespace Spectrum128kEmulator
             frameStartAyState = ay.CaptureAudioState();
             beeperEvents.Clear();
             ayWrites.Clear();
+            currentFrameExecutedTStates = 0;
+            completedAudioFrames.Clear();
             ClearDebugHistory();
             tStatesUntilNextInterrupt = 0;
             realignInterruptPhaseAfterNextAccept = false;
@@ -189,6 +193,8 @@ namespace Spectrum128kEmulator
             frameStartAyState = ay.CaptureAudioState();
             beeperEvents.Clear();
             ayWrites.Clear();
+            currentFrameExecutedTStates = 0;
+            completedAudioFrames.Clear();
             ClearDebugHistory();
             tStatesUntilNextInterrupt = 0;
             realignInterruptPhaseAfterNextAccept = false;
@@ -202,28 +208,7 @@ namespace Spectrum128kEmulator
                 return;
             }
 
-            BeginFrameAudioCapture();
-            int remainingFrameTStates = frameTStates;
-
-            while (remainingFrameTStates > 0)
-            {
-                if (tStatesUntilNextInterrupt == 0)
-                {
-                    TriggerFrameInterrupt();
-                    tStatesUntilNextInterrupt = realignInterruptPhaseAfterNextAccept
-                        ? remainingFrameTStates
-                        : frameTStates;
-                    realignInterruptPhaseAfterNextAccept = false;
-                }
-
-                int executionChunk = Math.Min(remainingFrameTStates, tStatesUntilNextInterrupt);
-                cpu.ExecuteCycles((ulong)executionChunk);
-                remainingFrameTStates -= executionChunk;
-                tStatesUntilNextInterrupt -= executionChunk;
-            }
-
-            lastAudioFrameTStates = (int)Math.Min((ulong)int.MaxValue, cpu.TStates - frameStartTStates);
-            FrameCount++;
+            ExecuteTimeSlice(frameTStates);
         }
 
         private void ExecuteRzxFrame()
@@ -240,11 +225,24 @@ namespace Spectrum128kEmulator
             cpu.ExecuteInstructionFetches(instructionFetchCount);
             TriggerFrameInterrupt();
             lastAudioFrameTStates = (int)Math.Min((ulong)int.MaxValue, cpu.TStates - frameStartTStates);
+            completedAudioFrames.Enqueue(new Audio.AudioFrame(
+                lastAudioFrameTStates,
+                CurrentCpuClockHz,
+                frameStartSpeakerHigh,
+                speakerHigh,
+                beeperEvents,
+                ay.CaptureAudioState(),
+                frameStartAyState,
+                ayWrites));
+            currentFrameExecutedTStates = 0;
             FrameCount++;
         }
 
         public Audio.AudioFrame DrainAudioFrame()
         {
+            if (completedAudioFrames.Count != 0)
+                return completedAudioFrames.Dequeue();
+
             return new Audio.AudioFrame(
                 lastAudioFrameTStates,
                 CurrentCpuClockHz,
@@ -254,6 +252,81 @@ namespace Spectrum128kEmulator
                 ay.CaptureAudioState(),
                 frameStartAyState,
                 ayWrites);
+        }
+
+        public bool TryDequeueCompletedAudioFrame(out Audio.AudioFrame frame)
+        {
+            if (completedAudioFrames.Count != 0)
+            {
+                frame = completedAudioFrames.Dequeue();
+                return true;
+            }
+
+            frame = default!;
+            return false;
+        }
+
+        public int ExecuteTimeSlice(int tStatesBudget)
+        {
+            if (tStatesBudget <= 0)
+                return 0;
+
+            if (rzxPlayback != null)
+            {
+                int completedRzxFrames = 0;
+                while (tStatesBudget >= frameTStates)
+                {
+                    ExecuteRzxFrame();
+                    completedRzxFrames++;
+                    tStatesBudget -= frameTStates;
+                }
+
+                return completedRzxFrames;
+            }
+
+            int completedFrames = 0;
+            while (tStatesBudget > 0)
+            {
+                if (currentFrameExecutedTStates == 0)
+                    BeginFrameAudioCapture();
+
+                int remainingFrameTStates = frameTStates - currentFrameExecutedTStates;
+                if (tStatesUntilNextInterrupt == 0)
+                {
+                    TriggerFrameInterrupt();
+                    tStatesUntilNextInterrupt = realignInterruptPhaseAfterNextAccept
+                        ? remainingFrameTStates
+                        : frameTStates;
+                    realignInterruptPhaseAfterNextAccept = false;
+                }
+
+                int executionChunk = Math.Min(tStatesBudget, Math.Min(remainingFrameTStates, tStatesUntilNextInterrupt));
+                cpu.ExecuteCycles((ulong)executionChunk);
+                tStatesBudget -= executionChunk;
+                remainingFrameTStates -= executionChunk;
+                currentFrameExecutedTStates += executionChunk;
+                tStatesUntilNextInterrupt -= executionChunk;
+
+                if (remainingFrameTStates != 0)
+                    continue;
+
+                lastAudioFrameTStates = (int)Math.Min((ulong)int.MaxValue, cpu.TStates - frameStartTStates);
+                completedAudioFrames.Enqueue(new Audio.AudioFrame(
+                    lastAudioFrameTStates,
+                    CurrentCpuClockHz,
+                    frameStartSpeakerHigh,
+                    speakerHigh,
+                    beeperEvents,
+                    ay.CaptureAudioState(),
+                    frameStartAyState,
+                    ayWrites));
+
+                currentFrameExecutedTStates = 0;
+                FrameCount++;
+                completedFrames++;
+            }
+
+            return completedFrames;
         }
 
         public void ClearDebugHistory()
@@ -323,6 +396,9 @@ namespace Spectrum128kEmulator
             sb.AppendLine("=== STACK BYTES ===");
             AppendMemoryWindow(sb, cpu.Regs.SP, 32);
             AppendMemoryWindow(sb, cpu.Regs.PC, 24, "=== MEMORY PC ===");
+            AppendMemoryWindow(sb, 0x5C00, 32, "=== MEMORY 5C00 ===");
+            AppendMemoryWindow(sb, cpu.Regs.IY, 16, "=== MEMORY IY ===");
+            AppendMemoryWindow(sb, 0x5CB0, 16, "=== MEMORY 5CB0 ===");
 
             sb.AppendLine("=== KEYBOARD MATRIX ===");
             for (int row = 0; row < keyboardMatrix.Length; row++)
@@ -708,9 +784,11 @@ namespace Spectrum128kEmulator
             return mountedTape != null && mountedTape.TryHandleRomLoadTrap(this, cpu);
         }
 
-        public bool TryConsumeBootstrapTapeLoad()
+        public BootstrapTapeLoadResult TryConsumeBootstrapTapeLoad()
         {
-            return mountedTape != null && mountedTape.TryConsumeBootstrapLoad(this);
+            return mountedTape != null
+                ? mountedTape.TryConsumeBootstrapLoad(this)
+                : BootstrapTapeLoadResult.None;
         }
 
         private bool HandleBeforeInstruction(Z80Cpu z80)
@@ -945,6 +1023,8 @@ namespace Spectrum128kEmulator
             ConfigureFor48kSnapshot(borderColor);
             frameTStates = FrameTStates48;
             tStatesUntilNextInterrupt = 0;
+            currentFrameExecutedTStates = 0;
+            completedAudioFrames.Clear();
         }
 
         public void ConfigureFor128kTapeLoad(int borderColor)
@@ -965,6 +1045,8 @@ namespace Spectrum128kEmulator
             autoDebugDumpSuppressed = false;
             tStatesUntilNextInterrupt = 0;
             realignInterruptPhaseAfterNextAccept = false;
+            currentFrameExecutedTStates = 0;
+            completedAudioFrames.Clear();
         }
 
         private void Configure48kSnapshotCore(int borderColor, int targetFrameTStates)
@@ -985,6 +1067,8 @@ namespace Spectrum128kEmulator
             autoDebugDumpSuppressed = false;
             tStatesUntilNextInterrupt = 0;
             realignInterruptPhaseAfterNextAccept = false;
+            currentFrameExecutedTStates = 0;
+            completedAudioFrames.Clear();
         }
 
         public void Load48kSnapshotRam(byte[] ram48)
@@ -1035,6 +1119,8 @@ namespace Spectrum128kEmulator
             autoDebugDumpSuppressed = false;
             tStatesUntilNextInterrupt = 0;
             realignInterruptPhaseAfterNextAccept = false;
+            currentFrameExecutedTStates = 0;
+            completedAudioFrames.Clear();
         }
 
         private void WritePort(ushort port, byte value)
