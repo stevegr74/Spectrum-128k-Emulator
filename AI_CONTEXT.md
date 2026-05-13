@@ -1,5 +1,34 @@
 Project: ZX Spectrum 128K Emulator (C# WinForms)
 
+Current checkpoint on 2026-05-13:
+- User accepted the current menu/input behavior as the new baseline.
+- The current live input model is:
+  - ordinary mapped Spectrum keys are applied directly from WinForms `KeyDown` / `KeyUp`
+  - composite cursor-style Spectrum chords (for example menu `Down`) still use `SpectrumKeyInputBridge`
+  - accepted composite-key tuning is:
+    - `maxDeferredReleaseTicks = 8`
+    - `minHoldTicks = 40`
+    - `sameKeyContinuationTicks = 90`
+- Important diagnostic outcome from this pass:
+  - missed fast taps were not caused by Windows dropping `KeyDown` / `KeyUp`
+  - they were not caused by the emulator failing to apply matrix transitions
+  - the remaining feel issue was specifically around composite Spectrum key chords and how rapid same-key taps should map onto the keyboard matrix over time
+- Machine/app support now kept as part of the accepted baseline:
+  - `Spectrum128Machine.ExecuteTimeSlice(...)` for sliced execution
+  - completed audio frames can be dequeued across slices
+  - `MainForm` advances the emulator in small slices instead of whole-frame jumps only
+  - `SpectrumKeyInputBridge` is now a separate tested component
+- Guard coverage now includes:
+  - `SpectrumKeyInputBridgeTests`
+  - sliced-frame execution coverage in `MachineCoreTests`
+- Practical user-facing result:
+  - holding a menu direction is good
+  - rapid tapping is now acceptable enough to keep
+  - do not reopen this tuning casually unless a future regression appears
+- Next work after this checkpoint:
+  - resume `Impossible Mission.tzx`
+  - keep the accepted current input behavior intact while investigating tape/bootstrap/runtime issues
+
 Current checkpoint on 2026-05-08:
 - Tape loading status is materially better and now split cleanly by generic behaviour rather than per-game hacks.
 - User-verified good tape/replay state:

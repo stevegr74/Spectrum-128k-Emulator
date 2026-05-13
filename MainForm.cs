@@ -1,6 +1,7 @@
 //#define EXTENDED_DEBUG
 using System.Drawing.Imaging;
 using System.IO;
+using System.Runtime.InteropServices;
 using Spectrum128kEmulator.Audio;
 
 namespace Spectrum128kEmulator
@@ -11,14 +12,14 @@ namespace Spectrum128kEmulator
         private static readonly bool LogUnimplementedOpcodes = true;
         private static readonly bool LogPagingWrites = false;
         private static readonly bool LogKeyEvents = false;
-        private const int MaxDeferredSpectrumKeyReleaseFrames = 8;
+        private static readonly bool EnableInputDiagnostics = false;
+        private const int InputPollingSliceMilliseconds = 1;
 
         private int framesRenderedThisSecond;
         private long lastStatsTicks;
         private readonly System.Diagnostics.Stopwatch frameClock = System.Diagnostics.Stopwatch.StartNew();
         private long lastSchedulerTicks;
-        private long accumulatedTicks;
-        private readonly long ticksPerFrame = System.Diagnostics.Stopwatch.Frequency / 50;
+        private double accumulatedEmulationTStates;
         private const int MaxCatchUpFramesPerTick = 2;
         private readonly Bitmap screenBitmap = new Bitmap(Spectrum128Machine.ScreenWidth, Spectrum128Machine.ScreenHeight, PixelFormat.Format32bppArgb);
         private readonly System.Windows.Forms.Timer frameTimer = new System.Windows.Forms.Timer { Interval = 1 };
@@ -32,11 +33,12 @@ namespace Spectrum128kEmulator
 
         private readonly Spectrum128Machine machine;
         private readonly HashSet<Keys> pressedSpectrumKeys = new();
-        private readonly Dictionary<Keys, (int[] Rows, ulong[] ScanCounts)> activeSpectrumKeyScans = new();
-        private readonly Dictionary<Keys, PendingSpectrumKeyRelease> pendingSpectrumKeyReleases = new();
+        private readonly SpectrumKeyInputBridge spectrumKeyInputBridge = new(8, 40, 90);
         private AudioPipeline audioPipeline;
-
-        private readonly record struct PendingSpectrumKeyRelease(int[] Rows, ulong[] ScanCounts, int ReleaseFrame);
+        private int inputBridgeTick;
+        private readonly object inputDiagnosticsLock = new();
+        private StreamWriter? inputDiagnosticsWriter;
+        private string? inputDiagnosticsPath;
 
         public MainForm()
         {
@@ -66,9 +68,10 @@ namespace Spectrum128kEmulator
                 }
             };
             InitializeKeyboard();
+            InitializeInputDiagnostics();
             long now = frameClock.ElapsedTicks;
             lastSchedulerTicks = now;
-            accumulatedTicks = 0;
+            accumulatedEmulationTStates = 0;
             frameTimer.Tick += FrameTimer_Tick;
             frameTimer.Start();
             lastStatsTicks = now;
@@ -101,9 +104,10 @@ namespace Spectrum128kEmulator
 
         private void MainForm_Deactivate(object? sender, EventArgs e)
         {
+            LogInputDiagnostic("deactivate", null, "clearing input state");
             pressedSpectrumKeys.Clear();
-            activeSpectrumKeyScans.Clear();
-            pendingSpectrumKeyReleases.Clear();
+            spectrumKeyInputBridge.Reset();
+            inputBridgeTick = 0;
             machine.ClearKeyboard();
         }
 
@@ -115,6 +119,15 @@ namespace Spectrum128kEmulator
 
         private void MainForm_KeyDown(object? sender, KeyEventArgs e)
         {
+            if (IsSpectrumMappedKey(e.KeyCode))
+            {
+                LogInputDiagnostic("keydown", e.KeyCode, "mapped event");
+                UpdateSpectrumMappedKeyState(e.KeyCode, true);
+                e.Handled = true;
+                e.SuppressKeyPress = true;
+                return;
+            }
+
             if (pressedSpectrumKeys.Contains(e.KeyCode))
             {
                 e.Handled = true;
@@ -129,27 +142,19 @@ namespace Spectrum128kEmulator
 
         private void MainForm_KeyUp(object? sender, KeyEventArgs e)
         {
+            if (IsSpectrumMappedKey(e.KeyCode))
+            {
+                LogInputDiagnostic("keyup", e.KeyCode, "mapped event");
+                UpdateSpectrumMappedKeyState(e.KeyCode, false);
+                e.Handled = true;
+                e.SuppressKeyPress = true;
+                return;
+            }
+
             pressedSpectrumKeys.Remove(e.KeyCode);
             HandleKey(e.KeyCode, false);
             e.Handled = true;
             e.SuppressKeyPress = true;
-        }
-
-        protected override bool ProcessCmdKey(ref Message msg, Keys keyData)
-        {
-            const int WM_KEYDOWN = 0x0100;
-            const int WM_SYSKEYDOWN = 0x0104;
-
-            Keys keyCode = keyData & Keys.KeyCode;
-            if ((msg.Msg == WM_KEYDOWN || msg.Msg == WM_SYSKEYDOWN) &&
-                IsSpectrumMappedKey(keyCode))
-            {
-                if (pressedSpectrumKeys.Add(keyCode))
-                    HandleKey(keyCode, true);
-                return true;
-            }
-
-            return base.ProcessCmdKey(ref msg, keyData);
         }
 
         private void HandleKey(Keys key, bool pressed)
@@ -157,8 +162,7 @@ namespace Spectrum128kEmulator
             if (pressed && key == Keys.F9)
             {
                 pressedSpectrumKeys.Clear();
-                activeSpectrumKeyScans.Clear();
-                pendingSpectrumKeyReleases.Clear();
+                spectrumKeyInputBridge.Reset();
                 LoadSnaSnapshotFromDialog();
                 return;
             }
@@ -166,8 +170,7 @@ namespace Spectrum128kEmulator
             if (pressed && key == Keys.F10)
             {
                 pressedSpectrumKeys.Clear();
-                activeSpectrumKeyScans.Clear();
-                pendingSpectrumKeyReleases.Clear();
+                spectrumKeyInputBridge.Reset();
                 LoadSnapshotOrRecordingFromDialog();
                 return;
             }
@@ -175,8 +178,7 @@ namespace Spectrum128kEmulator
             if (pressed && key == Keys.F11)
             {
                 pressedSpectrumKeys.Clear();
-                activeSpectrumKeyScans.Clear();
-                pendingSpectrumKeyReleases.Clear();
+                spectrumKeyInputBridge.Reset();
                 MountTapFromDialog();
                 return;
             }
@@ -189,36 +191,13 @@ namespace Spectrum128kEmulator
 
             if (pressed)
             {
-                pendingSpectrumKeyReleases.Remove(key);
-                ApplySpectrumKeyState(key, true);
-
-                int[] rows = GetSpectrumKeyRows(key);
-                if (rows.Length != 0)
-                {
-                    ulong[] scanCounts = new ulong[rows.Length];
-                    for (int i = 0; i < rows.Length; i++)
-                        scanCounts[i] = machine.GetKeyboardRowScanCount(rows[i]);
-                    activeSpectrumKeyScans[key] = (rows, scanCounts);
-                }
+                foreach (var change in spectrumKeyInputBridge.RegisterKeyDown(key, GetSpectrumKeyRows(key), machine.GetKeyboardRowScanCount, inputBridgeTick))
+                    ApplySpectrumKeyState(change.Key, change.Pressed);
             }
             else
             {
-                if (!activeSpectrumKeyScans.TryGetValue(key, out var scanState) || scanState.Rows.Length == 0)
-                {
-                    ApplySpectrumKeyState(key, false);
-                }
-                else if (RowsScannedSinceKeyDown(scanState.Rows, scanState.ScanCounts))
-                {
-                    activeSpectrumKeyScans.Remove(key);
-                    ApplySpectrumKeyState(key, false);
-                }
-                else
-                {
-                    pendingSpectrumKeyReleases[key] = new PendingSpectrumKeyRelease(
-                        scanState.Rows,
-                        scanState.ScanCounts,
-                        machine.FrameCount);
-                }
+                foreach (var change in spectrumKeyInputBridge.RegisterKeyUp(key, machine.GetKeyboardRowScanCount, inputBridgeTick))
+                    ApplySpectrumKeyState(change.Key, change.Pressed);
             }
 
             if (LogKeyEvents)
@@ -275,47 +254,55 @@ namespace Spectrum128kEmulator
             };
         }
 
-        private bool RowsScannedSinceKeyDown(int[] rows, ulong[] scanCounts)
+        private void ProcessPendingSpectrumKeyReleases()
         {
-            for (int i = 0; i < rows.Length; i++)
+            foreach (var change in spectrumKeyInputBridge.CollectStateChanges(machine.GetKeyboardRowScanCount, inputBridgeTick))
             {
-                if (machine.GetKeyboardRowScanCount(rows[i]) <= scanCounts[i])
-                    return false;
+                LogInputDiagnostic("bridge-pending-change", change.Key, $"pressed={change.Pressed} {DescribeBridgeState(change.Key)}");
+                ApplySpectrumKeyState(change.Key, change.Pressed);
             }
+        }
+
+        private bool UpdateSpectrumMappedKeyState(Keys key, bool isDown)
+        {
+            bool previousState = pressedSpectrumKeys.Contains(key);
+            if (previousState == isDown)
+            {
+                LogInputDiagnostic("update-skip", key, $"isDown={isDown} previousState={previousState} {DescribeBridgeState(key)}");
+                return false;
+            }
+
+            if (isDown)
+                pressedSpectrumKeys.Add(key);
+            else
+                pressedSpectrumKeys.Remove(key);
+
+            int[] rows = GetSpectrumKeyRows(key);
+            LogInputDiagnostic("update-begin", key, $"isDown={isDown} previousState={previousState} {DescribeBridgeState(key)}");
+            if (rows.Length > 1)
+            {
+                foreach (var change in isDown
+                    ? spectrumKeyInputBridge.RegisterKeyDown(key, rows, machine.GetKeyboardRowScanCount, inputBridgeTick)
+                    : spectrumKeyInputBridge.RegisterKeyUp(key, machine.GetKeyboardRowScanCount, inputBridgeTick))
+                {
+                    LogInputDiagnostic("bridge-change", change.Key, $"pressed={change.Pressed} source={(isDown ? "keydown" : "keyup")} {DescribeBridgeState(change.Key)}");
+                    ApplySpectrumKeyState(change.Key, change.Pressed);
+                }
+            }
+            else
+            {
+                LogInputDiagnostic("bridge-bypass", key, $"pressed={isDown} source={(isDown ? "keydown" : "keyup")}");
+                ApplySpectrumKeyState(key, isDown);
+            }
+
+            LogInputDiagnostic("update-end", key, $"isDown={isDown} {DescribeBridgeState(key)}");
 
             return true;
         }
 
-        private void ProcessPendingSpectrumKeyReleases()
-        {
-            if (pendingSpectrumKeyReleases.Count == 0)
-                return;
-
-            List<Keys>? releasableKeys = null;
-            foreach (var entry in pendingSpectrumKeyReleases)
-            {
-                bool rowsScanned = RowsScannedSinceKeyDown(entry.Value.Rows, entry.Value.ScanCounts);
-                bool releaseExpired = machine.FrameCount - entry.Value.ReleaseFrame >= MaxDeferredSpectrumKeyReleaseFrames;
-                if (!rowsScanned && !releaseExpired)
-                    continue;
-
-                releasableKeys ??= new List<Keys>();
-                releasableKeys.Add(entry.Key);
-            }
-
-            if (releasableKeys == null)
-                return;
-
-            foreach (Keys key in releasableKeys)
-            {
-                pendingSpectrumKeyReleases.Remove(key);
-                activeSpectrumKeyScans.Remove(key);
-                ApplySpectrumKeyState(key, false);
-            }
-        }
-
         private void ApplySpectrumKeyState(Keys key, bool pressed)
         {
+            LogInputDiagnostic("apply", key, $"pressed={pressed}");
             switch (key)
             {
                 case Keys.Left:
@@ -506,45 +493,13 @@ namespace Spectrum128kEmulator
                 string displayName = Path.GetFileName(dialog.FileName);
                 if (extension.Equals(".tzx", StringComparison.OrdinalIgnoreCase))
                 {
-                    try
-                    {
-                        Tap.TapBootstrapResult bootstrap = Tap.TzxLoader.LoadAllStandardBlocksAndAutoStart(machine, dialog.FileName);
-                        fpsLabel.Text = $"TZX loaded: {displayName} ({bootstrap.ConsumedBlockCount}/{bootstrap.TotalBlockCount} blocks)";
-                    }
-                    catch (InvalidOperationException)
-                    {
-                        try
-                        {
-                            Tap.TapBootstrapResult bootstrap = Tap.TzxLoader.BootstrapBasicProgramAndMountRemaining(machine, dialog.FileName);
-                            fpsLabel.Text = $"TZX bootstrapped: {displayName} ({bootstrap.ConsumedBlockCount}/{bootstrap.TotalBlockCount} blocks)";
-                        }
-                        catch (InvalidOperationException)
-                        {
-                            Tap.TapMountResult result = Tap.TzxLoader.Mount(machine, dialog.FileName);
-                            fpsLabel.Text = $"TZX mounted: {displayName} ({result.TotalBlockCount} blocks)";
-                        }
-                    }
+                    Tap.TapeExecutionResult result = Tap.TzxLoader.LoadWithPolicy(machine, dialog.FileName);
+                    fpsLabel.Text = DescribeTapeExecution("TZX", displayName, result);
                 }
                 else
                 {
-                    try
-                    {
-                        Tap.TapBootstrapResult bootstrap = Tap.TapLoader.LoadAllStandardBlocksAndAutoStart(machine, dialog.FileName);
-                        fpsLabel.Text = $"TAP loaded: {displayName} ({bootstrap.ConsumedBlockCount}/{bootstrap.TotalBlockCount} blocks)";
-                    }
-                    catch (InvalidOperationException)
-                    {
-                        try
-                        {
-                            Tap.TapBootstrapResult bootstrap = Tap.TapLoader.BootstrapBasicProgramAndMountRemaining(machine, dialog.FileName);
-                            fpsLabel.Text = $"TAP bootstrapped: {displayName} ({bootstrap.ConsumedBlockCount}/{bootstrap.TotalBlockCount} blocks)";
-                        }
-                        catch (InvalidOperationException)
-                        {
-                            Tap.TapMountResult result = Tap.TapLoader.Mount(machine, dialog.FileName);
-                            fpsLabel.Text = $"TAP mounted: {displayName} ({result.TotalBlockCount} blocks)";
-                        }
-                    }
+                    Tap.TapeExecutionResult result = Tap.TapLoader.LoadWithPolicy(machine, dialog.FileName);
+                    fpsLabel.Text = DescribeTapeExecution("TAP", displayName, result);
                 }
                 ResetFrameScheduler();
                 machine.ClearDebugHistory();
@@ -559,6 +514,19 @@ namespace Spectrum128kEmulator
                     MessageBoxButtons.OK,
                     MessageBoxIcon.Error);
             }
+        }
+
+        private static string DescribeTapeExecution(string format, string displayName, Tap.TapeExecutionResult result)
+        {
+            return result.Strategy switch
+            {
+                Tap.TapeLoadStrategy.FullFakeLoad =>
+                    $"{format} loaded: {displayName} ({result.ConsumedBlockCount}/{result.TotalBlockCount} blocks)",
+                Tap.TapeLoadStrategy.BootstrapHybrid =>
+                    $"{format} bootstrapped: {displayName} ({result.ConsumedBlockCount}/{result.TotalBlockCount} blocks)",
+                _ =>
+                    $"{format} mounted: {displayName} ({result.TotalBlockCount} blocks)"
+            };
         }
 
         private void LoadSnapshotOrRecordingFromDialog()
@@ -672,31 +640,49 @@ namespace Spectrum128kEmulator
                     elapsedTicks = 0;
 
                 lastSchedulerTicks = now;
-                accumulatedTicks += elapsedTicks;
 
-                long maxAccumulatedTicks = ticksPerFrame * MaxCatchUpFramesPerTick;
-                if (accumulatedTicks > maxAccumulatedTicks)
-                    accumulatedTicks = maxAccumulatedTicks;
+                accumulatedEmulationTStates += (double)elapsedTicks * machine.CurrentCpuClockHz / System.Diagnostics.Stopwatch.Frequency;
 
-                int executedFrames = 0;
-                while (accumulatedTicks >= ticksPerFrame && executedFrames < MaxCatchUpFramesPerTick)
-                {
-                    machine.ExecuteFrame();
-                    ProcessPendingSpectrumKeyReleases();
-                    audioPipeline.SubmitFrame(machine.DrainAudioFrame());
+                int maxAccumulatedTStates = machine.FrameTStates * MaxCatchUpFramesPerTick;
+                if (accumulatedEmulationTStates > maxAccumulatedTStates)
+                    accumulatedEmulationTStates = maxAccumulatedTStates;
 
-                    if (machine.TryConsumeAutoDebugDump(out string autoReason, out string autoDump))
-                        WriteDebugDumpToFile(autoDump, autoReason);
-
-                    accumulatedTicks -= ticksPerFrame;
-                    executedFrames++;
-                }
-
-                if (executedFrames == 0)
+                int wholeTStatesBudget = (int)accumulatedEmulationTStates;
+                if (wholeTStatesBudget <= 0)
                 {
                     UpdateStats(now);
                     return;
                 }
+
+                int tStatesPerSlice = Math.Max(1, machine.CurrentCpuClockHz / 1000 * InputPollingSliceMilliseconds);
+                int completedFrames = 0;
+                int tStatesBudget = wholeTStatesBudget;
+                while (tStatesBudget > 0)
+                {
+                    int sliceBudget = Math.Min(tStatesBudget, tStatesPerSlice);
+                    completedFrames += machine.ExecuteTimeSlice(sliceBudget);
+                    inputBridgeTick++;
+                    ProcessPendingSpectrumKeyReleases();
+
+                    while (machine.TryDequeueCompletedAudioFrame(out var completedAudioFrame))
+                        audioPipeline.SubmitFrame(completedAudioFrame);
+
+                    tStatesBudget -= sliceBudget;
+                }
+
+                accumulatedEmulationTStates -= wholeTStatesBudget;
+
+                if (machine.TryConsumeAutoDebugDump(out string autoReason, out string autoDump))
+                    WriteDebugDumpToFile(autoDump, autoReason);
+
+                if (completedFrames == 0)
+                {
+                    UpdateStats(now);
+                    return;
+                }
+
+                if (EnableInputDiagnostics)
+                    LogInputDiagnostic("frame-complete", null, $"completedFrames={completedFrames} budget={wholeTStatesBudget}");
 
                 SpectrumRenderer.RenderToBitmap(
                     screenBitmap,
@@ -758,9 +744,10 @@ namespace Spectrum128kEmulator
         {
             long now = frameClock.ElapsedTicks;
             lastSchedulerTicks = now;
-            accumulatedTicks = 0;
+            accumulatedEmulationTStates = 0;
             lastStatsTicks = now;
             framesRenderedThisSecond = 0;
+            inputBridgeTick = 0;
         }
 
         private void RecreateAudioPipeline()
@@ -792,12 +779,64 @@ namespace Spectrum128kEmulator
         {
             if (disposing)
             {
+                lock (inputDiagnosticsLock)
+                {
+                    inputDiagnosticsWriter?.Dispose();
+                    inputDiagnosticsWriter = null;
+                }
                 audioPipeline.Dispose();
                 screenBitmap.Dispose();
                 frameTimer.Dispose();
             }
 
             base.Dispose(disposing);
+        }
+
+        private void InitializeInputDiagnostics()
+        {
+            if (!EnableInputDiagnostics)
+                return;
+
+            string debugFolder = Path.Combine(AppContext.BaseDirectory, "debug");
+            Directory.CreateDirectory(debugFolder);
+            inputDiagnosticsPath = Path.Combine(debugFolder, $"input-diagnostics-{DateTime.Now:yyyyMMdd-HHmmssfff}.log");
+            inputDiagnosticsWriter = new StreamWriter(new FileStream(inputDiagnosticsPath, FileMode.Create, FileAccess.Write, FileShare.Read))
+            {
+                AutoFlush = true
+            };
+            LogInputDiagnostic("init", null, $"path={inputDiagnosticsPath}");
+        }
+
+        private string DescribeBridgeState(Keys key)
+        {
+            return spectrumKeyInputBridge.DescribeKeyState(key, machine.GetKeyboardRowScanCount);
+        }
+
+        private string DescribeKeyboardMatrix(Keys key)
+        {
+            int[] rows = GetSpectrumKeyRows(key);
+            if (rows.Length == 0)
+                return "matrixRows=[]";
+
+            byte[] matrix = machine.GetKeyboardMatrixCopy();
+            return "matrixRows=[" + string.Join(",", rows.Select(row => $"{row}:{matrix[row]:X2}/scan={machine.GetKeyboardRowScanCount(row)}")) + "]";
+        }
+
+        private void LogInputDiagnostic(string phase, Keys? key, string extra)
+        {
+            if (!EnableInputDiagnostics)
+                return;
+
+            lock (inputDiagnosticsLock)
+            {
+                if (inputDiagnosticsWriter == null)
+                    return;
+
+                string keyPart = key.HasValue ? $" key={key.Value}" : string.Empty;
+                string matrixPart = key.HasValue ? $" {DescribeKeyboardMatrix(key.Value)}" : string.Empty;
+                inputDiagnosticsWriter.WriteLine(
+                    $"{DateTime.Now:HH:mm:ss.fff} phase={phase}{keyPart} tick={inputBridgeTick} frame={machine.FrameCount} tstates={machine.Cpu.TStates} pc=0x{machine.Cpu.Regs.PC:X4}{matrixPart} {extra}");
+            }
         }
     }
 }

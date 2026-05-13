@@ -74,8 +74,9 @@ Milestone 7 In Progress - Audio Output Working, Snapshot And Tape Compatibility 
 - Exolon now works correctly from both `exolon.sna` and `Exolon.z80`
 - Exolon now also works from both `exolon.tap` and `Exolon.tzx`
 - `Where Time Stood Still.tap` now loads and starts gameplay correctly
-- Remaining JSW polish is limited to occasional `ENTER` responsiveness on the menu after waiting a few seconds
-- App-side keyboard bridging now defers host key release until the relevant Spectrum keyboard row has been scanned, with a bounded fallback to avoid sticky keys
+- App-side keyboard handling now uses a split model:
+  - ordinary mapped Spectrum keys are applied directly from WinForms key events
+  - composite cursor-style Spectrum chords use a small bridged hold/continuation window to keep menu input responsive
 - Z80 core refactored into focused partial files without intended behaviour changes
 
 CPU Compliance
