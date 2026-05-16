@@ -35,6 +35,19 @@ namespace Spectrum128kEmulator.Tap
             return new TapMountResult(blocks.Count, Path.GetFileName(path));
         }
 
+        public static TapeExecutionResult LoadWithPolicy(Spectrum128Machine machine, string path)
+        {
+            if (machine == null)
+                throw new ArgumentNullException(nameof(machine));
+            if (string.IsNullOrWhiteSpace(path))
+                throw new ArgumentException("Tape path must be provided.", nameof(path));
+
+            var blocks = ParseBlocks(File.ReadAllBytes(path), machine.FrameTStates == Spectrum128Machine.FrameTStates48);
+            string displayName = Path.GetFileName(path);
+            TapeLoadPlan plan = TapLoader.CreateExecutionPlan(machine, blocks);
+            return TapLoader.ExecutePlan(machine, displayName, blocks, plan);
+        }
+
         public static TapBootstrapResult BootstrapBasicProgramAndMountRemaining(Spectrum128Machine machine, string path)
         {
             if (machine == null)
@@ -176,14 +189,10 @@ namespace Spectrum128kEmulator.Tap
                         EnsureAvailable(fileData, offset, dataLength);
                         byte[] streamData = ReadBytes(fileData, offset, dataLength);
                         offset += dataLength;
-                        blocks.Add(RawTzxBlock.FromTapeBlock(TapeBlock.CreateData(
+                        blocks.Add(RawTzxBlock.FromTapeBlock(TapeBlock.CreateByteStreamData(
                             streamData,
-                            pilotPulseLength: 0,
-                            pilotPulseCount: 0,
-                            syncFirstPulseLength: 0,
-                            syncSecondPulseLength: 0,
-                            zeroBitPulseLength: zeroBit,
-                            oneBitPulseLength: oneBit,
+                            zeroBit,
+                            oneBit,
                             usedBits,
                             pauseMs)));
                         break;

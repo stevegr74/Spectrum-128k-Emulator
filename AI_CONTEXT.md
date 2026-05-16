@@ -1,5 +1,28 @@
 Project: ZX Spectrum 128K Emulator (C# WinForms)
 
+Current checkpoint on 2026-05-16:
+- User-verified tape baseline is now:
+  - `Exolon.tzx` works again and reaches the menu/game path
+  - `Impossible Mission - Bugfix.tzx` now works
+  - `Exolon.tap` still works
+  - `Where Time Stood Still.tap` still works
+- Important generic tape/runtime decisions now in place:
+  - protected live TZX tails keep exact emulated FE timing
+  - wall-clock acceleration for long live tape phases is now handled in the app scheduler, not by distorting tape pulses
+  - `MainForm` temporarily runs the emulator faster while a mounted tape is actively driving the EAR line
+  - audio submission is suppressed during that turbo window so the audio path does not bottleneck long live loads
+- Important generic mounted-tape fix kept:
+  - live electrical playback of standard ROM-loadable blocks now advances logical tape state even when the bytes are being consumed via `IN (FE)` rather than the ROM trap
+  - this prevents mounted TZX/TAP state from getting stranded on stale `NextBlock` / `ExpectData` values after real live playback
+- What was explicitly rejected during this pass:
+  - accelerating FE pulse timings for preloaded live standard blocks
+  - that made Exolon electrically decode garbage and regress to a black screen
+  - keep emulated tape timing exact; only accelerate wall-clock execution in the UI loop
+- Current broader tape goal remains unchanged:
+  - continue toward format- and structure-driven tape policies
+  - no game-name hacks
+  - fix remaining titles, starting with `Batman - Release 1.tzx`, using the same layered model
+
 Current checkpoint on 2026-05-13:
 - User accepted the current menu/input behavior as the new baseline.
 - The current live input model is:

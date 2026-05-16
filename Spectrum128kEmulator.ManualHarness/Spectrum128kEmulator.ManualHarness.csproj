@@ -9,4 +9,16 @@
   <ItemGroup>
     <ProjectReference Include="..\Spectrum128kEmulator.csproj" />
   </ItemGroup>
+
+  <ItemGroup>
+    <Compile Remove="obj\**\*.cs" />
+    <Compile Remove="bin\**\*.cs" />
+    <Compile Remove="tmp\**\*.cs" />
+    <EmbeddedResource Remove="obj\**\*" />
+    <EmbeddedResource Remove="bin\**\*" />
+    <EmbeddedResource Remove="tmp\**\*" />
+    <None Remove="obj\**\*" />
+    <None Remove="bin\**\*" />
+    <None Remove="tmp\**\*" />
+  </ItemGroup>
 </Project>

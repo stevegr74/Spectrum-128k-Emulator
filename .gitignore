@@ -5,6 +5,7 @@ obj/
 *.suo
 *.tmp
 *.log
+*.lscache
 *.vs/
 *.vscode/settings.json
 *.swp
@@ -399,3 +400,4 @@ Thumbs.db
 .dotnet/*
 .tmproms/*
 .codex_tmp_dump.csx
+tmp/

@@ -14,6 +14,7 @@ namespace Spectrum128kEmulator
         private static readonly bool LogKeyEvents = false;
         private static readonly bool EnableInputDiagnostics = false;
         private const int InputPollingSliceMilliseconds = 1;
+        private const int TurboTapeLoadFactor = 8;
 
         private int framesRenderedThisSecond;
         private long lastStatsTicks;
@@ -641,7 +642,11 @@ namespace Spectrum128kEmulator
 
                 lastSchedulerTicks = now;
 
-                accumulatedEmulationTStates += (double)elapsedTicks * machine.CurrentCpuClockHz / System.Diagnostics.Stopwatch.Frequency;
+                accumulatedEmulationTStates +=
+                    (double)elapsedTicks *
+                    machine.CurrentCpuClockHz *
+                    GetEmulationSpeedMultiplier() /
+                    System.Diagnostics.Stopwatch.Frequency;
 
                 int maxAccumulatedTStates = machine.FrameTStates * MaxCatchUpFramesPerTick;
                 if (accumulatedEmulationTStates > maxAccumulatedTStates)
@@ -657,6 +662,7 @@ namespace Spectrum128kEmulator
                 int tStatesPerSlice = Math.Max(1, machine.CurrentCpuClockHz / 1000 * InputPollingSliceMilliseconds);
                 int completedFrames = 0;
                 int tStatesBudget = wholeTStatesBudget;
+                bool suppressAudioSubmission = ShouldSuppressAudioSubmissionDuringTurboTapeLoad();
                 while (tStatesBudget > 0)
                 {
                     int sliceBudget = Math.Min(tStatesBudget, tStatesPerSlice);
@@ -665,7 +671,10 @@ namespace Spectrum128kEmulator
                     ProcessPendingSpectrumKeyReleases();
 
                     while (machine.TryDequeueCompletedAudioFrame(out var completedAudioFrame))
-                        audioPipeline.SubmitFrame(completedAudioFrame);
+                    {
+                        if (!suppressAudioSubmission)
+                            audioPipeline.SubmitFrame(completedAudioFrame);
+                    }
 
                     tStatesBudget -= sliceBudget;
                 }
@@ -773,6 +782,21 @@ namespace Spectrum128kEmulator
                 framesRenderedThisSecond = 0;
                 lastStatsTicks = nowTicks;
             }
+        }
+
+        private int GetEmulationSpeedMultiplier()
+        {
+            return IsTurboTapeLoadActive() ? TurboTapeLoadFactor : 1;
+        }
+
+        private bool ShouldSuppressAudioSubmissionDuringTurboTapeLoad()
+        {
+            return IsTurboTapeLoadActive();
+        }
+
+        private bool IsTurboTapeLoadActive()
+        {
+            return machine.MountedTape?.IsActivelyDrivingEarLine == true;
         }
 
         protected override void Dispose(bool disposing)

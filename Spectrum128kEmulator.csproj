@@ -16,11 +16,17 @@
   </ItemGroup>
 
   <ItemGroup>
+    <Compile Remove="obj\**\*.cs" />
+    <Compile Remove="bin\**\*.cs" />
     <Compile Remove="tmp\**\*.cs" />
     <Compile Remove="Spectrum128kEmulator.Tests\**\*.cs" />
     <Compile Remove="Spectrum128kEmulator.ManualHarness\**\*.cs" />
 	<Compile Remove="Spectrum128kEmulator.Z80Compliance\**\*.cs" />
+    <EmbeddedResource Remove="obj\**\*" />
+    <EmbeddedResource Remove="bin\**\*" />
     <EmbeddedResource Remove="tmp\**\*" />
+    <None Remove="obj\**\*" />
+    <None Remove="bin\**\*" />
     <None Remove="tmp\**\*" />
     <EmbeddedResource Remove="Spectrum128kEmulator.Tests\**\*" />
     <EmbeddedResource Remove="Spectrum128kEmulator.ManualHarness\**\*" />

@@ -397,8 +397,21 @@ namespace Spectrum128kEmulator
             AppendMemoryWindow(sb, cpu.Regs.SP, 32);
             AppendMemoryWindow(sb, cpu.Regs.PC, 24, "=== MEMORY PC ===");
             AppendMemoryWindow(sb, 0x5C00, 32, "=== MEMORY 5C00 ===");
+            AppendMemoryWindow(sb, 0x5C30, 48, "=== MEMORY 5C30 ===");
             AppendMemoryWindow(sb, cpu.Regs.IY, 16, "=== MEMORY IY ===");
             AppendMemoryWindow(sb, 0x5CB0, 16, "=== MEMORY 5CB0 ===");
+            AppendMemoryWindow(sb, 0x10A8, 24, "=== MEMORY 10A8 ===");
+            AppendMemoryWindow(sb, 0x111D, 24, "=== MEMORY 111D ===");
+            AppendMemoryWindow(sb, 0xFD00, 64, "=== MEMORY FD00 ===");
+            AppendMemoryWindow(sb, 0xFD60, 64, "=== MEMORY FD60 ===");
+            AppendMemoryWindow(sb, 0xFD3E, 64, "=== MEMORY FD3E ===");
+            AppendMemoryWindow(sb, 0xFE00, 64, "=== MEMORY FE00 ===");
+            AppendMemoryWindow(sb, 0xFE14, 64, "=== MEMORY FE14 ===");
+            AppendMemoryWindow(sb, 0xFE42, 64, "=== MEMORY FE42 ===");
+            AppendMemoryWindow(sb, 0xFE80, 32, "=== MEMORY FE80 ===");
+            AppendMemoryWindow(sb, 0xFE9C, 64, "=== MEMORY FE9C ===");
+            AppendMemoryWindow(sb, 0xFED8, 32, "=== MEMORY FED8 ===");
+            AppendMemoryWindow(sb, 0x5B00, 32, "=== MEMORY 5B00 ===");
 
             sb.AppendLine("=== KEYBOARD MATRIX ===");
             for (int row = 0; row < keyboardMatrix.Length; row++)
