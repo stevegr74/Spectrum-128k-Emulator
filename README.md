@@ -62,6 +62,7 @@ Milestone 7 In Progress - Audio Output Working, Snapshot And Tape Compatibility 
 - `.tap` loading works through the ROM-driven path
 - `.tap` loading now works for real game cases including `exolon.tap` and `Where Time Stood Still.tap`
 - `.tzx` support is implemented and `Exolon.tzx` is verified working
+- `Impossible Mission - Bugfix.tzx` now loads successfully
 - `.rzx` replay support is implemented and `aufmonty.rzx` plays back successfully
 - AY register model implemented and wired to ports
 - 48K beeper implemented via port `0xFE` (speaker state + edge detection)
@@ -110,10 +111,13 @@ Tape Loading Progress (Milestone 6)
 - working verified examples now include:
   - `exolon.tap`
   - `Exolon.tzx`
+  - `Impossible Mission - Bugfix.tzx`
   - `Where Time Stood Still.tap`
   - `aufmonty.rzx`
+- mounted live-tape playback now uses a generic wall-clock turbo path in the app while the tape is actively driving the EAR line
+- emulated FE/tape pulse timing is kept exact during those live phases; the speed-up happens in the UI scheduler rather than by distorting tape data
 
-Timing is still deliberately simplified at this stage. Broader `.tzx` compatibility work remains, especially for harder custom loaders not yet verified.
+Broader `.tzx` compatibility work still remains for additional protected/custom titles, with `Batman - Release 1.tzx` as the next active target.
 
 Audio Progress (Milestone 7)
 - AY register model implemented

@@ -17,6 +17,8 @@ namespace Spectrum128kEmulator.Tap
     {
         private TapeBlock(
             TapeBlockKind kind,
+            bool isLoadableRomBlock,
+            bool canUseRomLoadTrap,
             byte[]? streamData,
             byte[]? payload,
             byte checksum,
@@ -36,6 +38,8 @@ namespace Spectrum128kEmulator.Tap
             bool? signalLevel)
         {
             Kind = kind;
+            IsLoadableRomBlock = isLoadableRomBlock;
+            CanUseRomLoadTrap = canUseRomLoadTrap;
             StreamData = streamData;
             Payload = payload;
             Checksum = checksum;
@@ -56,6 +60,8 @@ namespace Spectrum128kEmulator.Tap
         }
 
         public TapeBlockKind Kind { get; }
+        public bool IsLoadableRomBlock { get; }
+        public bool CanUseRomLoadTrap { get; }
         public byte[]? StreamData { get; }
         public byte[]? Payload { get; }
         public byte Checksum { get; }
@@ -75,7 +81,6 @@ namespace Spectrum128kEmulator.Tap
         public bool? SignalLevel { get; }
 
         public bool IsDataBlock => Kind == TapeBlockKind.Data;
-        public bool IsLoadableRomBlock => IsDataBlock && StreamData != null && StreamData.Length >= 2;
         public byte Flag => StreamData == null || StreamData.Length == 0 ? (byte)0xFF : StreamData[0];
         public int StreamByteCount => StreamData?.Length ?? 0;
 
@@ -119,6 +124,8 @@ namespace Spectrum128kEmulator.Tap
 
             return new TapeBlock(
                 TapeBlockKind.Data,
+                isLoadableRomBlock: true,
+                canUseRomLoadTrap: true,
                 (byte[])streamData.Clone(),
                 payload,
                 streamData[^1],
@@ -138,10 +145,50 @@ namespace Spectrum128kEmulator.Tap
                 null);
         }
 
+        public static TapeBlock CreateByteStreamData(
+            byte[] streamData,
+            ushort zeroBitPulseLength,
+            ushort oneBitPulseLength,
+            byte usedBitsInLastByte,
+            ushort pauseAfterBlockMs)
+        {
+            if (streamData == null)
+                throw new ArgumentNullException(nameof(streamData));
+            if (streamData.Length == 0)
+                throw new ArgumentException("Tape byte-stream blocks must contain at least one data byte.", nameof(streamData));
+
+            byte[]? payload = null;
+            byte checksum = 0;
+
+            return new TapeBlock(
+                TapeBlockKind.Data,
+                isLoadableRomBlock: false,
+                canUseRomLoadTrap: false,
+                (byte[])streamData.Clone(),
+                payload,
+                checksum,
+                0,
+                0,
+                0,
+                0,
+                zeroBitPulseLength,
+                oneBitPulseLength,
+                usedBitsInLastByte == 0 ? (byte)8 : usedBitsInLastByte,
+                pauseAfterBlockMs,
+                0,
+                0,
+                null,
+                null,
+                0,
+                null);
+        }
+
         public static TapeBlock CreatePureTone(ushort pulseLength, ushort pulseCount)
         {
             return new TapeBlock(
                 TapeBlockKind.PureTone,
+                isLoadableRomBlock: false,
+                canUseRomLoadTrap: false,
                 null,
                 null,
                 0,
@@ -168,6 +215,8 @@ namespace Spectrum128kEmulator.Tap
 
             return new TapeBlock(
                 TapeBlockKind.PulseSequence,
+                isLoadableRomBlock: false,
+                canUseRomLoadTrap: false,
                 null,
                 null,
                 0,
@@ -200,6 +249,8 @@ namespace Spectrum128kEmulator.Tap
 
             return new TapeBlock(
                 TapeBlockKind.DirectRecording,
+                isLoadableRomBlock: false,
+                canUseRomLoadTrap: false,
                 null,
                 null,
                 0,
@@ -223,6 +274,8 @@ namespace Spectrum128kEmulator.Tap
         {
             return new TapeBlock(
                 TapeBlockKind.Pause,
+                isLoadableRomBlock: false,
+                canUseRomLoadTrap: false,
                 null,
                 null,
                 0,
@@ -246,6 +299,8 @@ namespace Spectrum128kEmulator.Tap
         {
             return new TapeBlock(
                 TapeBlockKind.SetSignalLevel,
+                isLoadableRomBlock: false,
+                canUseRomLoadTrap: false,
                 null,
                 null,
                 0,
@@ -269,6 +324,8 @@ namespace Spectrum128kEmulator.Tap
         {
             return new TapeBlock(
                 TapeBlockKind.Metadata,
+                isLoadableRomBlock: false,
+                canUseRomLoadTrap: false,
                 null,
                 null,
                 0,

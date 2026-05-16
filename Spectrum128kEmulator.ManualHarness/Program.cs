@@ -5,6 +5,7 @@ using System.Drawing.Imaging;
 using System.IO;
 using Spectrum128kEmulator.Tap;
 using Spectrum128kEmulator;
+using System.Reflection;
 
 string romFolder = Path.Combine(AppContext.BaseDirectory, "ROMs");
 var machine = new Spectrum128Machine(romFolder);
@@ -18,6 +19,7 @@ if (args.Length > 0)
     uint? initialTStatesOverride = null;
     int floatingBusDisplayStartAdjust = 0;
     int floatingBusSampleAdjust = 0;
+    TapeLoadStrategy? forcedTapeStrategy = null;
     (ushort Start, ushort End)? focusedTraceRange = null;
     int focusedTraceStartFrame = 0;
     int focusedTraceFrameLimit = 0;
@@ -49,6 +51,10 @@ if (args.Length > 0)
         else if (arg.StartsWith("fbsample=", StringComparison.OrdinalIgnoreCase))
         {
             floatingBusSampleAdjust = int.Parse(arg["fbsample=".Length..]);
+        }
+        else if (arg.StartsWith("strategy=", StringComparison.OrdinalIgnoreCase))
+        {
+            forcedTapeStrategy = ParseTapeStrategy(arg["strategy=".Length..]);
         }
         else if (arg.StartsWith("pc=", StringComparison.OrdinalIgnoreCase))
         {
@@ -101,51 +107,17 @@ if (args.Length > 0)
     }
     else if (extension.Equals(".tap", StringComparison.OrdinalIgnoreCase))
     {
-        try
-        {
-            TapBootstrapResult result = TapLoader.LoadAllStandardBlocksAndAutoStart(machine, snapshotPath);
-            Console.WriteLine(
-                $"TAP full-load complete: blocks={result.TotalBlockCount} consumed={result.ConsumedBlockCount} autoStart={result.AutoStartFileName ?? "(none)"}");
-        }
-        catch (InvalidOperationException ex) when (ex.Message.Contains("cannot be fully fake-loaded", StringComparison.Ordinal))
-        {
-            try
-            {
-                TapBootstrapResult result = TapLoader.BootstrapBasicProgramAndMountRemaining(machine, snapshotPath);
-                Console.WriteLine(
-                    $"TAP hybrid bootstrap complete: blocks={result.TotalBlockCount} consumed={result.ConsumedBlockCount} autoStart={result.AutoStartFileName ?? "(none)"} mounted={result.DisplayName}");
-            }
-            catch (InvalidOperationException bootstrapEx)
-            {
-                Console.WriteLine($"TAP bootstrap fallback: {bootstrapEx.Message}");
-                TapMountResult result = TapLoader.Mount(machine, snapshotPath);
-                Console.WriteLine($"TAP mounted: blocks={result.TotalBlockCount} display={result.DisplayName}");
-            }
-        }
+        TapeExecutionResult result = forcedTapeStrategy.HasValue
+            ? LoadTapeWithForcedStrategy(machine, snapshotPath, forcedTapeStrategy.Value, isTzx: false)
+            : TapLoader.LoadWithPolicy(machine, snapshotPath);
+        Console.WriteLine(DescribeTapeExecution("TAP", result));
     }
     else if (extension.Equals(".tzx", StringComparison.OrdinalIgnoreCase))
     {
-        try
-        {
-            TapBootstrapResult result = TzxLoader.LoadAllStandardBlocksAndAutoStart(machine, snapshotPath);
-            Console.WriteLine(
-                $"TZX full-load complete: blocks={result.TotalBlockCount} consumed={result.ConsumedBlockCount} autoStart={result.AutoStartFileName ?? "(none)"}");
-        }
-        catch (InvalidOperationException ex) when (ex.Message.Contains("cannot be fully fake-loaded", StringComparison.Ordinal))
-        {
-            try
-            {
-                TapBootstrapResult result = TzxLoader.BootstrapBasicProgramAndMountRemaining(machine, snapshotPath);
-                Console.WriteLine(
-                    $"TZX hybrid bootstrap complete: blocks={result.TotalBlockCount} consumed={result.ConsumedBlockCount} autoStart={result.AutoStartFileName ?? "(none)"} mounted={result.DisplayName}");
-            }
-            catch (InvalidOperationException bootstrapEx)
-            {
-                Console.WriteLine($"TZX bootstrap fallback: {bootstrapEx.Message}");
-                TapMountResult result = TzxLoader.Mount(machine, snapshotPath);
-                Console.WriteLine($"TZX mounted: blocks={result.TotalBlockCount} display={result.DisplayName}");
-            }
-        }
+        TapeExecutionResult result = forcedTapeStrategy.HasValue
+            ? LoadTapeWithForcedStrategy(machine, snapshotPath, forcedTapeStrategy.Value, isTzx: true)
+            : TzxLoader.LoadWithPolicy(machine, snapshotPath);
+        Console.WriteLine(DescribeTapeExecution("TZX", result));
     }
     else if (extension.Equals(".rzx", StringComparison.OrdinalIgnoreCase))
     {
@@ -303,6 +275,23 @@ if (args.Length > 0)
     return;
 }
 
+static string DescribeTapeExecution(string format, TapeExecutionResult result)
+{
+    return result.Strategy switch
+    {
+        TapeLoadStrategy.FullFakeLoad =>
+            $"{format} full-load complete: blocks={result.TotalBlockCount} consumed={result.ConsumedBlockCount} autoStart={result.AutoStartFileName ?? "(none)"}",
+        TapeLoadStrategy.LeadingStandardChainFakeLoad =>
+            $"{format} leading standard chain fake-load: blocks={result.TotalBlockCount} consumed={result.ConsumedBlockCount} autoStart={result.AutoStartFileName ?? "(none)"} mounted={result.DisplayName}",
+        TapeLoadStrategy.BootstrapHybrid =>
+            $"{format} hybrid bootstrap complete: blocks={result.TotalBlockCount} consumed={result.ConsumedBlockCount} autoStart={result.AutoStartFileName ?? "(none)"} mounted={result.DisplayName}",
+        TapeLoadStrategy.RomBootstrapMounted =>
+            $"{format} ROM bootstrap mounted: blocks={result.TotalBlockCount} consumed={result.ConsumedBlockCount} autoStart={result.AutoStartFileName ?? "(none)"} mounted={result.DisplayName}",
+        _ =>
+            $"{format} mounted: blocks={result.TotalBlockCount} display={result.DisplayName}"
+    };
+}
+
 Console.WriteLine("Manual smoke harness starting...");
 for (int frame = 0; frame < 120; frame++)
 {
@@ -408,6 +397,59 @@ static ScheduledFrameTimingEvent ParseFrameTimingEvent(string script)
     return new ScheduledFrameTimingEvent(frame, frameTStates);
 }
 
+static TapeLoadStrategy ParseTapeStrategy(string value)
+{
+    return value.Trim().ToLowerInvariant() switch
+    {
+        "full" => TapeLoadStrategy.FullFakeLoad,
+        "leadchain" => TapeLoadStrategy.LeadingStandardChainFakeLoad,
+        "rom" => TapeLoadStrategy.RomBootstrapMounted,
+        "hybrid" => TapeLoadStrategy.BootstrapHybrid,
+        "mounted" => TapeLoadStrategy.MountedRealtime,
+        _ => throw new InvalidOperationException($"Unsupported tape strategy '{value}'.")
+    };
+}
+
+static TapeExecutionResult LoadTapeWithForcedStrategy(
+    Spectrum128Machine machine,
+    string path,
+    TapeLoadStrategy strategy,
+    bool isTzx)
+{
+    byte[] fileData = File.ReadAllBytes(path);
+    IReadOnlyList<TapeBlock> blocks = isTzx
+        ? TzxLoader.ParseBlocks(fileData)
+        : InvokeTapLoaderParseBlocks(fileData);
+    TapeLoadPlan plan = new(strategy, $"Forced harness strategy {strategy}");
+    return InvokeTapLoaderExecutePlan(machine, Path.GetFileName(path), blocks, plan);
+}
+
+static IReadOnlyList<TapeBlock> InvokeTapLoaderParseBlocks(byte[] fileData)
+{
+    MethodInfo? parseBlocks = typeof(TapLoader).GetMethod(
+        "ParseBlocks",
+        BindingFlags.Static | BindingFlags.NonPublic);
+    if (parseBlocks == null)
+        throw new InvalidOperationException("Could not find TapLoader.ParseBlocks via reflection.");
+
+    return (IReadOnlyList<TapeBlock>)parseBlocks.Invoke(null, new object[] { fileData })!;
+}
+
+static TapeExecutionResult InvokeTapLoaderExecutePlan(
+    Spectrum128Machine machine,
+    string displayName,
+    IReadOnlyList<TapeBlock> blocks,
+    TapeLoadPlan plan)
+{
+    MethodInfo? executePlan = typeof(TapLoader).GetMethod(
+        "ExecutePlan",
+        BindingFlags.Static | BindingFlags.NonPublic);
+    if (executePlan == null)
+        throw new InvalidOperationException("Could not find TapLoader.ExecutePlan via reflection.");
+
+    return (TapeExecutionResult)executePlan.Invoke(null, new object[] { machine, displayName, blocks, plan })!;
+}
+
 static (ushort Start, ushort End) ParseTraceRange(string script)
 {
     string[] parts = script.Split('-', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
@@ -471,7 +513,17 @@ static IEnumerable<(int row, int bit)> ResolveKey(string keyName)
         case "7": yield return (4, 3); yield break;
         case "6": yield return (4, 4); yield break;
         case "y": yield return (5, 4); yield break;
+        case "u": yield return (5, 3); yield break;
+        case "i": yield return (5, 2); yield break;
+        case "o": yield return (5, 1); yield break;
+        case "p": yield return (5, 0); yield break;
+        case "r": yield return (2, 3); yield break;
+        case "h": yield return (6, 4); yield break;
+        case "j": yield return (6, 3); yield break;
+        case "k": yield return (6, 2); yield break;
+        case "l": yield return (6, 1); yield break;
         case "n": yield return (7, 3); yield break;
+        case "m": yield return (7, 2); yield break;
         case "enter": yield return (6, 0); yield break;
         case "space": yield return (7, 0); yield break;
         case "shift": yield return (0, 0); yield break;
