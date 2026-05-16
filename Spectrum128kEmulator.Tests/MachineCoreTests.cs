@@ -196,6 +196,46 @@ namespace Spectrum128kEmulator.Tests
         }
 
         [Fact]
+        public void ExecuteTimeSlice_DoesNot_Queue_AudioFrames_When_AudioCapture_Is_Disabled()
+        {
+            string romFolder = CreateTempRoms();
+            try
+            {
+                var machine = new Spectrum128Machine(romFolder);
+                machine.SetAudioFrameCaptureEnabled(false);
+
+                Assert.Equal(1, machine.ExecuteTimeSlice(Spectrum128Machine.FrameTStates128));
+                Assert.Equal(1, machine.FrameCount);
+                Assert.False(machine.TryDequeueCompletedAudioFrame(out _));
+            }
+            finally
+            {
+                Directory.Delete(romFolder, true);
+            }
+        }
+
+        [Fact]
+        public void ExecuteTimeSlice_Queues_AudioFrames_Again_After_AudioCapture_Is_Reenabled()
+        {
+            string romFolder = CreateTempRoms();
+            try
+            {
+                var machine = new Spectrum128Machine(romFolder);
+                machine.SetAudioFrameCaptureEnabled(false);
+                machine.ExecuteTimeSlice(Spectrum128Machine.FrameTStates128);
+                Assert.False(machine.TryDequeueCompletedAudioFrame(out _));
+
+                machine.SetAudioFrameCaptureEnabled(true);
+                Assert.Equal(1, machine.ExecuteTimeSlice(Spectrum128Machine.FrameTStates128));
+                Assert.True(machine.TryDequeueCompletedAudioFrame(out _));
+            }
+            finally
+            {
+                Directory.Delete(romFolder, true);
+            }
+        }
+
+        [Fact]
         public void ConfigureFor48kSnapshot_UsesBaselineFrameTiming()
         {
             string romFolder = CreateTempRoms();

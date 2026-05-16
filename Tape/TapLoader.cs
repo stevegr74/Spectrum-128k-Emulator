@@ -220,6 +220,14 @@ namespace Spectrum128kEmulator.Tap
             $"EarLevel={(earLevel ? 1 : 0)} Started={(earPlaybackStarted ? 1 : 0)} Retained={(retainedByteStreamTrapAvailable ? 1 : 0)} " +
             $"RomTrapBlock={romStreamTrapBlockIndex} RomTrapByte={romStreamTrapByteIndex}";
         public bool IsActivelyDrivingEarLine => earPlaybackState != EarPlaybackState.Idle;
+        public bool IsActivelyStreamingEarSignal =>
+            earPlaybackState is not EarPlaybackState.Idle
+            and not EarPlaybackState.Pause
+            and not EarPlaybackState.EndOfStreamTransition;
+        public bool IsStreamingProtectedByteStream =>
+            TryGetActivePlaybackBlock(out TapeBlock? block) && block != null &&
+            (block.Kind == TapeBlockKind.DirectRecording ||
+             (block.Kind == TapeBlockKind.Data && !block.IsLoadableRomBlock));
 
         public void Reset()
         {
@@ -293,6 +301,18 @@ namespace Spectrum128kEmulator.Tap
         public bool ReadEarBit()
         {
             return ReadEarBit(lastEarSampleTStates + 1024UL);
+        }
+
+        private bool TryGetActivePlaybackBlock(out TapeBlock? block)
+        {
+            if (earPlaybackBlockIndex >= 0 && earPlaybackBlockIndex < blocks.Count)
+            {
+                block = blocks[earPlaybackBlockIndex];
+                return true;
+            }
+
+            block = null;
+            return false;
         }
 
         public bool TryHandleRomLoadTrap(Spectrum128Machine machine, Z80Cpu cpu)

@@ -9,13 +9,13 @@ namespace Spectrum128kEmulator
         private static readonly int[] NormalPalette =
         {
             unchecked((int)0xFF000000), // black
-            unchecked((int)0xFF0000C0), // blue
-            unchecked((int)0xFFC00000), // red
-            unchecked((int)0xFFC000C0), // magenta
-            unchecked((int)0xFF00C000), // green
-            unchecked((int)0xFF00C0C0), // cyan
-            unchecked((int)0xFFC0C000), // yellow
-            unchecked((int)0xFFC0C0C0)  // white
+            unchecked((int)0xFF0000D7), // blue
+            unchecked((int)0xFFD70000), // red
+            unchecked((int)0xFFD700D7), // magenta
+            unchecked((int)0xFF00D700), // green
+            unchecked((int)0xFF00D7D7), // cyan
+            unchecked((int)0xFFD7D700), // yellow
+            unchecked((int)0xFFD7D7D7)  // white
         };
 
         private static readonly int[] BrightPalette =
