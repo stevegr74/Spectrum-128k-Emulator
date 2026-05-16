@@ -64,6 +64,10 @@ Milestone 7 In Progress - Audio Output Working, Snapshot And Tape Compatibility 
 - `.tzx` support is implemented and `Exolon.tzx` is verified working
 - `Impossible Mission - Bugfix.tzx` now loads successfully
 - `.rzx` replay support is implemented and `aufmonty.rzx` plays back successfully
+- emulation and audio submission now run on a background loop while the UI presents frames at a fixed 50Hz cadence
+- muted turbo tape loads skip unnecessary per-frame audio-frame construction
+- protected non-ROM live tape streams use a lower turbo ceiling than ordinary streaming tape
+- the Spectrum palette now uses standard `0xD7` normal and `0xFF` bright intensity levels
 - AY register model implemented and wired to ports
 - 48K beeper implemented via port `0xFE` (speaker state + edge detection)
 - AY tone, envelope, and noise output implemented

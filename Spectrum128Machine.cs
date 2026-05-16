@@ -53,6 +53,7 @@ namespace Spectrum128kEmulator
         private readonly List<Audio.AyRegisterWrite> ayWrites = new List<Audio.AyRegisterWrite>();
         private Audio.AyAudioState? frameStartAyState;
         private readonly Queue<Audio.AudioFrame> completedAudioFrames = new Queue<Audio.AudioFrame>();
+        private bool captureAudioFramesEnabled = true;
 
         private const int DebugHistoryCapacity = 8192;
         private readonly Queue<string> recentMemoryEvents = new Queue<string>();
@@ -311,15 +312,24 @@ namespace Spectrum128kEmulator
                     continue;
 
                 lastAudioFrameTStates = (int)Math.Min((ulong)int.MaxValue, cpu.TStates - frameStartTStates);
-                completedAudioFrames.Enqueue(new Audio.AudioFrame(
-                    lastAudioFrameTStates,
-                    CurrentCpuClockHz,
-                    frameStartSpeakerHigh,
-                    speakerHigh,
-                    beeperEvents,
-                    ay.CaptureAudioState(),
-                    frameStartAyState,
-                    ayWrites));
+                if (captureAudioFramesEnabled)
+                {
+                    completedAudioFrames.Enqueue(new Audio.AudioFrame(
+                        lastAudioFrameTStates,
+                        CurrentCpuClockHz,
+                        frameStartSpeakerHigh,
+                        speakerHigh,
+                        beeperEvents,
+                        ay.CaptureAudioState(),
+                        frameStartAyState,
+                        ayWrites));
+                }
+                else
+                {
+                    beeperEvents.Clear();
+                    ayWrites.Clear();
+                    frameStartAyState = null;
+                }
 
                 currentFrameExecutedTStates = 0;
                 FrameCount++;
@@ -349,6 +359,18 @@ namespace Spectrum128kEmulator
             {
                 recentMemoryEvents.Clear();
                 recentPortEvents.Clear();
+            }
+        }
+
+        public void SetAudioFrameCaptureEnabled(bool enabled)
+        {
+            captureAudioFramesEnabled = enabled;
+            if (!enabled)
+            {
+                completedAudioFrames.Clear();
+                beeperEvents.Clear();
+                ayWrites.Clear();
+                frameStartAyState = null;
             }
         }
 
@@ -1196,13 +1218,16 @@ namespace Spectrum128kEmulator
         {
             frameStartTStates = cpu.TStates;
             frameStartSpeakerHigh = speakerHigh;
-            frameStartAyState = ay.CaptureAudioState();
+            frameStartAyState = captureAudioFramesEnabled ? ay.CaptureAudioState() : null;
             beeperEvents.Clear();
             ayWrites.Clear();
         }
 
         private void RecordBeeperEvent(bool newSpeakerHigh)
         {
+            if (!captureAudioFramesEnabled)
+                return;
+
             ulong elapsed = cpu.TStates - frameStartTStates;
             int offset = (int)Math.Min((ulong)int.MaxValue, elapsed);
             beeperEvents.Add(new Audio.BeeperEvent(offset, newSpeakerHigh));
@@ -1210,6 +1235,9 @@ namespace Spectrum128kEmulator
 
         private void RecordAyWrite(byte register, byte value)
         {
+            if (!captureAudioFramesEnabled)
+                return;
+
             ulong elapsed = cpu.TStates - frameStartTStates;
             int offset = (int)Math.Min((ulong)int.MaxValue, elapsed);
             ayWrites.Add(new Audio.AyRegisterWrite(offset, register, value));

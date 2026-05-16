@@ -230,6 +230,43 @@ namespace Spectrum128kEmulator.Tests
         }
 
         [Fact]
+        public void MountedTape_Identifies_ProtectedLiveByteStream_Only_For_NonRom_StreamPlayback()
+        {
+            var protectedTape = new MountedTape(
+                "protected",
+                new TapeBlock[]
+                {
+                    TapeBlock.CreateByteStreamData(new byte[] { 0x12, 0x34, 0x56 }, 855, 1710, 8, 0)
+                },
+                initialBlockIndex: 0,
+                skipCustomHeaderForEarPlayback: false);
+
+            Assert.True(protectedTape.IsActivelyStreamingEarSignal);
+            Assert.True(protectedTape.IsStreamingProtectedByteStream);
+
+            var romTape = new MountedTape(
+                "rom",
+                new TapeBlock[]
+                {
+                    TapeBlock.CreateData(
+                        new byte[] { 0x00, 0xAA, 0x55 },
+                        2168,
+                        10,
+                        667,
+                        735,
+                        855,
+                        1710,
+                        8,
+                        1000)
+                },
+                initialBlockIndex: 0,
+                skipCustomHeaderForEarPlayback: false);
+
+            Assert.True(romTape.IsActivelyStreamingEarSignal);
+            Assert.False(romTape.IsStreamingProtectedByteStream);
+        }
+
+        [Fact]
         public void MountedTape_NaturalByteStreamCompletion_RetainsProtectedByteStreamWhenLogicalLoadStateIsActive()
         {
             string tempFolder = CreateTempRoms();

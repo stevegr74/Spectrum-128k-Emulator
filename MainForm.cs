@@ -2,6 +2,8 @@
 using System.Drawing.Imaging;
 using System.IO;
 using System.Runtime.InteropServices;
+using System.Threading;
+using System.Threading.Tasks;
 using Spectrum128kEmulator.Audio;
 
 namespace Spectrum128kEmulator
@@ -13,15 +15,25 @@ namespace Spectrum128kEmulator
         private static readonly bool LogPagingWrites = false;
         private static readonly bool LogKeyEvents = false;
         private static readonly bool EnableInputDiagnostics = false;
+        private static readonly bool EnablePerformanceDiagnostics = false;
         private const int InputPollingSliceMilliseconds = 1;
         private const int TurboTapeLoadFactor = 8;
+        private const int ProtectedStreamTurboTapeLoadFactor = 2;
+        private const int MinTurboTapeLoadFactor = 1;
+        private const double TurboTickSlowThresholdMilliseconds = 12.0;
+        private const double TurboTickRecoverThresholdMilliseconds = 6.0;
 
         private int framesRenderedThisSecond;
         private long lastStatsTicks;
         private readonly System.Diagnostics.Stopwatch frameClock = System.Diagnostics.Stopwatch.StartNew();
         private long lastSchedulerTicks;
+        private long lastPresentationTicks;
         private double accumulatedEmulationTStates;
+        private int currentTurboTapeLoadFactor = TurboTapeLoadFactor;
         private const int MaxCatchUpFramesPerTick = 2;
+        private const int PresentationFramesPerSecond = 50;
+        private static readonly long PresentationIntervalTicks =
+            System.Diagnostics.Stopwatch.Frequency / PresentationFramesPerSecond;
         private readonly Bitmap screenBitmap = new Bitmap(Spectrum128Machine.ScreenWidth, Spectrum128Machine.ScreenHeight, PixelFormat.Format32bppArgb);
         private readonly System.Windows.Forms.Timer frameTimer = new System.Windows.Forms.Timer { Interval = 1 };
         private readonly PictureBox screenBox = new PictureBox
@@ -33,13 +45,27 @@ namespace Spectrum128kEmulator
         private readonly Label fpsLabel = new Label();
 
         private readonly Spectrum128Machine machine;
+        private readonly object machineLock = new();
+        private readonly object audioPipelineLock = new();
         private readonly HashSet<Keys> pressedSpectrumKeys = new();
         private readonly SpectrumKeyInputBridge spectrumKeyInputBridge = new(8, 40, 90);
+        private readonly CancellationTokenSource emulationLoopCts = new();
+        private Task? emulationLoopTask;
         private AudioPipeline audioPipeline;
         private int inputBridgeTick;
         private readonly object inputDiagnosticsLock = new();
         private StreamWriter? inputDiagnosticsWriter;
         private string? inputDiagnosticsPath;
+        private readonly object performanceDiagnosticsLock = new();
+        private StreamWriter? performanceDiagnosticsWriter;
+        private long lastPerformanceStatsTicks;
+        private int performanceTickCount;
+        private int performancePresentedFrames;
+        private int performanceCompletedFrames;
+        private double performanceExecuteSliceMilliseconds;
+        private double performanceAudioSubmitMilliseconds;
+        private double performanceRenderMilliseconds;
+        private double performancePresentMilliseconds;
 
         public MainForm()
         {
@@ -70,12 +96,16 @@ namespace Spectrum128kEmulator
             };
             InitializeKeyboard();
             InitializeInputDiagnostics();
+            InitializePerformanceDiagnostics();
             long now = frameClock.ElapsedTicks;
             lastSchedulerTicks = now;
+            lastPresentationTicks = now;
             accumulatedEmulationTStates = 0;
+            emulationLoopTask = Task.Run(() => EmulationLoop(emulationLoopCts.Token));
             frameTimer.Tick += FrameTimer_Tick;
             frameTimer.Start();
             lastStatsTicks = now;
+            lastPerformanceStatsTicks = now;
             Console.WriteLine("=== Emulator started - ROM loaded - CPU Reset ===");
         }
 
@@ -106,10 +136,13 @@ namespace Spectrum128kEmulator
         private void MainForm_Deactivate(object? sender, EventArgs e)
         {
             LogInputDiagnostic("deactivate", null, "clearing input state");
-            pressedSpectrumKeys.Clear();
-            spectrumKeyInputBridge.Reset();
-            inputBridgeTick = 0;
-            machine.ClearKeyboard();
+            lock (machineLock)
+            {
+                pressedSpectrumKeys.Clear();
+                spectrumKeyInputBridge.Reset();
+                inputBridgeTick = 0;
+                machine.ClearKeyboard();
+            }
         }
 
         private void MainForm_PreviewKeyDown(object? sender, PreviewKeyDownEventArgs e)
@@ -123,7 +156,8 @@ namespace Spectrum128kEmulator
             if (IsSpectrumMappedKey(e.KeyCode))
             {
                 LogInputDiagnostic("keydown", e.KeyCode, "mapped event");
-                UpdateSpectrumMappedKeyState(e.KeyCode, true);
+                lock (machineLock)
+                    UpdateSpectrumMappedKeyState(e.KeyCode, true);
                 e.Handled = true;
                 e.SuppressKeyPress = true;
                 return;
@@ -146,7 +180,8 @@ namespace Spectrum128kEmulator
             if (IsSpectrumMappedKey(e.KeyCode))
             {
                 LogInputDiagnostic("keyup", e.KeyCode, "mapped event");
-                UpdateSpectrumMappedKeyState(e.KeyCode, false);
+                lock (machineLock)
+                    UpdateSpectrumMappedKeyState(e.KeyCode, false);
                 e.Handled = true;
                 e.SuppressKeyPress = true;
                 return;
@@ -190,15 +225,18 @@ namespace Spectrum128kEmulator
                 return;
             }
 
-            if (pressed)
+            lock (machineLock)
             {
-                foreach (var change in spectrumKeyInputBridge.RegisterKeyDown(key, GetSpectrumKeyRows(key), machine.GetKeyboardRowScanCount, inputBridgeTick))
-                    ApplySpectrumKeyState(change.Key, change.Pressed);
-            }
-            else
-            {
-                foreach (var change in spectrumKeyInputBridge.RegisterKeyUp(key, machine.GetKeyboardRowScanCount, inputBridgeTick))
-                    ApplySpectrumKeyState(change.Key, change.Pressed);
+                if (pressed)
+                {
+                    foreach (var change in spectrumKeyInputBridge.RegisterKeyDown(key, GetSpectrumKeyRows(key), machine.GetKeyboardRowScanCount, inputBridgeTick))
+                        ApplySpectrumKeyState(change.Key, change.Pressed);
+                }
+                else
+                {
+                    foreach (var change in spectrumKeyInputBridge.RegisterKeyUp(key, machine.GetKeyboardRowScanCount, inputBridgeTick))
+                        ApplySpectrumKeyState(change.Key, change.Pressed);
+                }
             }
 
             if (LogKeyEvents)
@@ -449,19 +487,14 @@ namespace Spectrum128kEmulator
 
             try
             {
-                SnapshotLoader.LoadSna48k(machine, dialog.FileName);
-
-                SpectrumRenderer.RenderToBitmap(
-                    screenBitmap,
-                    machine.GetScreenBankData(),
-                    machine.BorderColor,
-                    machine.FlashPhase);
-
-                screenBox.Image = screenBitmap;
+                lock (machineLock)
+                    SnapshotLoader.LoadSna48k(machine, dialog.FileName);
                 fpsLabel.Text = $"Loaded: {Path.GetFileName(dialog.FileName)}";
                 ResetFrameScheduler();
                 RecreateAudioPipeline();
-                machine.ClearDebugHistory();
+                lock (machineLock)
+                    machine.ClearDebugHistory();
+                PresentCurrentMachineFrame(frameClock.ElapsedTicks + PresentationIntervalTicks);
                 screenBox.Focus();
             }
             catch (Exception ex)
@@ -494,16 +527,22 @@ namespace Spectrum128kEmulator
                 string displayName = Path.GetFileName(dialog.FileName);
                 if (extension.Equals(".tzx", StringComparison.OrdinalIgnoreCase))
                 {
-                    Tap.TapeExecutionResult result = Tap.TzxLoader.LoadWithPolicy(machine, dialog.FileName);
+                    Tap.TapeExecutionResult result;
+                    lock (machineLock)
+                        result = Tap.TzxLoader.LoadWithPolicy(machine, dialog.FileName);
                     fpsLabel.Text = DescribeTapeExecution("TZX", displayName, result);
                 }
                 else
                 {
-                    Tap.TapeExecutionResult result = Tap.TapLoader.LoadWithPolicy(machine, dialog.FileName);
+                    Tap.TapeExecutionResult result;
+                    lock (machineLock)
+                        result = Tap.TapLoader.LoadWithPolicy(machine, dialog.FileName);
                     fpsLabel.Text = DescribeTapeExecution("TAP", displayName, result);
                 }
                 ResetFrameScheduler();
-                machine.ClearDebugHistory();
+                lock (machineLock)
+                    machine.ClearDebugHistory();
+                PresentCurrentMachineFrame(frameClock.ElapsedTicks + PresentationIntervalTicks);
                 screenBox.Focus();
             }
             catch (Exception ex)
@@ -547,21 +586,21 @@ namespace Spectrum128kEmulator
             {
                 string extension = Path.GetExtension(dialog.FileName);
                 if (extension.Equals(".rzx", StringComparison.OrdinalIgnoreCase))
-                    RzxLoader.Load(machine, dialog.FileName);
+                {
+                    lock (machineLock)
+                        RzxLoader.Load(machine, dialog.FileName);
+                }
                 else
-                    Z80SnapshotLoader.Load(machine, dialog.FileName);
-
-                SpectrumRenderer.RenderToBitmap(
-                    screenBitmap,
-                    machine.GetScreenBankData(),
-                    machine.BorderColor,
-                    machine.FlashPhase);
-
-                screenBox.Image = screenBitmap;
+                {
+                    lock (machineLock)
+                        Z80SnapshotLoader.Load(machine, dialog.FileName);
+                }
                 fpsLabel.Text = $"Loaded: {Path.GetFileName(dialog.FileName)}";
                 ResetFrameScheduler();
                 RecreateAudioPipeline();
-                machine.ClearDebugHistory();
+                lock (machineLock)
+                    machine.ClearDebugHistory();
+                PresentCurrentMachineFrame(frameClock.ElapsedTicks + PresentationIntervalTicks);
                 screenBox.Focus();
             }
             catch (Exception ex)
@@ -623,7 +662,8 @@ namespace Spectrum128kEmulator
         {
             try
             {
-                return machine.BuildDebugDump($"Crash context: {context}");
+                lock (machineLock)
+                    return machine.BuildDebugDump($"Crash context: {context}");
             }
             catch (Exception dumpEx)
             {
@@ -636,98 +676,9 @@ namespace Spectrum128kEmulator
             try
             {
                 long now = frameClock.ElapsedTicks;
-                long elapsedTicks = now - lastSchedulerTicks;
-                if (elapsedTicks < 0)
-                    elapsedTicks = 0;
-
-                lastSchedulerTicks = now;
-
-                accumulatedEmulationTStates +=
-                    (double)elapsedTicks *
-                    machine.CurrentCpuClockHz *
-                    GetEmulationSpeedMultiplier() /
-                    System.Diagnostics.Stopwatch.Frequency;
-
-                int maxAccumulatedTStates = machine.FrameTStates * MaxCatchUpFramesPerTick;
-                if (accumulatedEmulationTStates > maxAccumulatedTStates)
-                    accumulatedEmulationTStates = maxAccumulatedTStates;
-
-                int wholeTStatesBudget = (int)accumulatedEmulationTStates;
-                if (wholeTStatesBudget <= 0)
-                {
-                    UpdateStats(now);
-                    return;
-                }
-
-                int tStatesPerSlice = Math.Max(1, machine.CurrentCpuClockHz / 1000 * InputPollingSliceMilliseconds);
-                int completedFrames = 0;
-                int tStatesBudget = wholeTStatesBudget;
-                bool suppressAudioSubmission = ShouldSuppressAudioSubmissionDuringTurboTapeLoad();
-                while (tStatesBudget > 0)
-                {
-                    int sliceBudget = Math.Min(tStatesBudget, tStatesPerSlice);
-                    completedFrames += machine.ExecuteTimeSlice(sliceBudget);
-                    inputBridgeTick++;
-                    ProcessPendingSpectrumKeyReleases();
-
-                    while (machine.TryDequeueCompletedAudioFrame(out var completedAudioFrame))
-                    {
-                        if (!suppressAudioSubmission)
-                            audioPipeline.SubmitFrame(completedAudioFrame);
-                    }
-
-                    tStatesBudget -= sliceBudget;
-                }
-
-                accumulatedEmulationTStates -= wholeTStatesBudget;
-
-                if (machine.TryConsumeAutoDebugDump(out string autoReason, out string autoDump))
-                    WriteDebugDumpToFile(autoDump, autoReason);
-
-                if (completedFrames == 0)
-                {
-                    UpdateStats(now);
-                    return;
-                }
-
-                if (EnableInputDiagnostics)
-                    LogInputDiagnostic("frame-complete", null, $"completedFrames={completedFrames} budget={wholeTStatesBudget}");
-
-                SpectrumRenderer.RenderToBitmap(
-                    screenBitmap,
-                    machine.GetScreenBankData(),
-                    machine.BorderColor,
-                    machine.FlashPhase);
-
-                screenBox.Image = screenBitmap;
-                framesRenderedThisSecond++;
-
+                PresentCurrentMachineFrame(now);
                 UpdateStats(now);
 
-                if (LogFrameDiagnostics && machine.FrameCount % 20 == 0)
-                {
-                    byte[] bank = machine.GetScreenBankData();
-                    int nonZeroPixels = 0;
-                    int nonZeroAttrs = 0;
-
-                    for (int i = 0; i < 0x1800; i++)
-                        if (bank[i] != 0) nonZeroPixels++;
-
-                    for (int i = 0x1800; i < 0x1B00; i++)
-                        if (bank[i] != 0x38) nonZeroAttrs++;
-
-                    int screenWrites = machine.ScreenWriteLog.Values.Sum();
-                    int aboveWrites = machine.AboveScreenWriteLog.Values.Sum();
-
-                    string writeNote = machine.LastAboveWriteFrame < machine.FrameCount - 20
-                        ? " [WRITES STOPPED]"
-                        : string.Empty;
-
-                    Console.WriteLine(
-                        $"Frame {machine.FrameCount}: PC=0x{machine.Cpu.Regs.PC:X4} SP=0x{machine.Cpu.Regs.SP:X4} IFF1={machine.Cpu.IFF1} Pixels={nonZeroPixels} Attrs={nonZeroAttrs} | ScreenAddr writes={screenWrites} AboveAddr writes={aboveWrites} LastWrite@Frame{machine.LastAboveWriteFrame}{writeNote}");
-
-                    Console.Out.Flush();
-                }
             }
             catch (Exception ex)
             {
@@ -749,27 +700,226 @@ namespace Spectrum128kEmulator
             }
         }
 
+        private void EmulationLoop(CancellationToken cancellationToken)
+        {
+            while (!cancellationToken.IsCancellationRequested)
+            {
+                long tickStartTicks = frameClock.ElapsedTicks;
+                List<AudioFrame>? completedFramesToSubmit = null;
+                string? autoReason = null;
+                string? autoDump = null;
+                bool hasAutoDebugDump = false;
+                int completedFrames = 0;
+                double executeSliceMilliseconds = 0;
+                double audioSubmitMilliseconds = 0;
+                bool presentedFrame = false;
+
+                lock (machineLock)
+                {
+                    long now = frameClock.ElapsedTicks;
+                    long elapsedTicks = now - lastSchedulerTicks;
+                    if (elapsedTicks < 0)
+                        elapsedTicks = 0;
+
+                    lastSchedulerTicks = now;
+
+                    accumulatedEmulationTStates +=
+                        (double)elapsedTicks *
+                        machine.CurrentCpuClockHz *
+                        GetEmulationSpeedMultiplier() /
+                        System.Diagnostics.Stopwatch.Frequency;
+
+                    int maxAccumulatedTStates = machine.FrameTStates * MaxCatchUpFramesPerTick;
+                    if (accumulatedEmulationTStates > maxAccumulatedTStates)
+                        accumulatedEmulationTStates = maxAccumulatedTStates;
+
+                    int wholeTStatesBudget = (int)accumulatedEmulationTStates;
+                    if (wholeTStatesBudget > 0)
+                    {
+                        int tStatesPerSlice = Math.Max(1, machine.CurrentCpuClockHz / 1000 * InputPollingSliceMilliseconds);
+                        int tStatesBudget = wholeTStatesBudget;
+                        bool suppressAudioSubmission = ShouldSuppressAudioSubmissionDuringTurboTapeLoad();
+                        if (suppressAudioSubmission)
+                            machine.SetAudioFrameCaptureEnabled(false);
+
+                        long executeStartTicks = frameClock.ElapsedTicks;
+                        try
+                        {
+                            while (tStatesBudget > 0)
+                            {
+                                int sliceBudget = Math.Min(tStatesBudget, tStatesPerSlice);
+                                completedFrames += machine.ExecuteTimeSlice(sliceBudget);
+                                inputBridgeTick++;
+                                ProcessPendingSpectrumKeyReleases();
+
+                                if (!suppressAudioSubmission)
+                                {
+                                    completedFramesToSubmit ??= new List<AudioFrame>();
+                                    while (machine.TryDequeueCompletedAudioFrame(out var completedAudioFrame))
+                                        completedFramesToSubmit.Add(completedAudioFrame);
+                                }
+                                else
+                                {
+                                    while (machine.TryDequeueCompletedAudioFrame(out _))
+                                    {
+                                    }
+                                }
+
+                                tStatesBudget -= sliceBudget;
+                            }
+                        }
+                        finally
+                        {
+                            if (suppressAudioSubmission)
+                                machine.SetAudioFrameCaptureEnabled(true);
+                        }
+
+                        executeSliceMilliseconds = (frameClock.ElapsedTicks - executeStartTicks) * 1000.0 / System.Diagnostics.Stopwatch.Frequency;
+                        accumulatedEmulationTStates -= wholeTStatesBudget;
+
+                        hasAutoDebugDump = machine.TryConsumeAutoDebugDump(out autoReason!, out autoDump!);
+                    }
+
+                    UpdateTurboTapeLoadFactor(tickStartTicks, frameClock.ElapsedTicks);
+                    RecordPerformanceSample(frameClock.ElapsedTicks, completedFrames, presentedFrame, executeSliceMilliseconds, audioSubmitMilliseconds, 0, 0);
+                }
+
+                if (completedFramesToSubmit != null && completedFramesToSubmit.Count != 0)
+                {
+                    long audioStartTicks = frameClock.ElapsedTicks;
+                    lock (audioPipelineLock)
+                    {
+                        foreach (var completedAudioFrame in completedFramesToSubmit)
+                            audioPipeline.SubmitFrame(completedAudioFrame);
+                    }
+                    audioSubmitMilliseconds = (frameClock.ElapsedTicks - audioStartTicks) * 1000.0 / System.Diagnostics.Stopwatch.Frequency;
+                    RecordPerformanceSample(frameClock.ElapsedTicks, 0, false, 0, audioSubmitMilliseconds, 0, 0);
+                }
+
+                if (hasAutoDebugDump && !string.IsNullOrEmpty(autoDump))
+                {
+                    try
+                    {
+                        BeginInvoke(new Action(() => WriteDebugDumpToFile(autoDump, autoReason ?? "Auto trap")));
+                    }
+                    catch
+                    {
+                    }
+                }
+
+                Thread.Sleep(1);
+            }
+        }
+
+        private void PresentCurrentMachineFrame(long now)
+        {
+            if (!ShouldPresentFrame(now))
+                return;
+
+            byte[] screenBankCopy;
+            int borderColor;
+            bool flashPhase;
+            int frameCount;
+
+            lock (machineLock)
+            {
+                screenBankCopy = (byte[])machine.GetScreenBankData().Clone();
+                borderColor = machine.BorderColor;
+                flashPhase = machine.FlashPhase;
+                frameCount = machine.FrameCount;
+            }
+
+            long renderStartTicks = frameClock.ElapsedTicks;
+            SpectrumRenderer.RenderToBitmap(
+                screenBitmap,
+                screenBankCopy,
+                borderColor,
+                flashPhase);
+            long renderEndTicks = frameClock.ElapsedTicks;
+
+            screenBox.Image = screenBitmap;
+            framesRenderedThisSecond++;
+
+            if (LogFrameDiagnostics && frameCount % 20 == 0)
+            {
+                int nonZeroPixels = 0;
+                int nonZeroAttrs = 0;
+
+                for (int i = 0; i < 0x1800; i++)
+                    if (screenBankCopy[i] != 0) nonZeroPixels++;
+
+                for (int i = 0x1800; i < 0x1B00; i++)
+                    if (screenBankCopy[i] != 0x38) nonZeroAttrs++;
+
+                int screenWrites;
+                int aboveWrites;
+                int lastAboveWriteFrame;
+                lock (machineLock)
+                {
+                    screenWrites = machine.ScreenWriteLog.Values.Sum();
+                    aboveWrites = machine.AboveScreenWriteLog.Values.Sum();
+                    lastAboveWriteFrame = machine.LastAboveWriteFrame;
+                }
+
+                string writeNote = lastAboveWriteFrame < frameCount - 20
+                    ? " [WRITES STOPPED]"
+                    : string.Empty;
+
+                Console.WriteLine(
+                    $"Frame {frameCount}: Pixels={nonZeroPixels} Attrs={nonZeroAttrs} | ScreenAddr writes={screenWrites} AboveAddr writes={aboveWrites} LastWrite@Frame{lastAboveWriteFrame}{writeNote}");
+
+                Console.Out.Flush();
+            }
+
+            RecordPerformanceSample(
+                now,
+                0,
+                true,
+                0,
+                0,
+                (renderEndTicks - renderStartTicks) * 1000.0 / System.Diagnostics.Stopwatch.Frequency,
+                (frameClock.ElapsedTicks - renderEndTicks) * 1000.0 / System.Diagnostics.Stopwatch.Frequency);
+        }
+
         private void ResetFrameScheduler()
         {
             long now = frameClock.ElapsedTicks;
-            lastSchedulerTicks = now;
-            accumulatedEmulationTStates = 0;
+            lock (machineLock)
+            {
+                lastSchedulerTicks = now;
+                lastPresentationTicks = now;
+                accumulatedEmulationTStates = 0;
+                inputBridgeTick = 0;
+            }
             lastStatsTicks = now;
             framesRenderedThisSecond = 0;
-            inputBridgeTick = 0;
+        }
+
+        private bool ShouldPresentFrame(long nowTicks)
+        {
+            if (nowTicks - lastPresentationTicks < PresentationIntervalTicks)
+                return false;
+
+            long elapsed = nowTicks - lastPresentationTicks;
+            long intervals = Math.Max(1, elapsed / PresentationIntervalTicks);
+            lastPresentationTicks += intervals * PresentationIntervalTicks;
+            return true;
         }
 
         private void RecreateAudioPipeline()
         {
-            try
+            lock (audioPipelineLock)
             {
-                audioPipeline.Dispose();
-            }
-            catch
-            {
-            }
+                try
+                {
+                    audioPipeline.Dispose();
+                }
+                catch
+                {
+                }
 
-            audioPipeline = CreateAudioPipeline();
+                audioPipeline = CreateAudioPipeline();
+            }
         }
 
         private void UpdateStats(long nowTicks)
@@ -778,7 +928,11 @@ namespace Spectrum128kEmulator
 
             if (nowTicks - lastStatsTicks >= ticksPerSecond)
             {
-                fpsLabel.Text = $"FPS={framesRenderedThisSecond} Frame={machine.FrameCount}";
+                int frameCount;
+                lock (machineLock)
+                    frameCount = machine.FrameCount;
+
+                fpsLabel.Text = $"FPS={framesRenderedThisSecond} Frame={frameCount}";
                 framesRenderedThisSecond = 0;
                 lastStatsTicks = nowTicks;
             }
@@ -786,7 +940,17 @@ namespace Spectrum128kEmulator
 
         private int GetEmulationSpeedMultiplier()
         {
-            return IsTurboTapeLoadActive() ? TurboTapeLoadFactor : 1;
+            if (!IsTurboTapeLoadActive())
+                return 1;
+
+            int ceiling = machine.MountedTape?.IsStreamingProtectedByteStream == true
+                ? ProtectedStreamTurboTapeLoadFactor
+                : TurboTapeLoadFactor;
+
+            if (currentTurboTapeLoadFactor > ceiling)
+                currentTurboTapeLoadFactor = ceiling;
+
+            return Math.Min(currentTurboTapeLoadFactor, ceiling);
         }
 
         private bool ShouldSuppressAudioSubmissionDuringTurboTapeLoad()
@@ -796,21 +960,59 @@ namespace Spectrum128kEmulator
 
         private bool IsTurboTapeLoadActive()
         {
-            return machine.MountedTape?.IsActivelyDrivingEarLine == true;
+            return machine.MountedTape?.IsActivelyStreamingEarSignal == true;
+        }
+
+        private void UpdateTurboTapeLoadFactor(long tickStartTicks, long tickEndTicks)
+        {
+            if (!IsTurboTapeLoadActive())
+            {
+                currentTurboTapeLoadFactor = TurboTapeLoadFactor;
+                return;
+            }
+
+            int ceiling = machine.MountedTape?.IsStreamingProtectedByteStream == true
+                ? ProtectedStreamTurboTapeLoadFactor
+                : TurboTapeLoadFactor;
+
+            double elapsedMilliseconds = (tickEndTicks - tickStartTicks) * 1000.0 / System.Diagnostics.Stopwatch.Frequency;
+            if (elapsedMilliseconds >= TurboTickSlowThresholdMilliseconds)
+            {
+                currentTurboTapeLoadFactor = Math.Max(MinTurboTapeLoadFactor, currentTurboTapeLoadFactor - 1);
+                return;
+            }
+
+            if (elapsedMilliseconds <= TurboTickRecoverThresholdMilliseconds)
+                currentTurboTapeLoadFactor = Math.Min(ceiling, currentTurboTapeLoadFactor + 1);
         }
 
         protected override void Dispose(bool disposing)
         {
             if (disposing)
             {
+                emulationLoopCts.Cancel();
+                try
+                {
+                    emulationLoopTask?.Wait(1000);
+                }
+                catch
+                {
+                }
                 lock (inputDiagnosticsLock)
                 {
                     inputDiagnosticsWriter?.Dispose();
                     inputDiagnosticsWriter = null;
                 }
-                audioPipeline.Dispose();
+                lock (performanceDiagnosticsLock)
+                {
+                    performanceDiagnosticsWriter?.Dispose();
+                    performanceDiagnosticsWriter = null;
+                }
+                lock (audioPipelineLock)
+                    audioPipeline.Dispose();
                 screenBitmap.Dispose();
                 frameTimer.Dispose();
+                emulationLoopCts.Dispose();
             }
 
             base.Dispose(disposing);
@@ -829,6 +1031,20 @@ namespace Spectrum128kEmulator
                 AutoFlush = true
             };
             LogInputDiagnostic("init", null, $"path={inputDiagnosticsPath}");
+        }
+
+        private void InitializePerformanceDiagnostics()
+        {
+            if (!EnablePerformanceDiagnostics)
+                return;
+
+            string debugFolder = Path.Combine(AppContext.BaseDirectory, "debug");
+            Directory.CreateDirectory(debugFolder);
+            string performancePath = Path.Combine(debugFolder, $"performance-diagnostics-{DateTime.Now:yyyyMMdd-HHmmssfff}.log");
+            performanceDiagnosticsWriter = new StreamWriter(new FileStream(performancePath, FileMode.Create, FileAccess.Write, FileShare.Read))
+            {
+                AutoFlush = true
+            };
         }
 
         private string DescribeBridgeState(Keys key)
@@ -860,6 +1076,50 @@ namespace Spectrum128kEmulator
                 string matrixPart = key.HasValue ? $" {DescribeKeyboardMatrix(key.Value)}" : string.Empty;
                 inputDiagnosticsWriter.WriteLine(
                     $"{DateTime.Now:HH:mm:ss.fff} phase={phase}{keyPart} tick={inputBridgeTick} frame={machine.FrameCount} tstates={machine.Cpu.TStates} pc=0x{machine.Cpu.Regs.PC:X4}{matrixPart} {extra}");
+            }
+        }
+
+        private void RecordPerformanceSample(
+            long nowTicks,
+            int completedFrames,
+            bool presentedFrame,
+            double executeSliceMilliseconds,
+            double audioSubmitMilliseconds,
+            double renderMilliseconds,
+            double presentMilliseconds)
+        {
+            if (!EnablePerformanceDiagnostics)
+                return;
+
+            lock (performanceDiagnosticsLock)
+            {
+                performanceTickCount++;
+                performanceCompletedFrames += completedFrames;
+                if (presentedFrame)
+                    performancePresentedFrames++;
+                performanceExecuteSliceMilliseconds += executeSliceMilliseconds;
+                performanceAudioSubmitMilliseconds += audioSubmitMilliseconds;
+                performanceRenderMilliseconds += renderMilliseconds;
+                performancePresentMilliseconds += presentMilliseconds;
+
+                long ticksPerSecond = System.Diagnostics.Stopwatch.Frequency;
+                if (nowTicks - lastPerformanceStatsTicks < ticksPerSecond || performanceDiagnosticsWriter == null)
+                    return;
+
+                performanceDiagnosticsWriter.WriteLine(
+                    $"{DateTime.Now:HH:mm:ss.fff} ticks={performanceTickCount} completedFrames={performanceCompletedFrames} presentedFrames={performancePresentedFrames} " +
+                    $"turboActive={IsTurboTapeLoadActive()} protected={machine.MountedTape?.IsStreamingProtectedByteStream == true} " +
+                    $"execMs={performanceExecuteSliceMilliseconds:F2} audioMs={performanceAudioSubmitMilliseconds:F2} renderMs={performanceRenderMilliseconds:F2} presentMs={performancePresentMilliseconds:F2} " +
+                    $"fpsLabel={framesRenderedThisSecond} frame={machine.FrameCount}");
+
+                performanceTickCount = 0;
+                performanceCompletedFrames = 0;
+                performancePresentedFrames = 0;
+                performanceExecuteSliceMilliseconds = 0;
+                performanceAudioSubmitMilliseconds = 0;
+                performanceRenderMilliseconds = 0;
+                performancePresentMilliseconds = 0;
+                lastPerformanceStatsTicks = nowTicks;
             }
         }
     }

@@ -1,6 +1,29 @@
 Project: ZX Spectrum 128K Emulator (C# WinForms)
 
 Current checkpoint on 2026-05-16:
+- User-verified accepted current baseline:
+  - `Exolon.tzx` works
+  - `Impossible Mission - Bugfix.tzx` works
+  - FPS on those accepted paths is now close to stable at `49/50/51`
+- Important performance/runtime changes now kept:
+  - emulation and audio submission now run on a background loop instead of the WinForms timer thread
+  - the UI thread is primarily responsible for 50Hz presentation
+  - muted turbo tape loads no longer build and discard full `AudioFrame` objects every emulated frame
+  - protected non-ROM live byte streams are classified explicitly and use the safer lower turbo ceiling
+  - zero-byte `machine-debug-*.txt` spam from the first background-loop attempt is fixed
+- Renderer fidelity improvement kept:
+  - normal Spectrum colours now use the standard `0xD7` intensity instead of the too-dark `0xC0`
+  - bright colours remain at `0xFF`
+- Guard coverage added for this checkpoint:
+  - `MachineCoreTests` verify audio-frame capture can be disabled and re-enabled safely
+  - `TapLoaderTests` verify protected live byte-stream classification
+  - `SpectrumRendererTests` pin the palette intensities
+- Remaining known fidelity gap:
+  - the emulator still renders only the `256x192` screen bitmap; visible border rendering is still pending
+- Best next step from this checkpoint:
+  - continue with `Batman - Release 1.tzx` from this non-regressing tape/performance baseline
+
+Current checkpoint on 2026-05-16:
 - User-verified tape baseline is now:
   - `Exolon.tzx` works again and reaches the menu/game path
   - `Impossible Mission - Bugfix.tzx` now works

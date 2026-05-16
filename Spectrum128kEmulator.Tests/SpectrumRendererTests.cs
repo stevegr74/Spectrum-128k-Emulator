@@ -6,6 +6,19 @@ namespace Spectrum128kEmulator.Tests
     public class SpectrumRendererTests
     {
         [Fact]
+        public void GetSpectrumColor_Uses_Standard_ZxSpectrum_Palette_Intensities()
+        {
+            Assert.Equal(Color.FromArgb(0xFF, 0x00, 0x00, 0xD7).ToArgb(), SpectrumRenderer.GetSpectrumColor(1, false).ToArgb());
+            Assert.Equal(Color.FromArgb(0xFF, 0xD7, 0x00, 0x00).ToArgb(), SpectrumRenderer.GetSpectrumColor(2, false).ToArgb());
+            Assert.Equal(Color.FromArgb(0xFF, 0xD7, 0xD7, 0xD7).ToArgb(), SpectrumRenderer.GetSpectrumColor(7, false).ToArgb());
+
+            Assert.Equal(Color.FromArgb(0xFF, 0x00, 0x00, 0xFF).ToArgb(), SpectrumRenderer.GetSpectrumColor(1, true).ToArgb());
+            Assert.Equal(Color.FromArgb(0xFF, 0xFF, 0xFF, 0xFF).ToArgb(), SpectrumRenderer.GetSpectrumColor(7, true).ToArgb());
+            Assert.Equal(Color.Black.ToArgb(), SpectrumRenderer.GetSpectrumColor(0, false).ToArgb());
+            Assert.Equal(Color.Black.ToArgb(), SpectrumRenderer.GetSpectrumColor(0, true).ToArgb());
+        }
+
+        [Fact]
         public void RenderToBitmap_Renders_Flash_And_NonFlash_Correctly()
         {
             using var bitmap = new Bitmap(
