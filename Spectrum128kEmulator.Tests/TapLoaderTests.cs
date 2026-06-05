@@ -440,6 +440,55 @@ namespace Spectrum128kEmulator.Tests
         }
 
         [Fact]
+        public void MountedTape_RomSyncLoopTrap_CanConsume_UnstructuredStandardRomBlock_With_PendingContinuation()
+        {
+            string tempFolder = CreateTempRoms();
+
+            try
+            {
+                var machine = new Spectrum128Machine(tempFolder);
+                var tape = new MountedTape(
+                    "unstructured-standard-sync",
+                    new TapeBlock[]
+                    {
+                        TapeBlock.CreateData(
+                            BuildDataBlock(new byte[] { 0x11, 0x22, 0x33, 0x44 }),
+                            2168, 3223, 667, 735, 855, 1710, 8, 1000)
+                    },
+                    initialBlockIndex: 0,
+                    skipCustomHeaderForEarPlayback: false);
+                machine.MountTape(tape);
+
+                SetPrivateField(tape, "state", Enum.Parse(GetPrivateField(tape, "state").GetType(), "ExpectData"));
+                machine.SetPendingMountedLoadUsrContinuationResolver(_ => 0x8000, requireUsrReturnAddress: false);
+
+                machine.Cpu.Regs.PC = 0x0574;
+                machine.Cpu.Regs.SP = 0x9000;
+                machine.PokeMemory(0x9000, 0x3F);
+                machine.PokeMemory(0x9001, 0x05);
+                machine.Cpu.Regs.IX = 0x8000;
+                machine.Cpu.Regs.DE = 4;
+                machine.Cpu.Regs.A = 0x7F;
+                machine.Cpu.Regs.F = 0x00;
+                machine.Cpu.Regs.A_ = 0x7F;
+                machine.Cpu.Regs.F_ = 0x00;
+
+                bool handled = tape.TryHandleRomLoadTrap(machine, machine.Cpu);
+
+                Assert.True(handled);
+                Assert.Equal((byte)0x11, machine.PeekMemory(0x8000));
+                Assert.Equal((byte)0x22, machine.PeekMemory(0x8001));
+                Assert.Equal((byte)0x33, machine.PeekMemory(0x8002));
+                Assert.Equal((byte)0x44, machine.PeekMemory(0x8003));
+                Assert.Equal(1, (int)GetPrivateField(tape, "nextBlockIndex"));
+            }
+            finally
+            {
+                Directory.Delete(tempFolder, true);
+            }
+        }
+
+        [Fact]
         public void MountedTape_LiveByteStreamProgress_Clears_StaleRomTrapCursor_WhenPlaybackHasPassedIt()
         {
             string tempFolder = CreateTempRoms();
@@ -3562,6 +3611,70 @@ namespace Spectrum128kEmulator.Tests
         }
 
         [Fact]
+        public void PendingMountedLoadUsrContinuation_Evaluates_Live_FloatingPoint_Basic_Numeric_Variable_In_If_Then_Usr_Clause()
+        {
+            string tempFolder = CreateTempRoms();
+
+            try
+            {
+                byte[] basicLoader = BuildBasicProgram(
+                    BuildBasicLine(10,
+                        Token(245), Ascii(" "), Ascii("\""), Ascii("H"), Ascii("I"), Ascii("\"")));
+
+                TapeBlock headerBlock = TapeBlock.CreateData(BuildHeaderBlock(
+                    type: 0,
+                    fileName: "BASIC",
+                    dataLength: (ushort)basicLoader.Length,
+                    parameter1: 10,
+                    parameter2: (ushort)basicLoader.Length), 2168, 8063, 667, 735, 855, 1710, 8, 1000);
+
+                MethodInfo parseHeaderInfo = typeof(TapLoader).GetMethod("ParseHeaderInfo", BindingFlags.NonPublic | BindingFlags.Static)!;
+                object header = parseHeaderInfo.Invoke(null, new object[] { headerBlock })!;
+
+                MethodInfo loadBasicProgram = typeof(TapLoader)
+                    .GetMethods(BindingFlags.NonPublic | BindingFlags.Static)
+                    .Single(method =>
+                    {
+                        if (method.Name != "LoadBasicProgram")
+                            return false;
+                        ParameterInfo[] parameters = method.GetParameters();
+                        return parameters.Length == 3 &&
+                               parameters[0].ParameterType == typeof(Spectrum128Machine) &&
+                               parameters[2].ParameterType == typeof(byte[]);
+                    });
+
+                var machine = new Spectrum128Machine(tempFolder);
+                loadBasicProgram.Invoke(null, new object[] { machine, header, basicLoader });
+                ushort varsAddress = (ushort)(machine.PeekMemory(23627) | (machine.PeekMemory(23628) << 8));
+                machine.PokeMemory(varsAddress, 0x61);
+                WriteSpectrumPositiveIntegerFloat(machine, (ushort)(varsAddress + 1), 0x5CB6);
+                machine.PokeMemory((ushort)(varsAddress + 6), 0x80);
+                machine.PokeMemory(23641, (byte)((varsAddress + 7) & 0xFF));
+                machine.PokeMemory(23642, (byte)((varsAddress + 7) >> 8));
+
+                Type parserType = typeof(TapLoader).GetNestedType("ExpressionParser", BindingFlags.NonPublic)!;
+                ConstructorInfo parserCtor = parserType
+                    .GetConstructors(BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic)
+                    .Single(ctor => ctor.GetParameters().Length == 6);
+                object parser = parserCtor.Invoke(new object[]
+                {
+                    machine,
+                    new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase),
+                    new List<string> { "a" },
+                    0,
+                    0,
+                    true
+                });
+                int value = (int)parserType.GetMethod("Parse", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic)!.Invoke(parser, Array.Empty<object>())!;
+                Assert.Equal(0x5CB6, value);
+            }
+            finally
+            {
+                Directory.Delete(tempFolder, true);
+            }
+        }
+
+        [Fact]
         public void PendingMountedLoadUsrContinuation_Evaluates_Basic_Numeric_Variable_From_Preserved_Context_When_Live_Vars_Move()
         {
             string tempFolder = CreateTempRoms();
@@ -3604,6 +3717,77 @@ namespace Spectrum128kEmulator.Tests
                 machine.PokeMemory((ushort)(originalVarsAddress + 3), 0xB6);
                 machine.PokeMemory((ushort)(originalVarsAddress + 4), 0x5C);
                 machine.PokeMemory((ushort)(originalVarsAddress + 5), 0x00);
+                machine.PokeMemory((ushort)(originalVarsAddress + 6), 0x80);
+                machine.PokeMemory(23641, (byte)((originalVarsAddress + 7) & 0xFF));
+                machine.PokeMemory(23642, (byte)((originalVarsAddress + 7) >> 8));
+                machine.SetPendingMountedLoadUsrContinuationResolver(_ => 0);
+
+                machine.PokeMemory(23627, 0xCB);
+                machine.PokeMemory(23628, 0x5C);
+                machine.PokeMemory(23641, 0xCC);
+                machine.PokeMemory(23642, 0x5C);
+
+                Type parserType = typeof(TapLoader).GetNestedType("ExpressionParser", BindingFlags.NonPublic)!;
+                ConstructorInfo parserCtor = parserType
+                    .GetConstructors(BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic)
+                    .Single(ctor => ctor.GetParameters().Length == 6);
+                object parser = parserCtor.Invoke(new object[]
+                {
+                    machine,
+                    new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase),
+                    new List<string> { "a" },
+                    0,
+                    0,
+                    true
+                });
+                int value = (int)parserType.GetMethod("Parse", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic)!.Invoke(parser, Array.Empty<object>())!;
+                Assert.Equal(0x5CB6, value);
+            }
+            finally
+            {
+                Directory.Delete(tempFolder, true);
+            }
+        }
+
+        [Fact]
+        public void PendingMountedLoadUsrContinuation_Evaluates_Preserved_FloatingPoint_Basic_Numeric_Variable_When_Live_Vars_Move()
+        {
+            string tempFolder = CreateTempRoms();
+
+            try
+            {
+                byte[] basicLoader = BuildBasicProgram(
+                    BuildBasicLine(10,
+                        Token(245), Ascii(" "), Ascii("\""), Ascii("H"), Ascii("I"), Ascii("\"")));
+
+                TapeBlock headerBlock = TapeBlock.CreateData(BuildHeaderBlock(
+                    type: 0,
+                    fileName: "BASIC",
+                    dataLength: (ushort)basicLoader.Length,
+                    parameter1: 10,
+                    parameter2: (ushort)basicLoader.Length), 2168, 8063, 667, 735, 855, 1710, 8, 1000);
+
+                MethodInfo parseHeaderInfo = typeof(TapLoader).GetMethod("ParseHeaderInfo", BindingFlags.NonPublic | BindingFlags.Static)!;
+                object header = parseHeaderInfo.Invoke(null, new object[] { headerBlock })!;
+
+                MethodInfo loadBasicProgram = typeof(TapLoader)
+                    .GetMethods(BindingFlags.NonPublic | BindingFlags.Static)
+                    .Single(method =>
+                    {
+                        if (method.Name != "LoadBasicProgram")
+                            return false;
+                        ParameterInfo[] parameters = method.GetParameters();
+                        return parameters.Length == 3 &&
+                               parameters[0].ParameterType == typeof(Spectrum128Machine) &&
+                               parameters[2].ParameterType == typeof(byte[]);
+                    });
+
+                var machine = new Spectrum128Machine(tempFolder);
+                loadBasicProgram.Invoke(null, new object[] { machine, header, basicLoader });
+
+                ushort originalVarsAddress = (ushort)(machine.PeekMemory(23627) | (machine.PeekMemory(23628) << 8));
+                machine.PokeMemory(originalVarsAddress, 0x61);
+                WriteSpectrumPositiveIntegerFloat(machine, (ushort)(originalVarsAddress + 1), 0x5CB6);
                 machine.PokeMemory((ushort)(originalVarsAddress + 6), 0x80);
                 machine.PokeMemory(23641, (byte)((originalVarsAddress + 7) & 0xFF));
                 machine.PokeMemory(23642, (byte)((originalVarsAddress + 7) >> 8));
@@ -3841,6 +4025,138 @@ namespace Spectrum128kEmulator.Tests
                 Assert.True(resumed);
                 Assert.Equal((ushort)0x1234, machine.Cpu.Regs.PC);
                 Assert.Equal((ushort)0x1234, machine.Cpu.Regs.BC);
+            }
+            finally
+            {
+                Directory.Delete(tempFolder, true);
+            }
+        }
+
+        [Fact]
+        public void PendingMountedLoadUsrContinuation_Refreshes_Preserved_BasicVariableSnapshot_After_Mounted_RomData_Block_Load()
+        {
+            string tempFolder = CreateTempRoms();
+
+            try
+            {
+                byte[] basicLoader = BuildBasicProgram(
+                    BuildBasicLine(30,
+                        Token(249), Ascii(" "), Token(192), Ascii("24244"), NumberMarker(24244)),
+                    BuildBasicLine(40,
+                        Token(250), Ascii(" "), Ascii("a"), Ascii("="),
+                        Token(190), Ascii("23631"), NumberMarker(23631),
+                        Ascii("+"),
+                        Ascii("256"), NumberMarker(256),
+                        Ascii("*"),
+                        Token(190), Ascii("23632"), NumberMarker(23632),
+                        Token(203),
+                        Token(249), Ascii(" "), Token(192),
+                        Ascii("("),
+                        Token(190), Ascii("23633"), NumberMarker(23633),
+                        Ascii("+"),
+                        Ascii("256"), NumberMarker(256),
+                        Ascii("*"),
+                        Token(190), Ascii("23634"), NumberMarker(23634),
+                        Ascii(")")),
+                    BuildBasicLine(50,
+                        Token(249), Ascii(" "), Token(192), Ascii("0"), NumberMarker(0)));
+
+                TapeBlock headerBlock = TapeBlock.CreateData(BuildHeaderBlock(
+                    type: 0,
+                    fileName: "BATLIKE",
+                    dataLength: (ushort)basicLoader.Length,
+                    parameter1: 30,
+                    parameter2: (ushort)basicLoader.Length), 2168, 8063, 667, 735, 855, 1710, 8, 1000);
+
+                MethodInfo parseHeaderInfo = typeof(TapLoader).GetMethod("ParseHeaderInfo", BindingFlags.NonPublic | BindingFlags.Static)!;
+                object header = parseHeaderInfo.Invoke(null, new object[] { headerBlock })!;
+
+                MethodInfo loadBasicProgram = typeof(TapLoader)
+                    .GetMethods(BindingFlags.NonPublic | BindingFlags.Static)
+                    .Single(method =>
+                    {
+                        if (method.Name != "LoadBasicProgram")
+                            return false;
+                        ParameterInfo[] parameters = method.GetParameters();
+                        return parameters.Length == 3 &&
+                               parameters[0].ParameterType == typeof(Spectrum128Machine) &&
+                               parameters[2].ParameterType == typeof(byte[]);
+                    });
+
+                Type executorType = typeof(TapLoader).GetNestedType("BasicBootstrapExecutor", BindingFlags.NonPublic)!;
+                MethodInfo createResolver = executorType
+                    .GetMethods(BindingFlags.Public | BindingFlags.Static)
+                    .Single(method => method.Name == "CreateMountedLoadUsrContinuationResolver" && method.GetParameters().Length == 4);
+                MethodInfo variableReader = typeof(TapLoader).GetMethod(
+                    "TryReadMountedContinuationNumericVariable",
+                    BindingFlags.Static | BindingFlags.NonPublic)!;
+
+                var machine = new Spectrum128Machine(tempFolder);
+                loadBasicProgram.Invoke(null, new object[] { machine, header, basicLoader });
+
+                ushort varsAddress = (ushort)(machine.PeekMemory(23627) | (machine.PeekMemory(23628) << 8));
+                ushort eLineAddress = (ushort)(varsAddress + 7);
+                machine.PokeMemory(varsAddress, 0x61);
+                machine.PokeMemory((ushort)(varsAddress + 1), 0x00);
+                machine.PokeMemory((ushort)(varsAddress + 2), 0x00);
+                machine.PokeMemory((ushort)(varsAddress + 3), 0x5B);
+                machine.PokeMemory((ushort)(varsAddress + 4), 0x00);
+                machine.PokeMemory((ushort)(varsAddress + 5), 0x00);
+                machine.PokeMemory((ushort)(varsAddress + 6), 0x80);
+                machine.PokeMemory(23641, (byte)(eLineAddress & 0xFF));
+                machine.PokeMemory(23642, (byte)(eLineAddress >> 8));
+
+                object? resolverObject = createResolver.Invoke(null, new object[] { machine, (ushort)23755, (ushort)basicLoader.Length, (ushort)30 });
+                Assert.NotNull(resolverObject);
+                machine.SetPendingMountedLoadUsrContinuationResolver((Func<Spectrum128Machine, ushort?>)resolverObject!, requireUsrReturnAddress: false);
+
+                byte[] updatedVariableArea = new byte[]
+                {
+                    0x61,
+                    0x00,
+                    0x00,
+                    0xB6,
+                    0x5C,
+                    0x00,
+                    0x80
+                };
+
+                machine.PokeMemory(23627, (byte)(varsAddress & 0xFF));
+                machine.PokeMemory(23628, (byte)(varsAddress >> 8));
+                machine.PokeMemory(23641, (byte)(eLineAddress & 0xFF));
+                machine.PokeMemory(23642, (byte)(eLineAddress >> 8));
+
+                var tape = new MountedTape(
+                    "raw-standard",
+                    new[]
+                    {
+                        TapeBlock.CreateData(BuildDataBlock(updatedVariableArea), 2168, 3223, 667, 735, 855, 1710, 8, 1000)
+                    },
+                    initialBlockIndex: 0,
+                    skipCustomHeaderForEarPlayback: false);
+                machine.MountTape(tape);
+
+                machine.Cpu.Regs.PC = 0x056B;
+                machine.Cpu.Regs.SP = 0x9000;
+                machine.PokeMemory(0x9000, 0x3F);
+                machine.PokeMemory(0x9001, 0x05);
+                machine.Cpu.Regs.IX = varsAddress;
+                machine.Cpu.Regs.DE = (ushort)updatedVariableArea.Length;
+                machine.Cpu.Regs.A = 0xFF;
+                machine.Cpu.Regs.F = 0x01;
+                machine.Cpu.Regs.A_ = 0xFF;
+                machine.Cpu.Regs.F_ = 0x01;
+
+                Assert.True(tape.TryHandleRomLoadTrap(machine, machine.Cpu));
+
+                machine.PokeMemory(23627, 0x00);
+                machine.PokeMemory(23628, 0x80);
+                machine.PokeMemory(23641, 0x00);
+                machine.PokeMemory(23642, 0x80);
+
+                object[] readerArgs = new object[] { machine, "a", 0 };
+                Assert.True((bool)variableReader.Invoke(null, readerArgs)!);
+                Assert.Equal(0x5CB6, (int)readerArgs[2]);
             }
             finally
             {
@@ -4292,6 +4608,22 @@ namespace Spectrum128kEmulator.Tests
                 $"WORKSP=0x{(machine.PeekMemory(23649) | (machine.PeekMemory(23650) << 8)):X4}");
 
             Assert.Equal(entryPoint, machine.Cpu.Regs.PC);
+        }
+
+        private static void WriteSpectrumPositiveIntegerFloat(Spectrum128Machine machine, ushort address, int value)
+        {
+            if (value <= 0)
+                throw new ArgumentOutOfRangeException(nameof(value));
+
+            int bitLength = 32 - System.Numerics.BitOperations.LeadingZeroCount((uint)value);
+            int exponent = 128 + bitLength;
+            uint mantissa = (uint)value << (32 - bitLength);
+
+            machine.PokeMemory(address, (byte)exponent);
+            machine.PokeMemory((ushort)(address + 1), (byte)((mantissa >> 24) & 0x7F));
+            machine.PokeMemory((ushort)(address + 2), (byte)(mantissa >> 16));
+            machine.PokeMemory((ushort)(address + 3), (byte)(mantissa >> 8));
+            machine.PokeMemory((ushort)(address + 4), (byte)mantissa);
         }
     }
 }

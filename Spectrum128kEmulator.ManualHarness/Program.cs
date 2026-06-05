@@ -327,6 +327,7 @@ if (args.Length > 0)
             if (pendingField?.GetValue(machine) is Func<Spectrum128Machine, ushort?> pendingResolver)
             {
                 Console.WriteLine("PREVIEW " + BuildBatmanSysVarDebug(machine));
+                Console.WriteLine(BuildPendingMountedLoadDebug(machine));
                 if (!string.IsNullOrEmpty(batmanForceContinuationMode))
                 {
                     if (batmanForceContinuationMode == "curchl")
@@ -757,16 +758,62 @@ static string BuildPendingMountedLoadDebug(Spectrum128Machine machine)
     FieldInfo? pendingResumeStatementField = typeof(Spectrum128Machine).GetField(
         "pendingMountedLoadBasicResumeStatement",
         BindingFlags.Instance | BindingFlags.NonPublic);
+    FieldInfo? pendingVariableAreaField = typeof(Spectrum128Machine).GetField(
+        "pendingMountedLoadBasicVariableArea",
+        BindingFlags.Instance | BindingFlags.NonPublic);
 
     object? resolver = pendingResolverField?.GetValue(machine);
     object? resumeLine = pendingResumeLineField?.GetValue(machine);
     object? resumeStatement = pendingResumeStatementField?.GetValue(machine);
+    object? pendingVariableArea = pendingVariableAreaField?.GetValue(machine);
+    string variableDebug = BuildMountedVariableDebug(machine);
+    string variableAreaDebug = pendingVariableArea?.ToString() ?? "(null)";
+    string variableBytesDebug = BuildMountedVariableBytesDebug(machine);
 
     return Environment.NewLine +
            "=== PENDING MOUNTED LOAD ===" + Environment.NewLine +
            $"HasPendingResolver={(resolver != null ? 1 : 0)}" + Environment.NewLine +
            $"PendingResumeLine={(resumeLine ?? "(null)")}" + Environment.NewLine +
-           $"PendingResumeStatement={(resumeStatement ?? "(null)")}" + Environment.NewLine;
+           $"PendingResumeStatement={(resumeStatement ?? "(null)")}" + Environment.NewLine +
+           $"PendingVariableArea={variableAreaDebug}" + Environment.NewLine +
+           $"{variableBytesDebug}" + Environment.NewLine +
+           $"{variableDebug}" + Environment.NewLine;
+}
+
+static string BuildMountedVariableDebug(Spectrum128Machine machine)
+{
+    MethodInfo? variableReader = typeof(TapLoader).GetMethod(
+        "TryReadMountedContinuationNumericVariable",
+        BindingFlags.Static | BindingFlags.NonPublic);
+    if (variableReader == null)
+        return "MountedVar[a]=(unavailable)";
+
+    object[] args = new object[] { machine, "a", 0 };
+    bool success = (bool)variableReader.Invoke(null, args)!;
+    return success
+        ? $"MountedVar[a]={args[2]}"
+        : "MountedVar[a]=(missing)";
+}
+
+static string BuildMountedVariableBytesDebug(Spectrum128Machine machine)
+{
+    MethodInfo? snapshotMethod = typeof(Spectrum128Machine).GetMethod(
+        "TryGetPendingMountedLoadBasicVariableSnapshot",
+        BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public);
+    if (snapshotMethod == null)
+        return "MountedVarBytes=(unavailable)";
+
+    object[] args = new object[] { (ushort)0, Array.Empty<byte>() };
+    bool success = (bool)snapshotMethod.Invoke(machine, args)!;
+    if (!success || args[1] is not byte[] data || data.Length == 0)
+        return "MountedVarBytes=(missing)";
+
+    int count = Math.Min(24, data.Length);
+    string[] bytes = new string[count];
+    for (int i = 0; i < count; i++)
+        bytes[i] = data[i].ToString("X2");
+
+    return $"MountedVarBytes={string.Join(' ', bytes)}";
 }
 
 static string BuildBatmanSysVarDebug(Spectrum128Machine machine)

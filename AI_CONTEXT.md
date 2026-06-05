@@ -13,7 +13,10 @@ Current checkpoint on 2026-06-05:
   - FPS display is now trustworthy enough for user-facing checks again
 - Generic mounted-continuation improvements now kept:
   - safe mounted `IF ... THEN USR(...)` steps directly evaluate numeric-variable expressions using BASIC-style default-zero semantics
+  - integer-valued Spectrum floating-point numeric variables are now decoded generically by the mounted continuation evaluator too
   - preserved mounted BASIC variable snapshots remain readable after live variable areas are reclaimed
+  - mounted ROM data loads refresh the preserved BASIC variable snapshot before later continuation steps use it
+  - early ROM sync-loop traps can now consume unstructured standard ROM-loadable data blocks, not only structured header/data contexts
   - mounted continuations can resume during pauses before custom non-ROM blocks, but not before pending ROM-loadable blocks
 - Batman-specific status from this checkpoint:
   - repeated loads in the same app session are now consistent

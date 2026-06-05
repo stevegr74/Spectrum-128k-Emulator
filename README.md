@@ -126,6 +126,9 @@ Tape Loading Progress (Milestone 6)
 - current generic Batman progress includes:
   - repeated loads in the same app session now behave consistently
   - mounted `IF ... THEN USR(...)` continuation steps directly evaluate safe numeric-variable expressions using BASIC-style default-zero semantics
+  - mounted continuation variable reads now also decode integer-valued Spectrum floating-point numeric variables generically
+  - mounted ROM data loads refresh the preserved BASIC variable snapshot before later continuation steps use it
+  - early ROM sync-loop traps can now consume unstructured standard ROM-loadable data blocks, not just structured header/data contexts
   - mounted continuations can resume during pauses before custom non-ROM blocks, but not before pending ROM-loadable blocks
   - Batman now completes its mounted standard-data load deterministically and ends in a late ROM48 loop after tape completion, rather than failing earlier through session-state leakage
 - mounted live-tape playback now uses a generic wall-clock turbo path in the app while the tape is actively driving the EAR line
