@@ -243,6 +243,39 @@ namespace Spectrum128kEmulator.Tests
                 var chainedBasicPrefixResult = Tap.TzxLoader.LoadWithPolicy(chainedBasicPrefixMachine, chainedBasicPrefixPath);
                 Assert.Equal("BootstrapHybrid", chainedBasicPrefixResult.Strategy.ToString());
 
+                string mountedMixedPath = Path.Combine(romFolder, "mounted-mixed.tzx");
+                byte[] mountedBootstrapProgram = BuildBasicProgram(
+                    BuildBasicLine(10, Token(249), Ascii("24050"), NumberMarker(24050)));
+                File.WriteAllBytes(
+                    mountedMixedPath,
+                    BuildTzx(
+                        BuildStandardSpeedDataBlock(BuildSpectrumHeaderBlock(type: 0, fileName: "BATMAN", dataLength: (ushort)mountedBootstrapProgram.Length, parameter1: 10, parameter2: (ushort)mountedBootstrapProgram.Length), pauseMs: 1000),
+                        BuildStandardSpeedDataBlock(BuildSpectrumDataBlock(mountedBootstrapProgram), pauseMs: 1000),
+                        BuildStandardSpeedDataBlock(new byte[] { 0x00, 0x10, 0x20, 0x30 }, pauseMs: 1000),
+                        BuildStandardSpeedDataBlock(BuildSpectrumDataBlock(new byte[] { 0x05, 0x06, 0x07, 0x08 }), pauseMs: 1000)));
+
+                var mountedMixedMachine = new Spectrum128Machine(romFolder);
+                var mountedMixedResult = Tap.TzxLoader.LoadWithPolicy(mountedMixedMachine, mountedMixedPath);
+                Assert.Equal("RomBootstrapMounted", mountedMixedResult.Strategy.ToString());
+
+                MethodInfo prepareBlocksForExecution = typeof(Tap.TzxLoader).GetMethod(
+                    "PrepareBlocksForExecution",
+                    BindingFlags.Static | BindingFlags.NonPublic)!;
+                IReadOnlyList<Tap.TapeBlock> mountedMixedBlocks = (IReadOnlyList<Tap.TapeBlock>)prepareBlocksForExecution.Invoke(
+                    null,
+                    new object[] { Tap.TzxLoader.ParseBlocks(File.ReadAllBytes(mountedMixedPath)) })!;
+                Assert.True(mountedMixedBlocks[2].IsLoadableRomBlock);
+                Assert.True(mountedMixedBlocks[3].IsLoadableRomBlock);
+                Assert.True(mountedMixedBlocks[2].CanUseRomLoadTrap);
+                Assert.True(mountedMixedBlocks[3].CanUseRomLoadTrap);
+
+                Exception? mountedMixedPlaybackException = Record.Exception(() =>
+                {
+                    for (int frame = 0; frame < 50; frame++)
+                        mountedMixedMachine.ExecuteFrame();
+                });
+                Assert.Null(mountedMixedPlaybackException);
+
                 string protectedHybridPath = Path.Combine(romFolder, "protected-hybrid.tzx");
                 File.WriteAllBytes(
                     protectedHybridPath,
@@ -258,6 +291,91 @@ namespace Spectrum128kEmulator.Tests
                 var protectedHybridMachine = new Spectrum128Machine(romFolder);
                 var protectedHybridResult = Tap.TzxLoader.LoadWithPolicy(protectedHybridMachine, protectedHybridPath);
                 Assert.Equal("LeadingStandardChainFakeLoad", protectedHybridResult.Strategy.ToString());
+            }
+            finally
+            {
+                Directory.Delete(romFolder, true);
+            }
+        }
+
+        [Fact]
+        public void RomBootstrapMounted_Runs_Initial_Autorun_Usr_Through_Rom_Basic_Before_Mounted_Remainder()
+        {
+            string romFolder = CreateTempRoms();
+            string tapePath = Path.Combine(romFolder, "rom-bootstrap-initial-usr.tzx");
+
+            try
+            {
+                byte[] basicProgram = BuildBasicProgram(
+                    BuildBasicLine(10,
+                        Token(249), Ascii(" "), Token(192), Ascii("32768"), NumberMarker(32768)));
+
+                File.WriteAllBytes(
+                    tapePath,
+                    BuildTzx(
+                        BuildStandardSpeedDataBlock(
+                            BuildSpectrumHeaderBlock(type: 0, fileName: "BOOT", dataLength: (ushort)basicProgram.Length, parameter1: 10, parameter2: (ushort)basicProgram.Length),
+                            pauseMs: 1000),
+                        BuildStandardSpeedDataBlock(BuildSpectrumDataBlock(basicProgram), pauseMs: 1000),
+                        BuildStandardSpeedDataBlock(new byte[] { 0x00, 0x10, 0x20, 0x30 }, pauseMs: 1000)));
+
+                var machine = new Spectrum128Machine(romFolder);
+                Tap.TapeExecutionResult result = Tap.TzxLoader.LoadWithPolicy(machine, tapePath);
+
+                Assert.Equal("RomBootstrapMounted", result.Strategy.ToString());
+                Assert.True(machine.HasMountedTape);
+                Assert.True(machine.HasPendingMountedLoadUsrContinuation);
+                Assert.Equal((ushort)0x1555, machine.Cpu.Regs.PC);
+
+                int sliceBudget = machine.CurrentCpuClockHz / 1000;
+                for (int slice = 0; slice < 7000 && machine.HasPendingMountedLoadUsrContinuation; slice++)
+                    machine.ExecuteTimeSlice(sliceBudget, out _);
+
+                Assert.False(machine.HasPendingMountedLoadUsrContinuation);
+            }
+            finally
+            {
+                Directory.Delete(romFolder, true);
+            }
+        }
+
+        [Fact]
+        public void LoadWithPolicy_DoesNotDependOnCurrentMachineMode_For_StopIf48k_Blocks()
+        {
+            string romFolder = CreateTempRoms();
+            string tapePath = Path.Combine(romFolder, "stop-if-48k.tzx");
+
+            try
+            {
+                byte[] autorunProgram = BuildBasicProgram(
+                    BuildBasicLine(10,
+                        Token(249), Ascii(" "), Token(192), Ascii("32768"), NumberMarker(32768)));
+
+                File.WriteAllBytes(
+                    tapePath,
+                    BuildTzx(
+                        BuildStandardSpeedDataBlock(
+                            BuildSpectrumHeaderBlock(type: 0, fileName: "AUTO", dataLength: (ushort)autorunProgram.Length, parameter1: 10, parameter2: (ushort)autorunProgram.Length),
+                            pauseMs: 1000),
+                        BuildStandardSpeedDataBlock(BuildSpectrumDataBlock(autorunProgram), pauseMs: 1000),
+                        BuildStopIf48kBlock(),
+                        BuildStandardSpeedDataBlock(
+                            BuildSpectrumHeaderBlock(type: 3, fileName: "CODE", dataLength: 1, parameter1: 0x8000, parameter2: 0),
+                            pauseMs: 1000),
+                        BuildStandardSpeedDataBlock(BuildSpectrumDataBlock(new byte[] { 0xAA }), pauseMs: 1000)));
+
+                var freshMachine = new Spectrum128Machine(romFolder);
+                Tap.TapeExecutionResult freshResult = Tap.TzxLoader.LoadWithPolicy(freshMachine, tapePath);
+
+                var stale48kMachine = new Spectrum128Machine(romFolder);
+                stale48kMachine.Reset();
+                stale48kMachine.ConfigureFor48kTapeLoad(borderColor: 0);
+                Tap.TapeExecutionResult staleResult = Tap.TzxLoader.LoadWithPolicy(stale48kMachine, tapePath);
+
+                Assert.Equal(freshResult.Strategy, staleResult.Strategy);
+                Assert.Equal(freshResult.TotalBlockCount, staleResult.TotalBlockCount);
+                Assert.Equal(freshResult.ConsumedBlockCount, staleResult.ConsumedBlockCount);
+                Assert.True(freshMachine.HasMountedTape == stale48kMachine.HasMountedTape);
             }
             finally
             {
@@ -419,6 +537,7 @@ namespace Spectrum128kEmulator.Tests
                 Directory.Delete(romFolder, true);
             }
         }
+
 
         [Fact]
         public void BootstrapBasicProgramAndMountRemaining_Skips_Leading_Metadata()
@@ -1061,6 +1180,335 @@ namespace Spectrum128kEmulator.Tests
             }
         }
 
+        [Fact]
+        public void Debug_Batman_ChainedBasicShape()
+        {
+            string romFolder = CreateTempRoms();
+            try
+            {
+                string tzxPath = @"C:\Users\steve\Desktop\Snapshots\Batman - Release 1.tzx";
+                Type tapLoaderType = typeof(Tap.TapLoader);
+                MethodInfo parseHeaderInfoMethod = tapLoaderType.GetMethod("ParseHeaderInfo", BindingFlags.NonPublic | BindingFlags.Static)!;
+                MethodInfo initMachineMethod = tapLoaderType.GetMethod("InitializeMachineForFakeTapeLoad", BindingFlags.NonPublic | BindingFlags.Static)!;
+                MethodInfo loadBasicProgramMethod = tapLoaderType
+                    .GetMethods(BindingFlags.NonPublic | BindingFlags.Static)
+                    .Single(method =>
+                    {
+                        if (method.Name != "LoadBasicProgram")
+                            return false;
+                        ParameterInfo[] parameters = method.GetParameters();
+                        return parameters.Length == 3 &&
+                               parameters[0].ParameterType == typeof(Spectrum128Machine) &&
+                               parameters[2].ParameterType == typeof(byte[]);
+                    });
+                Type executorType = tapLoaderType.GetNestedType("BasicBootstrapExecutor", BindingFlags.NonPublic)!;
+                MethodInfo parseLinesMethod = executorType.GetMethod("ParseLines", BindingFlags.NonPublic | BindingFlags.Static)!;
+                MethodInfo createResolverMethod = executorType
+                    .GetMethods(BindingFlags.Public | BindingFlags.Static)
+                    .Single(method => method.Name == "CreateMountedLoadUsrContinuationResolver" && method.GetParameters().Length == 4);
+
+                var blocks = Tap.TzxLoader.ParseBlocks(File.ReadAllBytes(tzxPath));
+                for (int i = 0; i < blocks.Count; i++)
+                {
+                    Console.WriteLine(
+                        $"BAT block {i}: kind={blocks[i].Kind} flag=0x{blocks[i].Flag:X2} loadable={blocks[i].IsLoadableRomBlock} pause={blocks[i].PauseAfterBlockMs} payload={(blocks[i].Payload?.Length ?? -1)}");
+                }
+                object batmanHeader = parseHeaderInfoMethod.Invoke(null, new object[] { blocks[0] })!;
+                Type batmanHeaderType = batmanHeader.GetType();
+                ushort programLength = (ushort)batmanHeaderType.GetProperty("ProgramLength")!.GetValue(batmanHeader)!;
+                ushort autoStartLine = (ushort)batmanHeaderType.GetProperty("AutoStartLine")!.GetValue(batmanHeader)!;
+                Console.WriteLine($"BATMAN header len={programLength} auto={autoStartLine}");
+
+                var machine = new Spectrum128Machine(romFolder);
+                initMachineMethod.Invoke(null, new object[] { machine, false });
+                loadBasicProgramMethod.Invoke(null, new object[] { machine, batmanHeader, blocks[1].Payload! });
+                object lines = parseLinesMethod.Invoke(null, new object[] { machine, (ushort)23755, programLength })!;
+                int lineCounter = 0;
+                foreach (object line in (System.Collections.IEnumerable)lines)
+                {
+                    Type lineType = line.GetType();
+                    ushort number = (ushort)lineType.GetProperty("Number")!.GetValue(line)!;
+                    var statements = (System.Collections.IEnumerable)lineType.GetProperty("Statements")!.GetValue(line)!;
+                    var renderedStatements = new List<string>();
+                    foreach (object stmtObj in statements)
+                    {
+                        var stmtTokens = new List<string>();
+                        foreach (object? token in (System.Collections.IEnumerable)stmtObj)
+                            stmtTokens.Add(token?.ToString() ?? string.Empty);
+                        renderedStatements.Add(string.Join(" ", stmtTokens));
+                    }
+                    Console.WriteLine($"BAT {lineCounter++}: {number}: {string.Join(" : ", renderedStatements)}");
+                }
+
+                object? resolver = createResolverMethod.Invoke(null, new object[] { machine, (ushort)23755, programLength, autoStartLine });
+                Console.WriteLine($"BATMAN resolver? {(resolver != null)}");
+
+                Tap.TapeExecutionResult result = Tap.TzxLoader.LoadWithPolicy(machine, tzxPath);
+                Console.WriteLine($"BATMAN strategy={result.Strategy} consumed={result.ConsumedBlockCount}/{result.TotalBlockCount}");
+                FieldInfo pendingResolverField = typeof(Spectrum128Machine).GetField(
+                    "pendingMountedLoadUsrContinuationResolver",
+                    BindingFlags.Instance | BindingFlags.NonPublic)!;
+                object? initialPendingResolverObject = pendingResolverField.GetValue(machine);
+                Console.WriteLine(
+                    $"BAT POST-LOAD pending={(initialPendingResolverObject != null ? 1 : 0)} " +
+                    $"pc=0x{machine.Cpu.Regs.PC:X4} sp=0x{machine.Cpu.Regs.SP:X4} tape={machine.GetMountedTapeDebugState()}");
+                object? wrappedResolverSource = null;
+
+                bool? slicePending = null;
+                ushort lastSlicePc = 0xFFFF;
+                for (int slice = 0; slice < 4000 && machine.FrameCount == 0; slice++)
+                {
+                    object? currentResolverObject = pendingResolverField.GetValue(machine);
+                    if (currentResolverObject != null &&
+                        !ReferenceEquals(currentResolverObject, wrappedResolverSource))
+                    {
+                        wrappedResolverSource = currentResolverObject;
+                        Func<Spectrum128Machine, ushort?> currentPendingResolver = (Func<Spectrum128Machine, ushort?>)currentResolverObject;
+                        machine.SetPendingMountedLoadUsrContinuationResolver(currentMachine =>
+                        {
+                            ushort? value = currentPendingResolver(currentMachine);
+                            Console.WriteLine(
+                                $"BAT RESOLVER fired frame={currentMachine.FrameCount} pc=0x{currentMachine.Cpu.Regs.PC:X4} " +
+                                $"sp=0x{currentMachine.Cpu.Regs.SP:X4} result=0x{(value.HasValue ? value.Value.ToString("X4") : "null")} " +
+                                $"tape={currentMachine.GetMountedTapeDebugState()}");
+                            return value;
+                        });
+                    }
+
+                    bool slicePendingNow = pendingResolverField.GetValue(machine) != null;
+                    if (slicePending != slicePendingNow || machine.Cpu.Regs.PC != lastSlicePc)
+                    {
+                        Console.WriteLine(
+                            $"BAT SLICE {slice} frame={machine.FrameCount} pending={(slicePendingNow ? 1 : 0)} " +
+                            $"pc=0x{machine.Cpu.Regs.PC:X4} sp=0x{machine.Cpu.Regs.SP:X4} " +
+                            $"newppc=0x{(machine.PeekMemory(23618) | (machine.PeekMemory(23619) << 8)):X4} " +
+                            $"nsppc={machine.PeekMemory(23620)} ppc=0x{(machine.PeekMemory(23621) | (machine.PeekMemory(23622) << 8)):X4} " +
+                            $"subppc={machine.PeekMemory(23623)} tape={machine.GetMountedTapeDebugState()}");
+                        slicePending = slicePendingNow;
+                        lastSlicePc = machine.Cpu.Regs.PC;
+                    }
+
+                    machine.ExecuteTimeSlice(Math.Max(1, machine.CurrentCpuClockHz / 1000), out _);
+                }
+
+                bool? lastPending = null;
+                for (int frame = 0; frame < 15000; frame++)
+                {
+                    machine.ExecuteFrame();
+                    object? currentPending = pendingResolverField.GetValue(machine);
+                    bool pending = currentPending != null;
+                    if (pending != lastPending)
+                    {
+                        Console.WriteLine(
+                            $"BAT PENDING frame={machine.FrameCount} pending={pending} pc=0x{machine.Cpu.Regs.PC:X4} " +
+                            $"sp=0x{machine.Cpu.Regs.SP:X4} tape={machine.GetMountedTapeDebugState()}");
+                        lastPending = pending;
+                    }
+
+                    if (machine.FrameCount == 14110 && currentPending is Func<Spectrum128Machine, ushort?> pendingResolver)
+                    {
+                        Console.WriteLine(
+                            $"BAT PRE-RESUME frame={machine.FrameCount} pc=0x{machine.Cpu.Regs.PC:X4} " +
+                            $"sp=0x{machine.Cpu.Regs.SP:X4} tape={machine.GetMountedTapeDebugState()}");
+                        Console.WriteLine(
+                            $"BAT PRE-RESUME sysvars CHANS=0x{(machine.PeekMemory(23631) | (machine.PeekMemory(23632) << 8)):X4} " +
+                            $"CURCHL=0x{(machine.PeekMemory(23633) | (machine.PeekMemory(23634) << 8)):X4} " +
+                            $"PROG=0x{(machine.PeekMemory(23635) | (machine.PeekMemory(23636) << 8)):X4} " +
+                            $"VARS=0x{(machine.PeekMemory(23627) | (machine.PeekMemory(23628) << 8)):X4} " +
+                            $"ELINE=0x{(machine.PeekMemory(23641) | (machine.PeekMemory(23642) << 8)):X4}");
+                        ushort? preview = pendingResolver(machine);
+                        Console.WriteLine($"BAT PREVIEW resolver=0x{(preview.HasValue ? preview.Value.ToString("X4") : "null")}");
+                        break;
+                    }
+                }
+
+                object? pendingResolverObject = pendingResolverField.GetValue(machine);
+                Console.WriteLine($"BATMAN pending after run? {pendingResolverObject != null}");
+                Console.WriteLine($"BATMAN PC=0x{machine.Cpu.Regs.PC:X4} SP=0x{machine.Cpu.Regs.SP:X4}");
+                Console.WriteLine($"BATMAN tape={machine.GetMountedTapeDebugState()}");
+                Console.WriteLine(
+                    $"BATMAN sysvars CHANS=0x{(machine.PeekMemory(23631) | (machine.PeekMemory(23632) << 8)):X4} " +
+                    $"CURCHL=0x{(machine.PeekMemory(23633) | (machine.PeekMemory(23634) << 8)):X4} " +
+                    $"WORKSP=0x{(machine.PeekMemory(23649) | (machine.PeekMemory(23650) << 8)):X4} " +
+                    $"NEWPPC=0x{(machine.PeekMemory(23618) | (machine.PeekMemory(23619) << 8)):X4} " +
+                    $"NSPPC={machine.PeekMemory(23621)}");
+
+                object liveLines = parseLinesMethod.Invoke(null, new object[] { machine, (ushort)23755, programLength })!;
+                int liveLineCounter = 0;
+                foreach (object line in (System.Collections.IEnumerable)liveLines)
+                {
+                    Type lineType = line.GetType();
+                    ushort number = (ushort)lineType.GetProperty("Number")!.GetValue(line)!;
+                    var statements = (System.Collections.IEnumerable)lineType.GetProperty("Statements")!.GetValue(line)!;
+                    var renderedStatements = new List<string>();
+                    foreach (object stmtObj in statements)
+                    {
+                        var stmtTokens = new List<string>();
+                        foreach (object? token in (System.Collections.IEnumerable)stmtObj)
+                            stmtTokens.Add(token?.ToString() ?? string.Empty);
+                        renderedStatements.Add(string.Join(" ", stmtTokens));
+                    }
+                    Console.WriteLine($"BAT LIVE {liveLineCounter++}: {number}: {string.Join(" : ", renderedStatements)}");
+                }
+                Console.WriteLine(
+                    $"BATMAN late sysvars CHANS=0x{(machine.PeekMemory(23631) | (machine.PeekMemory(23632) << 8)):X4} " +
+                    $"CURCHL=0x{(machine.PeekMemory(23633) | (machine.PeekMemory(23634) << 8)):X4} " +
+                    $"WORKSP=0x{(machine.PeekMemory(23649) | (machine.PeekMemory(23650) << 8)):X4} " +
+                    $"NEWPPC=0x{(machine.PeekMemory(23618) | (machine.PeekMemory(23619) << 8)):X4} " +
+                    $"NSPPC={machine.PeekMemory(23621)} PPC=0x{(machine.PeekMemory(23627) | (machine.PeekMemory(23628) << 8)):X4} SUBPPC={machine.PeekMemory(23629)}");
+                Console.Write("BAT MEM 01A0:");
+                for (int i = 0x01A0; i < 0x01B0; i++)
+                    Console.Write($" {machine.PeekMemory((ushort)i):X2}");
+                Console.WriteLine();
+                Console.Write("BAT MEM 5C40:");
+                for (int i = 0x5C40; i < 0x5C60; i++)
+                    Console.Write($" {machine.PeekMemory((ushort)i):X2}");
+                Console.WriteLine();
+                ushort progAddress = (ushort)(machine.PeekMemory(23635) | (machine.PeekMemory(23636) << 8));
+                ushort varsAddress = (ushort)(machine.PeekMemory(23627) | (machine.PeekMemory(23628) << 8));
+                ushort eLineAddress = (ushort)(machine.PeekMemory(23641) | (machine.PeekMemory(23642) << 8));
+                Console.WriteLine($"BAT POINTERS PROG=0x{progAddress:X4} VARS=0x{varsAddress:X4} ELINE=0x{eLineAddress:X4}");
+                Console.Write("BAT VARS:");
+                for (int i = varsAddress; i < Math.Min(eLineAddress, varsAddress + 48); i++)
+                    Console.Write($" {machine.PeekMemory((ushort)i):X2}");
+                Console.WriteLine();
+
+                MethodInfo resumeMethod = typeof(Spectrum128Machine).GetMethod(
+                    "TryResumePendingMountedLoadUsrContinuation",
+                    BindingFlags.Instance | BindingFlags.NonPublic)!;
+                machine.Cpu.Regs.PC = 0x2D2B;
+                bool forcedResume = (bool)resumeMethod.Invoke(machine, new object[] { machine.Cpu })!;
+                Console.WriteLine($"BATMAN forced resume? {forcedResume} pc=0x{machine.Cpu.Regs.PC:X4} bc=0x{machine.Cpu.Regs.BC:X4}");
+                for (int frame = 0; frame < 2000; frame++)
+                    machine.ExecuteFrame();
+                Console.WriteLine($"BATMAN after forced resume PC=0x{machine.Cpu.Regs.PC:X4} tape={machine.GetMountedTapeDebugState()}");
+            }
+            finally
+            {
+                Directory.Delete(romFolder, true);
+            }
+        }
+
+        [Fact(Skip = "Local debug helper")]
+        public void Debug_Batman_TwoConsecutiveLoads_SameMachine()
+        {
+            string romFolder = CreateTempRoms();
+            try
+            {
+                string tzxPath = @"C:\Users\steve\Desktop\Snapshots\Batman - Release 1.tzx";
+                var machine = new Spectrum128Machine(romFolder);
+
+                Tap.TapeExecutionResult first = Tap.TzxLoader.LoadWithPolicy(machine, tzxPath);
+                string firstLoadDump = machine.BuildDebugDump("batman-first-load");
+                Console.WriteLine(
+                    $"BAT FIRST-LOAD strategy={first.Strategy} consumed={first.ConsumedBlockCount}/{first.TotalBlockCount} " +
+                    $"pc=0x{machine.Cpu.Regs.PC:X4} frameTStates={machine.FrameTStates} tape={machine.GetMountedTapeDebugState()}");
+                for (int frame = 0; frame < 17000; frame++)
+                    machine.ExecuteFrame();
+
+                FieldInfo pendingResolverField = typeof(Spectrum128Machine).GetField(
+                    "pendingMountedLoadUsrContinuationResolver",
+                    BindingFlags.Instance | BindingFlags.NonPublic)!;
+
+                Console.WriteLine(
+                    $"BAT FIRST strategy={first.Strategy} consumed={first.ConsumedBlockCount}/{first.TotalBlockCount} " +
+                    $"pc=0x{machine.Cpu.Regs.PC:X4} frameTStates={machine.FrameTStates} pending={(pendingResolverField.GetValue(machine) != null ? 1 : 0)} " +
+                    $"tape={machine.GetMountedTapeDebugState()}");
+
+                Tap.TapeExecutionResult second = Tap.TzxLoader.LoadWithPolicy(machine, tzxPath);
+                string secondLoadDump = machine.BuildDebugDump("batman-second-load");
+                Console.WriteLine(
+                    $"BAT SECOND-LOAD strategy={second.Strategy} consumed={second.ConsumedBlockCount}/{second.TotalBlockCount} " +
+                    $"pc=0x{machine.Cpu.Regs.PC:X4} frameTStates={machine.FrameTStates} pending={(pendingResolverField.GetValue(machine) != null ? 1 : 0)} " +
+                    $"tape={machine.GetMountedTapeDebugState()}");
+                bool dumpsEqual = string.Equals(firstLoadDump, secondLoadDump, StringComparison.Ordinal);
+                Console.WriteLine($"BAT LOAD DUMPS EQUAL={(dumpsEqual ? 1 : 0)}");
+                if (!dumpsEqual)
+                {
+                    string[] firstLines = firstLoadDump.Split(Environment.NewLine);
+                    string[] secondLines = secondLoadDump.Split(Environment.NewLine);
+                    int compareLength = Math.Min(firstLines.Length, secondLines.Length);
+                    for (int i = 0; i < compareLength; i++)
+                    {
+                        if (string.Equals(firstLines[i], secondLines[i], StringComparison.Ordinal))
+                            continue;
+
+                        Console.WriteLine($"BAT LOAD DIFF line={i}");
+                        Console.WriteLine($"  FIRST : {firstLines[i]}");
+                        Console.WriteLine($"  SECOND: {secondLines[i]}");
+                        break;
+                    }
+                }
+
+                for (int frame = 0; frame < 17000; frame++)
+                    machine.ExecuteFrame();
+
+                Console.WriteLine(
+                    $"BAT SECOND-RUN pc=0x{machine.Cpu.Regs.PC:X4} frameTStates={machine.FrameTStates} pending={(pendingResolverField.GetValue(machine) != null ? 1 : 0)} " +
+                    $"tape={machine.GetMountedTapeDebugState()}");
+            }
+            finally
+            {
+                Directory.Delete(romFolder, true);
+            }
+        }
+
+        [Fact(Skip = "Local debug helper")]
+        public void Debug_Batman_ExecuteFrame_Vs_ExecuteTimeSlice()
+        {
+            string romFolder = CreateTempRoms();
+            try
+            {
+                string tzxPath = @"C:\Users\steve\Desktop\Snapshots\Batman - Release 1.tzx";
+                if (!File.Exists(tzxPath))
+                    return;
+
+                static string SnapshotState(Spectrum128Machine machine) =>
+                    $"PC=0x{machine.Cpu.Regs.PC:X4} SP=0x{machine.Cpu.Regs.SP:X4} Frame={machine.FrameCount} " +
+                    $"Pending={(typeof(Spectrum128Machine).GetField("pendingMountedLoadUsrContinuationResolver", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(machine) != null ? 1 : 0)} " +
+                    $"Tape={machine.GetMountedTapeDebugState()}";
+
+                static void ExecuteFrames(Spectrum128Machine machine, int targetFrame)
+                {
+                    while (machine.FrameCount < targetFrame)
+                        machine.ExecuteFrame();
+                }
+
+                static void ExecuteSlices(Spectrum128Machine machine, int sliceBudget, int targetFrame)
+                {
+                    while (machine.FrameCount < targetFrame)
+                        machine.ExecuteTimeSlice(sliceBudget);
+                }
+
+                var frameMachine = new Spectrum128Machine(romFolder);
+                Tap.TzxLoader.LoadWithPolicy(frameMachine, tzxPath);
+                ExecuteFrames(frameMachine, 2500);
+                Console.WriteLine("BAT FRAME2500 " + SnapshotState(frameMachine));
+                ExecuteFrames(frameMachine, 10000);
+                Console.WriteLine("BAT FRAME10000 " + SnapshotState(frameMachine));
+
+                var sliceMachine1 = new Spectrum128Machine(romFolder);
+                Tap.TzxLoader.LoadWithPolicy(sliceMachine1, tzxPath);
+                int sliceBudget1 = sliceMachine1.CurrentCpuClockHz / 1000;
+                ExecuteSlices(sliceMachine1, sliceBudget1, 2500);
+                Console.WriteLine("BAT SLICE1_2500 " + SnapshotState(sliceMachine1));
+                ExecuteSlices(sliceMachine1, sliceBudget1, 10000);
+                Console.WriteLine("BAT SLICE1_10000 " + SnapshotState(sliceMachine1));
+
+                var sliceMachine8 = new Spectrum128Machine(romFolder);
+                Tap.TzxLoader.LoadWithPolicy(sliceMachine8, tzxPath);
+                int sliceBudget8 = (sliceMachine8.CurrentCpuClockHz / 1000) * 8;
+                ExecuteSlices(sliceMachine8, sliceBudget8, 2500);
+                Console.WriteLine("BAT SLICE8_2500 " + SnapshotState(sliceMachine8));
+                ExecuteSlices(sliceMachine8, sliceBudget8, 10000);
+                Console.WriteLine("BAT SLICE8_10000 " + SnapshotState(sliceMachine8));
+            }
+            finally
+            {
+                Directory.Delete(romFolder, true);
+            }
+        }
+
         [Fact(Skip = "Local debug helper")]
         public void Debug_ImpossibleMissionBugfix_ChainedBasicShape()
         {
@@ -1252,6 +1700,11 @@ namespace Spectrum128kEmulator.Tests
         private static byte[] BuildReturnBlock()
         {
             return new byte[] { 0x27 };
+        }
+
+        private static byte[] BuildStopIf48kBlock()
+        {
+            return new byte[] { 0x2A, 0x00, 0x00, 0x00, 0x00 };
         }
 
         private static byte[] BuildBasicProgram(params byte[][] lines)

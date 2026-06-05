@@ -63,6 +63,7 @@ Milestone 7 In Progress - Audio Output Working, Snapshot And Tape Compatibility 
 - `.tap` loading now works for real game cases including `exolon.tap` and `Where Time Stood Still.tap`
 - `.tzx` support is implemented and `Exolon.tzx` is verified working
 - `Impossible Mission - Bugfix.tzx` now loads successfully
+- `Batman - Release 1.tzx` is now deterministic across repeated loads in one app session, but still does not reach gameplay yet
 - `.rzx` replay support is implemented and `aufmonty.rzx` plays back successfully
 - emulation and audio submission now run on a background loop while the UI presents frames at a fixed 50Hz cadence
 - muted turbo tape loads skip unnecessary per-frame audio-frame construction
@@ -81,7 +82,11 @@ Milestone 7 In Progress - Audio Output Working, Snapshot And Tape Compatibility 
 - `Where Time Stood Still.tap` now loads and starts gameplay correctly
 - App-side keyboard handling now uses a split model:
   - ordinary mapped Spectrum keys are applied directly from WinForms key events
-  - composite cursor-style Spectrum chords use a small bridged hold/continuation window to keep menu input responsive
+  - composite cursor-style Spectrum chords use a small pulse/continuation bridge to keep menu input responsive
+- Runtime ownership is now cleaner:
+  - the background emulation loop owns live mutable machine state during normal execution
+  - the UI presents copied snapshots instead of competing for long-held machine state
+  - tape/snapshot loads pause emulation and start from a clean machine/input boundary
 - Z80 core refactored into focused partial files without intended behaviour changes
 
 CPU Compliance
@@ -118,10 +123,16 @@ Tape Loading Progress (Milestone 6)
   - `Impossible Mission - Bugfix.tzx`
   - `Where Time Stood Still.tap`
   - `aufmonty.rzx`
+- current generic Batman progress includes:
+  - repeated loads in the same app session now behave consistently
+  - mounted `IF ... THEN USR(...)` continuation steps directly evaluate safe numeric-variable expressions using BASIC-style default-zero semantics
+  - mounted continuations can resume during pauses before custom non-ROM blocks, but not before pending ROM-loadable blocks
+  - Batman now completes its mounted standard-data load deterministically and ends in a late ROM48 loop after tape completion, rather than failing earlier through session-state leakage
 - mounted live-tape playback now uses a generic wall-clock turbo path in the app while the tape is actively driving the EAR line
 - emulated FE/tape pulse timing is kept exact during those live phases; the speed-up happens in the UI scheduler rather than by distorting tape data
 
-Broader `.tzx` compatibility work still remains for additional protected/custom titles, with `Batman - Release 1.tzx` as the next active target.
+Broader `.tzx` compatibility work still remains for additional protected/custom titles.
+The current active structural gap is Batman's post-load `USR 0` / ROM48 handoff after a fully completed mounted standard-data load.
 
 Audio Progress (Milestone 7)
 - AY register model implemented

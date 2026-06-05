@@ -58,6 +58,142 @@ namespace Spectrum128kEmulator.Tests
         }
 
         [Fact]
+        public void CpuReset_Clears_QFlags_Latch()
+        {
+            var cpu = new Z80.Z80Cpu();
+            FieldInfo qFlagsField = typeof(Z80.Z80Cpu).GetField("qFlags", BindingFlags.Instance | BindingFlags.NonPublic)!;
+
+            qFlagsField.SetValue(cpu, (byte)0x28);
+            cpu.Reset();
+            Assert.Equal((byte)0x00, (byte)qFlagsField.GetValue(cpu)!);
+
+            qFlagsField.SetValue(cpu, (byte)0x28);
+            cpu.ClearSnapshotExecutionState();
+            Assert.Equal((byte)0x00, (byte)qFlagsField.GetValue(cpu)!);
+        }
+
+        [Fact]
+        public void CpuReset_Restores_General_Register_Defaults()
+        {
+            var cpu = new Z80.Z80Cpu();
+
+            cpu.Regs.AF = 0x1234;
+            cpu.Regs.BC = 0x5678;
+            cpu.Regs.DE = 0x9ABC;
+            cpu.Regs.HL = 0xDEF0;
+            cpu.Regs.A_ = 1;
+            cpu.Regs.F_ = 2;
+            cpu.Regs.B_ = 3;
+            cpu.Regs.C_ = 4;
+            cpu.Regs.D_ = 5;
+            cpu.Regs.E_ = 6;
+            cpu.Regs.H_ = 7;
+            cpu.Regs.L_ = 8;
+            cpu.Regs.IX = 0x1111;
+            cpu.Regs.IY = 0x2222;
+
+            cpu.Reset();
+
+            Assert.Equal((ushort)0xFFFF, cpu.Regs.AF);
+            Assert.Equal((ushort)0x0000, cpu.Regs.BC);
+            Assert.Equal((ushort)0x0000, cpu.Regs.DE);
+            Assert.Equal((ushort)0x0000, cpu.Regs.HL);
+            Assert.Equal((ushort)0xFFFF, cpu.Regs.IX);
+            Assert.Equal((ushort)0xFFFF, cpu.Regs.IY);
+            Assert.Equal((byte)0, cpu.Regs.A_);
+            Assert.Equal((byte)0, cpu.Regs.F_);
+            Assert.Equal((byte)0, cpu.Regs.B_);
+            Assert.Equal((byte)0, cpu.Regs.C_);
+            Assert.Equal((byte)0, cpu.Regs.D_);
+            Assert.Equal((byte)0, cpu.Regs.E_);
+            Assert.Equal((byte)0, cpu.Regs.H_);
+            Assert.Equal((byte)0, cpu.Regs.L_);
+        }
+
+        [Fact]
+        public void PendingMountedLoadInterpreterRefresh_Preserves_Original_BasicVariableArea()
+        {
+            string romFolder = CreateTempRoms();
+            try
+            {
+                var machine = new Spectrum128Machine(romFolder);
+                const ushort varsAddress = 0x5FAA;
+                const ushort editLineAddress = varsAddress + 6;
+                const ushort shrunkenEditLineAddress = 0x5CCC;
+                const ushort shrunkenVarsAddress = 0x5CCB;
+
+                WriteWord(machine, 23627, varsAddress);
+                WriteWord(machine, 23641, editLineAddress);
+                machine.PokeMemory(varsAddress, 0x61);
+                machine.PokeMemory((ushort)(varsAddress + 1), 0x00);
+                machine.PokeMemory((ushort)(varsAddress + 2), 0x00);
+                machine.PokeMemory((ushort)(varsAddress + 3), 0x5B);
+                machine.PokeMemory((ushort)(varsAddress + 4), 0x00);
+                machine.PokeMemory((ushort)(varsAddress + 5), 0x00);
+
+                machine.SetPendingMountedLoadUsrContinuationResolver(_ => null);
+
+                WriteWord(machine, 23627, shrunkenVarsAddress);
+                WriteWord(machine, 23641, shrunkenEditLineAddress);
+                machine.RefreshPendingMountedLoadInterpreterContext();
+
+                MethodInfo readVariableMethod = typeof(Tap.TapLoader).GetMethod(
+                    "TryReadLiveBasicNumericVariable",
+                    BindingFlags.Static | BindingFlags.NonPublic)!;
+                object?[] args = new object?[] { machine, "a", 0 };
+
+                bool found = (bool)readVariableMethod.Invoke(null, args)!;
+
+                Assert.True(found);
+                Assert.Equal(91, (int)args[2]!);
+            }
+            finally
+            {
+                Directory.Delete(romFolder, true);
+            }
+        }
+
+        [Fact]
+        public void PendingMountedLoadInterpreterRefresh_Preserves_BasicVariableBytes_When_Live_Area_Is_Overwritten()
+        {
+            string romFolder = CreateTempRoms();
+            try
+            {
+                var machine = new Spectrum128Machine(romFolder);
+                const ushort varsAddress = 0x5FC0;
+                const ushort editLineAddress = varsAddress + 6;
+
+                WriteWord(machine, 23627, varsAddress);
+                WriteWord(machine, 23641, editLineAddress);
+                machine.PokeMemory(varsAddress, 0x61);
+                machine.PokeMemory((ushort)(varsAddress + 1), 0x00);
+                machine.PokeMemory((ushort)(varsAddress + 2), 0x00);
+                machine.PokeMemory((ushort)(varsAddress + 3), 0x5B);
+                machine.PokeMemory((ushort)(varsAddress + 4), 0x00);
+                machine.PokeMemory((ushort)(varsAddress + 5), 0x00);
+
+                machine.SetPendingMountedLoadUsrContinuationResolver(_ => null);
+
+                for (ushort address = varsAddress; address < editLineAddress; address++)
+                    machine.PokeMemory(address, 0x00);
+
+                MethodInfo readVariableMethod = typeof(Tap.TapLoader).GetMethod(
+                    "TryReadLiveBasicNumericVariable",
+                    BindingFlags.Static | BindingFlags.NonPublic)!;
+                object?[] args = new object?[] { machine, "a", 0 };
+
+                bool found = (bool)readVariableMethod.Invoke(null, args)!;
+
+                Assert.True(found);
+                Assert.Equal(91, (int)args[2]!);
+            }
+            finally
+            {
+                Directory.Delete(romFolder, true);
+            }
+        }
+
+        [Fact]
         public void ReadingKeyboardPort_With_Multiple_Selected_Rows_Increments_Each_Selected_Row()
         {
             string romFolder = CreateTempRoms();
@@ -79,6 +215,12 @@ namespace Spectrum128kEmulator.Tests
             {
                 Directory.Delete(romFolder, true);
             }
+        }
+
+        private static void WriteWord(Spectrum128Machine machine, ushort address, ushort value)
+        {
+            machine.PokeMemory(address, (byte)(value & 0xFF));
+            machine.PokeMemory((ushort)(address + 1), (byte)(value >> 8));
         }
 
         [Fact]
@@ -196,6 +338,27 @@ namespace Spectrum128kEmulator.Tests
         }
 
         [Fact]
+        public void ExecuteTimeSlice_FullFrameBudget_Completes_Frame_When_Instruction_Overshoots_FrameBoundary()
+        {
+            string romFolder = CreateTempRoms();
+            try
+            {
+                var machine = new Spectrum128Machine(romFolder);
+
+                int completedFrames = machine.ExecuteTimeSlice(Spectrum128Machine.FrameTStates128, out int executedTStates);
+
+                Assert.Equal(1, completedFrames);
+                Assert.Equal(1, machine.FrameCount);
+                Assert.True(executedTStates >= Spectrum128Machine.FrameTStates128);
+                Assert.True(machine.TryDequeueCompletedAudioFrame(out _));
+            }
+            finally
+            {
+                Directory.Delete(romFolder, true);
+            }
+        }
+
+        [Fact]
         public void ExecuteTimeSlice_DoesNot_Queue_AudioFrames_When_AudioCapture_Is_Disabled()
         {
             string romFolder = CreateTempRoms();
@@ -228,6 +391,54 @@ namespace Spectrum128kEmulator.Tests
                 machine.SetAudioFrameCaptureEnabled(true);
                 Assert.Equal(1, machine.ExecuteTimeSlice(Spectrum128Machine.FrameTStates128));
                 Assert.True(machine.TryDequeueCompletedAudioFrame(out _));
+            }
+            finally
+            {
+                Directory.Delete(romFolder, true);
+            }
+        }
+
+        [Fact]
+        public void ExecuteTimeSlice_Reports_ActualExecutedTStates()
+        {
+            string romFolder = CreateTempRoms();
+            try
+            {
+                var machine = new Spectrum128Machine(romFolder);
+                ulong before = machine.Cpu.TStates;
+
+                int completedFrames = machine.ExecuteTimeSlice(1, out int executedTStates);
+
+                Assert.InRange(completedFrames, 0, 1);
+                Assert.True(executedTStates > 0);
+                Assert.Equal((int)(machine.Cpu.TStates - before), executedTStates);
+            }
+            finally
+            {
+                Directory.Delete(romFolder, true);
+            }
+        }
+
+        [Fact]
+        public void ExecuteTimeSlice_TinyBudgets_Accumulate_Without_Losing_ExecutedTStates()
+        {
+            string romFolder = CreateTempRoms();
+            try
+            {
+                var machine = new Spectrum128Machine(romFolder);
+                ulong before = machine.Cpu.TStates;
+                int totalExecutedTStates = 0;
+                int safety = 0;
+
+                while (machine.FrameCount < 1 && safety++ < Spectrum128Machine.FrameTStates128)
+                {
+                    machine.ExecuteTimeSlice(1, out int executedTStates);
+                    totalExecutedTStates += executedTStates;
+                }
+
+                Assert.Equal(1, machine.FrameCount);
+                Assert.True(totalExecutedTStates >= Spectrum128Machine.FrameTStates128);
+                Assert.Equal((int)(machine.Cpu.TStates - before), totalExecutedTStates);
             }
             finally
             {
@@ -617,6 +828,568 @@ namespace Spectrum128kEmulator.Tests
             }
         }
 
+        [Fact]
+        public void ExecuteTimeSlice_Advances_MountedTape_Pauses_Without_Ear_Reads()
+        {
+            string romFolder = CreateTempRoms();
+            try
+            {
+                var machine = new Spectrum128Machine(romFolder);
+                machine.MountTape(new Tap.MountedTape(
+                    "pause-progress",
+                    new[]
+                    {
+                        Tap.TapeBlock.CreatePause(1000),
+                        Tap.TapeBlock.CreatePureTone(2168, 32)
+                    }));
+
+                string before = machine.GetMountedTapeDebugState();
+                Assert.Contains("EarBlock=0/2", before);
+                Assert.Contains("EarState=Pause", before);
+
+                machine.ExecuteTimeSlice(3_600_000);
+
+                string after = machine.GetMountedTapeDebugState();
+                Assert.Contains("EarBlock=1/2", after);
+                Assert.Contains("EarState=PureTone", after);
+            }
+            finally
+            {
+                Directory.Delete(romFolder, true);
+            }
+        }
+
+        [Fact]
+        public void PendingMountedLoadUsrContinuation_Resumes_On_Usr_Return_Path()
+        {
+            string romFolder = CreateTempRoms();
+            try
+            {
+                var machine = new Spectrum128Machine(romFolder);
+                machine.MountTape(new Tap.MountedTape("idle-mounted", Array.Empty<Tap.TapeBlock>()));
+                machine.SetPendingMountedLoadUsrContinuation(0x8000);
+                machine.Cpu.Regs.PC = 0x2D2B;
+                machine.Cpu.Regs.SP = 0xFF00;
+
+                MethodInfo resumeMethod = typeof(Spectrum128Machine).GetMethod(
+                    "TryResumePendingMountedLoadUsrContinuation",
+                    BindingFlags.Instance | BindingFlags.NonPublic)!;
+
+                bool resumed = (bool)resumeMethod.Invoke(machine, new object[] { machine.Cpu })!;
+
+                Assert.True(resumed);
+                Assert.Equal((ushort)0x8000, machine.Cpu.Regs.PC);
+                Assert.Equal((ushort)0x8000, machine.Cpu.Regs.BC);
+                Assert.Equal((ushort)0xFEFE, machine.Cpu.Regs.SP);
+                Assert.Equal((byte)0x2B, machine.PeekMemory(0xFEFE));
+                Assert.Equal((byte)0x2D, machine.PeekMemory(0xFEFF));
+            }
+            finally
+            {
+                Directory.Delete(romFolder, true);
+            }
+        }
+
+        [Fact]
+        public void PendingMountedLoadUsrContinuation_Does_Not_Resume_On_Rom_Load_Return_Path()
+        {
+            string romFolder = CreateTempRoms();
+            try
+            {
+                var machine = new Spectrum128Machine(romFolder);
+                machine.MountTape(new Tap.MountedTape(
+                    "active-mounted",
+                    new[]
+                    {
+                        Tap.TapeBlock.CreateData(new byte[] { 0xFF, 0xAA, 0x00 }, 2168, 3223, 667, 735, 855, 1710, 8, 1000)
+                    }));
+                machine.SetPendingMountedLoadUsrContinuation(0x8000);
+                machine.Cpu.Regs.PC = 0x15FE;
+                machine.Cpu.Regs.SP = 0xFF00;
+
+                MethodInfo resumeMethod = typeof(Spectrum128Machine).GetMethod(
+                    "TryResumePendingMountedLoadUsrContinuation",
+                    BindingFlags.Instance | BindingFlags.NonPublic)!;
+
+                bool resumed = (bool)resumeMethod.Invoke(machine, new object[] { machine.Cpu })!;
+
+                Assert.False(resumed);
+                Assert.Equal((ushort)0x15FE, machine.Cpu.Regs.PC);
+            }
+            finally
+            {
+                Directory.Delete(romFolder, true);
+            }
+        }
+
+        [Fact]
+        public void PendingMountedLoadUsrContinuation_Does_Not_Resume_During_Pause_Before_Remaining_RomLoadable_Block()
+        {
+            string romFolder = CreateTempRoms();
+            try
+            {
+                var machine = new Spectrum128Machine(romFolder);
+                machine.MountTape(new Tap.MountedTape(
+                    "paused-mounted",
+                    new[]
+                    {
+                        Tap.TapeBlock.CreatePause(1000),
+                        Tap.TapeBlock.CreateData(new byte[] { 0xFF, 0xAA, 0x00 }, 2168, 3223, 667, 735, 855, 1710, 8, 1000)
+                    }));
+                machine.SetPendingMountedLoadUsrContinuation(0x8000);
+                machine.Cpu.Regs.PC = 0x15FE;
+                machine.Cpu.Regs.SP = 0xFF00;
+
+                MethodInfo resumeMethod = typeof(Spectrum128Machine).GetMethod(
+                    "TryResumePendingMountedLoadUsrContinuation",
+                    BindingFlags.Instance | BindingFlags.NonPublic)!;
+
+                bool resumed = (bool)resumeMethod.Invoke(machine, new object[] { machine.Cpu })!;
+
+                Assert.False(resumed);
+                Assert.Equal((ushort)0x15FE, machine.Cpu.Regs.PC);
+            }
+            finally
+            {
+                Directory.Delete(romFolder, true);
+            }
+        }
+
+        [Fact]
+        public void PendingMountedLoadUsrContinuation_Can_Resume_During_Pause_Before_Custom_NonRom_Block()
+        {
+            string romFolder = CreateTempRoms();
+            try
+            {
+                var machine = new Spectrum128Machine(romFolder);
+                machine.MountTape(new Tap.MountedTape(
+                    "paused-before-custom",
+                    new[]
+                    {
+                        Tap.TapeBlock.CreatePause(1000),
+                        Tap.TapeBlock.CreatePureTone(2168, 32)
+                    }));
+                machine.SetPendingMountedLoadUsrContinuation(0x8000);
+                machine.Cpu.Regs.PC = 0x15FE;
+                machine.Cpu.Regs.SP = 0xFF00;
+
+                MethodInfo resumeMethod = typeof(Spectrum128Machine).GetMethod(
+                    "TryResumePendingMountedLoadUsrContinuation",
+                    BindingFlags.Instance | BindingFlags.NonPublic)!;
+
+                bool resumed = (bool)resumeMethod.Invoke(machine, new object[] { machine.Cpu })!;
+
+                Assert.True(resumed);
+                Assert.Equal((ushort)0x8000, machine.Cpu.Regs.PC);
+                Assert.Equal((ushort)0x8000, machine.Cpu.Regs.BC);
+            }
+            finally
+            {
+                Directory.Delete(romFolder, true);
+            }
+        }
+
+        [Fact]
+        public void PendingMountedLoadUsrContinuation_Can_Resume_On_Late_Rom_Callback_Return_Path()
+        {
+            string romFolder = CreateTempRoms();
+            try
+            {
+                var machine = new Spectrum128Machine(romFolder);
+                machine.MountTape(new Tap.MountedTape(
+                    "idle-mounted",
+                    Array.Empty<Tap.TapeBlock>()));
+                machine.SetPendingMountedLoadUsrContinuation(0x8000);
+                machine.Cpu.Regs.PC = 0x1600;
+                machine.Cpu.Regs.SP = 0xFF00;
+
+                MethodInfo resumeMethod = typeof(Spectrum128Machine).GetMethod(
+                    "TryResumePendingMountedLoadUsrContinuation",
+                    BindingFlags.Instance | BindingFlags.NonPublic)!;
+
+                bool resumed = (bool)resumeMethod.Invoke(machine, new object[] { machine.Cpu })!;
+
+                Assert.True(resumed);
+                Assert.Equal((ushort)0x8000, machine.Cpu.Regs.PC);
+                Assert.Equal((ushort)0x8000, machine.Cpu.Regs.BC);
+            }
+            finally
+            {
+                Directory.Delete(romFolder, true);
+            }
+        }
+
+        [Fact]
+        public void PendingMountedLoadUsrContinuation_Can_Resume_Rom_Basic_Execution()
+        {
+            string romFolder = CreateTempRoms();
+            try
+            {
+                var machine = new Spectrum128Machine(romFolder);
+                machine.MountTape(new Tap.MountedTape("idle-mounted", Array.Empty<Tap.TapeBlock>()));
+                machine.SetPendingMountedLoadBasicResume(40, 3);
+                machine.SetPendingMountedLoadUsrContinuation(0xFFFF);
+                machine.Cpu.Regs.PC = 0x2D2B;
+
+                MethodInfo resumeMethod = typeof(Spectrum128Machine).GetMethod(
+                    "TryResumePendingMountedLoadUsrContinuation",
+                    BindingFlags.Instance | BindingFlags.NonPublic)!;
+
+                bool resumed = (bool)resumeMethod.Invoke(machine, new object[] { machine.Cpu })!;
+
+                Assert.True(resumed);
+                Assert.Equal((ushort)0x1555, machine.Cpu.Regs.PC);
+                Assert.Equal((byte)40, machine.PeekMemory(23618));
+                Assert.Equal((byte)0, machine.PeekMemory(23619));
+                Assert.Equal((byte)3, machine.PeekMemory(23620));
+                Assert.Equal((byte)40, machine.PeekMemory(23621));
+                Assert.Equal((byte)0, machine.PeekMemory(23622));
+                Assert.Equal((byte)3, machine.PeekMemory(23623));
+            }
+            finally
+            {
+                Directory.Delete(romFolder, true);
+            }
+        }
+
+        [Fact]
+        public void PendingMountedLoadUsrContinuation_Resumes_From_Workspace_Callback_Path()
+        {
+            string romFolder = CreateTempRoms();
+            try
+            {
+                var machine = new Spectrum128Machine(romFolder);
+                machine.MountTape(new Tap.MountedTape("idle-mounted", Array.Empty<Tap.TapeBlock>()));
+                machine.SetPendingMountedLoadUsrContinuation(0x5CBB);
+                machine.Cpu.Regs.PC = 0x5E87;
+                machine.Cpu.Regs.SP = 0xFF00;
+
+                MethodInfo resumeMethod = typeof(Spectrum128Machine).GetMethod(
+                    "TryResumePendingMountedLoadUsrContinuation",
+                    BindingFlags.Instance | BindingFlags.NonPublic)!;
+
+                bool resumed = (bool)resumeMethod.Invoke(machine, new object[] { machine.Cpu })!;
+
+                Assert.True(resumed);
+                Assert.Equal((ushort)0x5CBB, machine.Cpu.Regs.PC);
+                Assert.Equal((ushort)0x5CBB, machine.Cpu.Regs.BC);
+            }
+            finally
+            {
+                Directory.Delete(romFolder, true);
+            }
+        }
+
+        [Fact]
+        public void PendingMountedLoadUsrContinuation_Resumes_From_Keyboard_Input_Callback_Path()
+        {
+            string romFolder = CreateTempRoms();
+            try
+            {
+                var machine = new Spectrum128Machine(romFolder);
+                machine.MountTape(new Tap.MountedTape("idle-mounted", Array.Empty<Tap.TapeBlock>()));
+                machine.SetPendingMountedLoadUsrContinuation(0x5CBB);
+                machine.Cpu.Regs.PC = 0x10A8;
+                machine.Cpu.Regs.SP = 0xFF00;
+
+                MethodInfo resumeMethod = typeof(Spectrum128Machine).GetMethod(
+                    "TryResumePendingMountedLoadUsrContinuation",
+                    BindingFlags.Instance | BindingFlags.NonPublic)!;
+
+                bool resumed = (bool)resumeMethod.Invoke(machine, new object[] { machine.Cpu })!;
+
+                Assert.True(resumed);
+                Assert.Equal((ushort)0x5CBB, machine.Cpu.Regs.PC);
+                Assert.Equal((ushort)0x5CBB, machine.Cpu.Regs.BC);
+            }
+            finally
+            {
+                Directory.Delete(romFolder, true);
+            }
+        }
+
+        [Fact]
+        public void PendingMountedLoadUsrContinuation_Requiring_UsrReturn_Does_Not_Resume_From_Rom_Service_Path()
+        {
+            string romFolder = CreateTempRoms();
+            try
+            {
+                var machine = new Spectrum128Machine(romFolder);
+                machine.MountTape(new Tap.MountedTape("idle-mounted", Array.Empty<Tap.TapeBlock>()));
+                machine.SetPendingMountedLoadUsrContinuationResolver(_ => 0x8000, requireUsrReturnAddress: true);
+                machine.Cpu.Regs.PC = 0x1600;
+                machine.Cpu.Regs.SP = 0xFF00;
+
+                MethodInfo resumeMethod = typeof(Spectrum128Machine).GetMethod(
+                    "TryResumePendingMountedLoadUsrContinuation",
+                    BindingFlags.Instance | BindingFlags.NonPublic)!;
+
+                bool resumed = (bool)resumeMethod.Invoke(machine, new object[] { machine.Cpu })!;
+
+                Assert.False(resumed);
+                Assert.Equal((ushort)0x1600, machine.Cpu.Regs.PC);
+            }
+            finally
+            {
+                Directory.Delete(romFolder, true);
+            }
+        }
+
+        [Fact]
+        public void PendingMountedLoadUsrContinuation_Requiring_UsrReturn_Resumes_On_Usr_Return_Path()
+        {
+            string romFolder = CreateTempRoms();
+            try
+            {
+                var machine = new Spectrum128Machine(romFolder);
+                machine.MountTape(new Tap.MountedTape("idle-mounted", Array.Empty<Tap.TapeBlock>()));
+                machine.SetPendingMountedLoadUsrContinuationResolver(_ => 0x8000, requireUsrReturnAddress: true);
+                machine.Cpu.Regs.PC = 0x2D2B;
+                machine.Cpu.Regs.SP = 0xFF00;
+
+                MethodInfo resumeMethod = typeof(Spectrum128Machine).GetMethod(
+                    "TryResumePendingMountedLoadUsrContinuation",
+                    BindingFlags.Instance | BindingFlags.NonPublic)!;
+
+                bool resumed = (bool)resumeMethod.Invoke(machine, new object[] { machine.Cpu })!;
+
+                Assert.True(resumed);
+                Assert.Equal((ushort)0x8000, machine.Cpu.Regs.PC);
+                Assert.Equal((ushort)0x8000, machine.Cpu.Regs.BC);
+            }
+            finally
+            {
+                Directory.Delete(romFolder, true);
+            }
+        }
+
+        [Fact]
+        public void PendingMountedLoadUsrContinuation_RomBasicResume_Restores_Workspace_But_Preserves_Live_Channel_State()
+        {
+            string romFolder = CreateTempRoms();
+            try
+            {
+                var machine = new Spectrum128Machine(romFolder);
+
+                SetWord(machine, 23633, 0x5CB6);
+                SetWord(machine, 23643, 0x5CCC);
+                SetWord(machine, 23645, 0x5CCC);
+                SetWord(machine, 23647, 0x00CC);
+                SetWord(machine, 23641, 0x5CCC);
+                SetWord(machine, 23649, 0x5CCE);
+                SetWord(machine, 23651, 0x5CCE);
+                SetWord(machine, 23653, 0x5CCE);
+
+                machine.SetPendingMountedLoadBasicResume(40, 1);
+                machine.SetPendingMountedLoadUsrContinuation(0xFFFF);
+
+                SetWord(machine, 23633, 0x5CBB);
+                SetWord(machine, 23643, 0x5FC3);
+                SetWord(machine, 23645, 0x5FC3);
+                SetWord(machine, 23647, 0x00F4);
+                SetWord(machine, 23641, 0x5FC3);
+                SetWord(machine, 23649, 0x5FC5);
+                SetWord(machine, 23651, 0x5FC5);
+                SetWord(machine, 23653, 0x5FC5);
+
+                machine.MountTape(new Tap.MountedTape("idle-mounted", Array.Empty<Tap.TapeBlock>()));
+                machine.Cpu.Regs.PC = 0x2D2B;
+
+                MethodInfo resumeMethod = typeof(Spectrum128Machine).GetMethod(
+                    "TryResumePendingMountedLoadUsrContinuation",
+                    BindingFlags.Instance | BindingFlags.NonPublic)!;
+
+                bool resumed = (bool)resumeMethod.Invoke(machine, new object[] { machine.Cpu })!;
+
+                Assert.True(resumed);
+                Assert.Equal((ushort)0x1555, machine.Cpu.Regs.PC);
+                Assert.Equal((ushort)0x5CBB, ReadWord(machine, 23633));
+                Assert.Equal((ushort)0x5FC3, ReadWord(machine, 23643));
+                Assert.Equal((ushort)0x5FC3, ReadWord(machine, 23645));
+                Assert.Equal((ushort)0x00F4, ReadWord(machine, 23647));
+                Assert.Equal((ushort)0x5FC3, ReadWord(machine, 23641));
+                Assert.Equal((ushort)0x5FC5, ReadWord(machine, 23649));
+                Assert.Equal((ushort)0x5FC5, ReadWord(machine, 23651));
+                Assert.Equal((ushort)0x5FC5, ReadWord(machine, 23653));
+            }
+            finally
+            {
+                Directory.Delete(romFolder, true);
+            }
+        }
+
+        [Fact]
+        public void PendingMountedLoadUsrContinuation_RomBasicResume_Preserves_Original_Basic_Area_Pointers()
+        {
+            string romFolder = CreateTempRoms();
+            try
+            {
+                var machine = new Spectrum128Machine(romFolder);
+
+                SetWord(machine, 23627, 0x5FAA);
+                SetWord(machine, 23635, 0x5CCB);
+                SetWord(machine, 23637, 0x5CCB);
+                SetWord(machine, 23639, 0x5CCB);
+                SetWord(machine, 23633, 0x5CB6);
+                SetWord(machine, 23641, 0x5FC3);
+                SetWord(machine, 23643, 0x5FC3);
+                SetWord(machine, 23645, 0x5FC3);
+                SetWord(machine, 23647, 0x00F4);
+                SetWord(machine, 23649, 0x5FC5);
+                SetWord(machine, 23651, 0x5FC5);
+                SetWord(machine, 23653, 0x5FC5);
+
+                machine.SetPendingMountedLoadBasicResume(40, 1);
+                machine.SetPendingMountedLoadUsrContinuation(0xFFFF);
+
+                SetWord(machine, 23627, 0x5CCB);
+                SetWord(machine, 23635, 0x5CCB);
+                SetWord(machine, 23637, 0x5CCB);
+                SetWord(machine, 23639, 0x5CCB);
+                SetWord(machine, 23633, 0x5CB6);
+                SetWord(machine, 23641, 0x5CCC);
+                SetWord(machine, 23643, 0x5CCC);
+                SetWord(machine, 23645, 0x0000);
+                SetWord(machine, 23647, 0x0000);
+                SetWord(machine, 23649, 0x5CCE);
+                SetWord(machine, 23651, 0x5CCE);
+                SetWord(machine, 23653, 0x5CCE);
+
+                machine.MountTape(new Tap.MountedTape("idle-mounted", Array.Empty<Tap.TapeBlock>()));
+                machine.Cpu.Regs.PC = 0x2D2B;
+
+                MethodInfo resumeMethod = typeof(Spectrum128Machine).GetMethod(
+                    "TryResumePendingMountedLoadUsrContinuation",
+                    BindingFlags.Instance | BindingFlags.NonPublic)!;
+
+                bool resumed = (bool)resumeMethod.Invoke(machine, new object[] { machine.Cpu })!;
+
+                Assert.True(resumed);
+                Assert.Equal((ushort)0x1555, machine.Cpu.Regs.PC);
+                Assert.Equal((ushort)0x5FAA, ReadWord(machine, 23627));
+                Assert.Equal((ushort)0x5CCB, ReadWord(machine, 23635));
+                Assert.Equal((ushort)0x5CCB, ReadWord(machine, 23637));
+                Assert.Equal((ushort)0x5CCB, ReadWord(machine, 23639));
+                Assert.Equal((ushort)0x5CB6, ReadWord(machine, 23633));
+                Assert.Equal((ushort)0x5CCC, ReadWord(machine, 23641));
+                Assert.Equal((ushort)0x5CCC, ReadWord(machine, 23643));
+                Assert.Equal((ushort)0x0000, ReadWord(machine, 23645));
+                Assert.Equal((ushort)0x0000, ReadWord(machine, 23647));
+                Assert.Equal((ushort)0x5CCE, ReadWord(machine, 23649));
+                Assert.Equal((ushort)0x5CCE, ReadWord(machine, 23651));
+                Assert.Equal((ushort)0x5CCE, ReadWord(machine, 23653));
+            }
+            finally
+            {
+                Directory.Delete(romFolder, true);
+            }
+        }
+
+        [Fact]
+        public void PendingMountedLoadUsrContinuation_DirectUsr_Can_Preserve_Live_Interpreter_State()
+        {
+            string romFolder = CreateTempRoms();
+            try
+            {
+                var machine = new Spectrum128Machine(romFolder);
+
+                SetWord(machine, 23627, 0x5FAA);
+                SetWord(machine, 23635, 0x5CCB);
+                SetWord(machine, 23637, 0x5CCB);
+                SetWord(machine, 23639, 0x5CCB);
+                SetWord(machine, 23633, 0x5CB6);
+                SetWord(machine, 23641, 0x5FC3);
+                SetWord(machine, 23643, 0x5FC3);
+                SetWord(machine, 23645, 0x5FC3);
+                SetWord(machine, 23647, 0x00F4);
+                SetWord(machine, 23649, 0x5FC5);
+                SetWord(machine, 23651, 0x5FC5);
+                SetWord(machine, 23653, 0x5FC5);
+
+                machine.SetPendingMountedLoadUsrContinuation(0x8000);
+
+                SetWord(machine, 23627, 0x0000);
+                SetWord(machine, 23635, 0x0000);
+                SetWord(machine, 23637, 0x0000);
+                SetWord(machine, 23639, 0x0000);
+                SetWord(machine, 23633, 0x1234);
+                SetWord(machine, 23641, 0x9ABC);
+                SetWord(machine, 23643, 0x5678);
+                SetWord(machine, 23645, 0x2468);
+                SetWord(machine, 23647, 0x1357);
+                SetWord(machine, 23649, 0x1111);
+                SetWord(machine, 23651, 0x2222);
+                SetWord(machine, 23653, 0x3333);
+
+                machine.SetPendingMountedLoadResumeCursorOverride(kCur: 0x5FC3, chAdd: 0x5FD0, xPtr: 0x5FD0);
+                machine.SetPendingMountedLoadDirectUsrContextPolicy(preserveLiveInterpreterState: true);
+                machine.MountTape(new Tap.MountedTape("idle-mounted", Array.Empty<Tap.TapeBlock>()));
+                machine.Cpu.Regs.PC = 0x2D2B;
+
+                MethodInfo resumeMethod = typeof(Spectrum128Machine).GetMethod(
+                    "TryResumePendingMountedLoadUsrContinuation",
+                    BindingFlags.Instance | BindingFlags.NonPublic)!;
+
+                bool resumed = (bool)resumeMethod.Invoke(machine, new object[] { machine.Cpu })!;
+
+                Assert.True(resumed);
+                Assert.Equal((ushort)0x8000, machine.Cpu.Regs.PC);
+                Assert.Equal((ushort)0x8000, machine.Cpu.Regs.BC);
+                Assert.Equal((ushort)0x1234, ReadWord(machine, 23633));
+                Assert.Equal((ushort)0x9ABC, ReadWord(machine, 23641));
+                Assert.Equal((ushort)0x5678, ReadWord(machine, 23643));
+                Assert.Equal((ushort)0x2468, ReadWord(machine, 23645));
+                Assert.Equal((ushort)0x1357, ReadWord(machine, 23647));
+                Assert.Equal((ushort)0x1111, ReadWord(machine, 23649));
+                Assert.Equal((ushort)0x2222, ReadWord(machine, 23651));
+                Assert.Equal((ushort)0x3333, ReadWord(machine, 23653));
+            }
+            finally
+            {
+                Directory.Delete(romFolder, true);
+            }
+        }
+
+        [Fact]
+        public void PendingMountedLoadUsrContinuation_UsrZero_Enters_48k_Mode()
+        {
+            string romFolder = CreateTempRoms();
+            try
+            {
+                var machine = new Spectrum128Machine(romFolder);
+                machine.ConfigureFor128kTapeLoad(borderColor: 3);
+                machine.MountTape(new Tap.MountedTape("idle-mounted", Array.Empty<Tap.TapeBlock>()));
+                machine.SetPendingMountedLoadUsrContinuation(0x0000);
+                machine.Cpu.Regs.PC = 0x2D2B;
+
+                MethodInfo resumeMethod = typeof(Spectrum128Machine).GetMethod(
+                    "TryResumePendingMountedLoadUsrContinuation",
+                    BindingFlags.Instance | BindingFlags.NonPublic)!;
+
+                bool resumed = (bool)resumeMethod.Invoke(machine, new object[] { machine.Cpu })!;
+
+                Assert.True(resumed);
+                Assert.Equal((ushort)0x0000, machine.Cpu.Regs.PC);
+                Assert.Equal(1, machine.CurrentRomBank);
+                Assert.False(machine.PagingLocked);
+                Assert.Equal(0, machine.PagedRamBank);
+                Assert.Equal(5, machine.ScreenBank);
+                Assert.Equal(Spectrum128Machine.FrameTStates128, machine.FrameTStates);
+                Assert.Equal((ushort)0x5CBB, ReadWord(machine, 23633));
+                Assert.Equal((ushort)0, ReadWord(machine, 23618));
+                Assert.Equal((byte)0, machine.PeekMemory(23620));
+                Assert.Equal((ushort)0, ReadWord(machine, 23621));
+                Assert.Equal((byte)0, machine.PeekMemory(23623));
+                machine.DebugWritePort(0x7FFD, 0x03);
+                Assert.Equal(3, machine.PagedRamBank);
+                Assert.False(machine.HasPendingMountedLoadUsrContinuation);
+            }
+            finally
+            {
+                Directory.Delete(romFolder, true);
+            }
+        }
+
         private static void SetCpuTStates(Spectrum128Machine machine, ulong value)
         {
             PropertyInfo? property = typeof(Z80.Z80Cpu).GetProperty(
@@ -628,6 +1401,17 @@ namespace Spectrum128kEmulator.Tests
                 throw new InvalidOperationException("Unable to set CPU TStates for test.");
 
             setter.Invoke(machine.Cpu, new object[] { value });
+        }
+
+        private static void SetWord(Spectrum128Machine machine, ushort address, ushort value)
+        {
+            machine.PokeMemory(address, (byte)(value & 0xFF));
+            machine.PokeMemory((ushort)(address + 1), (byte)(value >> 8));
+        }
+
+        private static ushort ReadWord(Spectrum128Machine machine, ushort address)
+        {
+            return (ushort)(machine.PeekMemory(address) | (machine.PeekMemory((ushort)(address + 1)) << 8));
         }
 
         private static ulong ExtractFirstInterruptAcceptTStates(string[] events)

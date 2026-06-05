@@ -19,11 +19,15 @@ if (args.Length > 0)
     uint? initialTStatesOverride = null;
     int floatingBusDisplayStartAdjust = 0;
     int floatingBusSampleAdjust = 0;
+    bool enableDebugCapture = false;
+    bool dumpTapeBlocks = false;
     TapeLoadStrategy? forcedTapeStrategy = null;
     (ushort Start, ushort End)? focusedTraceRange = null;
     int focusedTraceStartFrame = 0;
     int focusedTraceFrameLimit = 0;
     int focusedTraceMaxEntries = 2048;
+    string executionMode = "frame";
+    string? batmanForceContinuationMode = null;
     List<ScheduledKeyEvent> scheduledKeyEvents = new();
     List<ScheduledPcEvent> scheduledPcEvents = new();
     List<ScheduledRegisterEvent> scheduledRegisterEvents = new();
@@ -51,6 +55,14 @@ if (args.Length > 0)
         else if (arg.StartsWith("fbsample=", StringComparison.OrdinalIgnoreCase))
         {
             floatingBusSampleAdjust = int.Parse(arg["fbsample=".Length..]);
+        }
+        else if (arg.Equals("debugcapture=1", StringComparison.OrdinalIgnoreCase))
+        {
+            enableDebugCapture = true;
+        }
+        else if (arg.Equals("dumpblocks=1", StringComparison.OrdinalIgnoreCase))
+        {
+            dumpTapeBlocks = true;
         }
         else if (arg.StartsWith("strategy=", StringComparison.OrdinalIgnoreCase))
         {
@@ -88,6 +100,14 @@ if (args.Length > 0)
         {
             focusedTraceMaxEntries = int.Parse(arg["tracemax=".Length..]);
         }
+        else if (arg.StartsWith("exec=", StringComparison.OrdinalIgnoreCase))
+        {
+            executionMode = arg["exec=".Length..].Trim().ToLowerInvariant();
+        }
+        else if (arg.StartsWith("batforce=", StringComparison.OrdinalIgnoreCase))
+        {
+            batmanForceContinuationMode = arg["batforce=".Length..].Trim().ToLowerInvariant();
+        }
         else
         {
             scheduledKeyEvents = ParseKeyScript(arg);
@@ -95,6 +115,12 @@ if (args.Length > 0)
     }
 
     Console.WriteLine($"Loading image: {snapshotPath}");
+
+    if (dumpTapeBlocks)
+    {
+        DumpTapeBlocks(snapshotPath, machine.FrameTStates == Spectrum128Machine.FrameTStates48);
+        return;
+    }
 
     string extension = Path.GetExtension(snapshotPath);
     if (extension.Equals(".sna", StringComparison.OrdinalIgnoreCase))
@@ -154,6 +180,12 @@ if (args.Length > 0)
             $"Floating bus timing adjust: displayStart={floatingBusDisplayStartAdjust} sample={floatingBusSampleAdjust}");
     }
 
+    if (enableDebugCapture)
+    {
+        machine.SetDebugEventCaptureEnabled(true);
+        Console.WriteLine("Debug event capture enabled.");
+    }
+
     if (focusedTraceRange.HasValue)
     {
         int effectiveFocusedTraceFrameLimit = focusedTraceFrameLimit > 0 ? focusedTraceFrameLimit : frameLimit;
@@ -203,54 +235,59 @@ if (args.Length > 0)
             Console.WriteLine($"  frame={frameTimingEvent.Frame} frametstates={frameTimingEvent.FrameTStates}");
     }
 
-    for (int frame = 0; frame < frameLimit; frame++)
+    Console.WriteLine($"Execution mode: {executionMode}");
+
+    int iteration = 0;
+    int lastReportedFrame = -1;
+    bool? lastPendingMountedLoadContinuation = null;
+    while (machine.FrameCount < frameLimit)
     {
         foreach (ScheduledKeyEvent keyEvent in scheduledKeyEvents)
         {
-            if (keyEvent.Frame == frame)
+            if (keyEvent.Frame == iteration)
             {
                 ApplyKey(machine, keyEvent.KeyName, keyEvent.Pressed);
-                Console.WriteLine($"KEY frame={frame} key={keyEvent.KeyName} pressed={keyEvent.Pressed}");
+                Console.WriteLine($"KEY frame={iteration} key={keyEvent.KeyName} pressed={keyEvent.Pressed}");
             }
         }
 
         foreach (ScheduledPcEvent pcEvent in scheduledPcEvents)
         {
-            if (pcEvent.Frame == frame)
+            if (pcEvent.Frame == iteration)
             {
                 machine.Cpu.Regs.PC = pcEvent.ProgramCounter;
-                Console.WriteLine($"PC frame={frame} pc=0x{pcEvent.ProgramCounter:X4}");
+                Console.WriteLine($"PC frame={iteration} pc=0x{pcEvent.ProgramCounter:X4}");
             }
         }
 
         foreach (ScheduledRegisterEvent registerEvent in scheduledRegisterEvents)
         {
-            if (registerEvent.Frame == frame)
+            if (registerEvent.Frame == iteration)
             {
                 ApplyRegister(machine, registerEvent.RegisterName, registerEvent.Value);
-                Console.WriteLine($"REG frame={frame} {registerEvent.RegisterName}=0x{registerEvent.Value:X4}");
+                Console.WriteLine($"REG frame={iteration} {registerEvent.RegisterName}=0x{registerEvent.Value:X4}");
             }
         }
 
         foreach (ScheduledMemoryWriteEvent memoryWriteEvent in scheduledMemoryWriteEvents)
         {
-            if (memoryWriteEvent.Frame == frame)
+            if (memoryWriteEvent.Frame == iteration)
             {
                 machine.Cpu.WriteMemory(memoryWriteEvent.Address, memoryWriteEvent.Value);
-                Console.WriteLine($"POKE frame={frame} [{memoryWriteEvent.Address:X4}]=0x{memoryWriteEvent.Value:X2}");
+                Console.WriteLine($"POKE frame={iteration} [{memoryWriteEvent.Address:X4}]=0x{memoryWriteEvent.Value:X2}");
             }
         }
 
         foreach (ScheduledFrameTimingEvent frameTimingEvent in scheduledFrameTimingEvents)
         {
-            if (frameTimingEvent.Frame == frame)
+            if (frameTimingEvent.Frame == iteration)
             {
                 machine.SetFrameTimingForDebug(frameTimingEvent.FrameTStates);
-                Console.WriteLine($"FRAMET frame={frame} frametstates={frameTimingEvent.FrameTStates}");
+                Console.WriteLine($"FRAMET frame={iteration} frametstates={frameTimingEvent.FrameTStates}");
             }
         }
 
-        machine.ExecuteFrame();
+        ExecuteHarnessStep(machine, executionMode);
 
         if (machine.TryConsumeAutoDebugDump(out string reason, out string dump))
         {
@@ -260,19 +297,105 @@ if (args.Length > 0)
             return;
         }
 
-        if (frame % 10 == 0)
+        if (machine.HasPendingMountedLoadUsrContinuation != lastPendingMountedLoadContinuation)
         {
+            lastPendingMountedLoadContinuation = machine.HasPendingMountedLoadUsrContinuation;
+            Console.WriteLine(
+                $"PENDING frame={machine.FrameCount} pending={machine.HasPendingMountedLoadUsrContinuation} " +
+                $"pc=0x{machine.Cpu.Regs.PC:X4} tape={machine.GetMountedTapeDebugState()}");
+            Console.WriteLine(BuildBatmanSysVarDebug(machine));
+        }
+
+        if (machine.FrameCount != lastReportedFrame && machine.FrameCount % 10 == 0)
+        {
+            lastReportedFrame = machine.FrameCount;
             Console.WriteLine(
                 $"Frame {machine.FrameCount}: PC=0x{machine.Cpu.Regs.PC:X4} SP=0x{machine.Cpu.Regs.SP:X4} " +
                 $"IFF1={machine.Cpu.IFF1} IFF2={machine.Cpu.IFF2} INTP={machine.Cpu.InterruptPending} " +
                 $"Tape={machine.GetMountedTapeDebugState()}");
+            if (machine.FrameCount >= 14110 && machine.FrameCount <= 14180)
+                Console.WriteLine(BuildBatmanSysVarDebug(machine));
         }
+
+        if (!string.IsNullOrEmpty(batmanForceContinuationMode) &&
+            machine.FrameCount == 13820 &&
+            machine.HasPendingMountedLoadUsrContinuation)
+        {
+            FieldInfo? pendingField = typeof(Spectrum128Machine).GetField(
+                "pendingMountedLoadUsrContinuationResolver",
+                BindingFlags.Instance | BindingFlags.NonPublic);
+            if (pendingField?.GetValue(machine) is Func<Spectrum128Machine, ushort?> pendingResolver)
+            {
+                Console.WriteLine("PREVIEW " + BuildBatmanSysVarDebug(machine));
+                if (!string.IsNullOrEmpty(batmanForceContinuationMode))
+                {
+                    if (batmanForceContinuationMode == "curchl")
+                    {
+                        ushort curChl = (ushort)(machine.PeekMemory(23633) | (machine.PeekMemory(23634) << 8));
+                        machine.SetPendingMountedLoadUsrContinuation(curChl);
+                        Console.WriteLine($"PREVIEW forced=curchl entry=0x{curChl:X4}");
+                    }
+                    else if (batmanForceContinuationMode == "usr0")
+                    {
+                        machine.SetPendingMountedLoadUsrContinuation(0);
+                        Console.WriteLine("PREVIEW forced=usr0 entry=0x0000");
+                    }
+                    else if (batmanForceContinuationMode == "natural")
+                    {
+                        ushort? preview = pendingResolver(machine);
+                        Console.WriteLine($"PREVIEW resolver={(preview.HasValue ? $"0x{preview.Value:X4}" : "null")} pc=0x{machine.Cpu.Regs.PC:X4}");
+                        return;
+                    }
+                }
+                else
+                {
+                    ushort? preview = pendingResolver(machine);
+                    Console.WriteLine($"PREVIEW resolver={(preview.HasValue ? $"0x{preview.Value:X4}" : "null")} pc=0x{machine.Cpu.Regs.PC:X4}");
+                    return;
+                }
+            }
+        }
+
+        iteration++;
     }
 
     string finalDump = machine.BuildDebugDump($"ManualHarness end-of-run dump after {machine.FrameCount} frames.");
+    finalDump += BuildPendingMountedLoadDebug(machine);
+    finalDump += BuildBasicProgramMemoryDebug(machine);
     WriteHarnessArtifacts(machine, finalDump, "end");
+    if (machine.HasPendingMountedLoadUsrContinuation)
+    {
+        MethodInfo? resumeMethod = typeof(Spectrum128Machine).GetMethod(
+            "TryResumePendingMountedLoadUsrContinuation",
+            BindingFlags.Instance | BindingFlags.NonPublic);
+        if (resumeMethod != null)
+        {
+            bool forcedResume = (bool)resumeMethod.Invoke(machine, new object[] { machine.Cpu })!;
+            Console.WriteLine(
+                $"FORCED-RESUME frame={machine.FrameCount} resumed={forcedResume} pc=0x{machine.Cpu.Regs.PC:X4} " +
+                $"bc=0x{machine.Cpu.Regs.BC:X4} tape={machine.GetMountedTapeDebugState()}");
+        }
+    }
     Console.WriteLine("No auto debug dump was triggered.");
     return;
+}
+
+static void ExecuteHarnessStep(Spectrum128Machine machine, string executionMode)
+{
+    switch (executionMode)
+    {
+        case "frame":
+            machine.ExecuteFrame();
+            return;
+        case "slice1":
+            machine.ExecuteTimeSlice(Math.Max(1, machine.CurrentCpuClockHz / 1000));
+            return;
+        case "slice8":
+            machine.ExecuteTimeSlice(Math.Max(1, (machine.CurrentCpuClockHz / 1000) * 8));
+            return;
+        default:
+            throw new InvalidOperationException($"Unsupported execution mode '{executionMode}'.");
+    }
 }
 
 static string DescribeTapeExecution(string format, TapeExecutionResult result)
@@ -290,6 +413,58 @@ static string DescribeTapeExecution(string format, TapeExecutionResult result)
         _ =>
             $"{format} mounted: blocks={result.TotalBlockCount} display={result.DisplayName}"
     };
+}
+
+static void DumpTapeBlocks(string tapePath, bool stopTapeIf48k)
+{
+    byte[] data = File.ReadAllBytes(tapePath);
+    IReadOnlyList<TapeBlock> parsedBlocks;
+    IReadOnlyList<TapeBlock> executionBlocks;
+
+    if (Path.GetExtension(tapePath).Equals(".tzx", StringComparison.OrdinalIgnoreCase))
+    {
+        MethodInfo parseMethod = typeof(TzxLoader).GetMethod(
+            "ParseBlocks",
+            BindingFlags.Static | BindingFlags.NonPublic)!;
+        parsedBlocks = (IReadOnlyList<TapeBlock>)parseMethod.Invoke(null, new object[] { data, stopTapeIf48k })!;
+
+        MethodInfo prepareMethod = typeof(TzxLoader).GetMethod(
+            "PrepareBlocksForExecution",
+            BindingFlags.Static | BindingFlags.NonPublic)!;
+        executionBlocks = (IReadOnlyList<TapeBlock>)prepareMethod.Invoke(null, new object[] { parsedBlocks })!;
+    }
+    else
+    {
+        MethodInfo parseMethod = typeof(TapLoader).GetMethod(
+            "ParseBlocks",
+            BindingFlags.Static | BindingFlags.NonPublic)!;
+        parsedBlocks = (IReadOnlyList<TapeBlock>)parseMethod.Invoke(null, new object[] { data })!;
+        executionBlocks = parsedBlocks;
+    }
+
+    Console.WriteLine("=== PARSED BLOCKS ===");
+    DumpBlockList(parsedBlocks);
+    Console.WriteLine("=== EXECUTION BLOCKS ===");
+    DumpBlockList(executionBlocks);
+}
+
+static void DumpBlockList(IReadOnlyList<TapeBlock> blocks)
+{
+    for (int index = 0; index < blocks.Count; index++)
+    {
+        TapeBlock block = blocks[index];
+        int byteCount = block.StreamByteCount;
+        int previewCount = Math.Min(byteCount, 16);
+        Span<string> preview = previewCount == 0 ? [] : new string[previewCount];
+        for (int i = 0; i < previewCount; i++)
+            preview[i] = $"{block.GetStreamByte(i):X2}";
+
+        Console.WriteLine(
+            $"[{index}] Kind={block.Kind} Rom={block.IsLoadableRomBlock} Trap={block.CanUseRomLoadTrap} " +
+            $"Bytes={byteCount} Flag={block.Flag:X2} UsedBits={block.UsedBitsInLastByte} Pause={block.PauseAfterBlockMs} " +
+            $"Pilot={block.PilotPulseCount}@{block.PilotPulseLength} Zero={block.ZeroBitPulseLength} One={block.OneBitPulseLength} " +
+            $"Head={(previewCount == 0 ? "-" : string.Join(' ', preview.ToArray()))}");
+    }
 }
 
 Console.WriteLine("Manual smoke harness starting...");
@@ -569,6 +744,80 @@ static void WriteHarnessArtifacts(Spectrum128Machine machine, string dump, strin
 
     Console.WriteLine($"Harness artifacts: {dumpPath}");
     Console.WriteLine($"Harness frame image: {imagePath}");
+}
+
+static string BuildPendingMountedLoadDebug(Spectrum128Machine machine)
+{
+    FieldInfo? pendingResolverField = typeof(Spectrum128Machine).GetField(
+        "pendingMountedLoadUsrContinuationResolver",
+        BindingFlags.Instance | BindingFlags.NonPublic);
+    FieldInfo? pendingResumeLineField = typeof(Spectrum128Machine).GetField(
+        "pendingMountedLoadBasicResumeLine",
+        BindingFlags.Instance | BindingFlags.NonPublic);
+    FieldInfo? pendingResumeStatementField = typeof(Spectrum128Machine).GetField(
+        "pendingMountedLoadBasicResumeStatement",
+        BindingFlags.Instance | BindingFlags.NonPublic);
+
+    object? resolver = pendingResolverField?.GetValue(machine);
+    object? resumeLine = pendingResumeLineField?.GetValue(machine);
+    object? resumeStatement = pendingResumeStatementField?.GetValue(machine);
+
+    return Environment.NewLine +
+           "=== PENDING MOUNTED LOAD ===" + Environment.NewLine +
+           $"HasPendingResolver={(resolver != null ? 1 : 0)}" + Environment.NewLine +
+           $"PendingResumeLine={(resumeLine ?? "(null)")}" + Environment.NewLine +
+           $"PendingResumeStatement={(resumeStatement ?? "(null)")}" + Environment.NewLine;
+}
+
+static string BuildBatmanSysVarDebug(Spectrum128Machine machine)
+{
+    static ushort ReadWord(Spectrum128Machine machine, ushort address) =>
+        (ushort)(machine.PeekMemory(address) | (machine.PeekMemory((ushort)(address + 1)) << 8));
+
+    ushort vars = ReadWord(machine, 23627);
+
+    return
+        $"SYSV frame={machine.FrameCount} " +
+        $"CHANS=0x{ReadWord(machine, 23631):X4} CURCHL=0x{ReadWord(machine, 23633):X4} " +
+        $"PROG=0x{ReadWord(machine, 23635):X4} VARS=0x{vars:X4} " +
+        $"ELINE=0x{ReadWord(machine, 23641):X4} KCUR=0x{ReadWord(machine, 23643):X4} " +
+        $"CHADD=0x{ReadWord(machine, 23645):X4} XPTR=0x{ReadWord(machine, 23647):X4} " +
+        $"WORKSP=0x{ReadWord(machine, 23649):X4} STKBOT=0x{ReadWord(machine, 23651):X4} STKEND=0x{ReadWord(machine, 23653):X4} " +
+        $"NEWPPC=0x{ReadWord(machine, 23618):X4} NSPPC={machine.PeekMemory(23620)} " +
+        $"PPC=0x{ReadWord(machine, 23621):X4} SUBPPC={machine.PeekMemory(23623)}";
+}
+
+static string BuildBasicProgramMemoryDebug(Spectrum128Machine machine)
+{
+    static ushort ReadWord(Spectrum128Machine machine, ushort address) =>
+        (ushort)(machine.PeekMemory(address) | (machine.PeekMemory((ushort)(address + 1)) << 8));
+
+    static string DumpMemory(Spectrum128Machine machine, ushort address, int length)
+    {
+        var builder = new System.Text.StringBuilder();
+        for (int offset = 0; offset < length; offset += 16)
+        {
+            builder.Append($"{(ushort)(address + offset):X4}: ");
+            int rowLength = Math.Min(16, length - offset);
+            for (int i = 0; i < rowLength; i++)
+                builder.Append($"{machine.PeekMemory((ushort)(address + offset + i)):X2} ");
+            builder.AppendLine();
+        }
+
+        return builder.ToString();
+    }
+
+    ushort prog = ReadWord(machine, 23635);
+    ushort vars = ReadWord(machine, 23627);
+    ushort eLine = ReadWord(machine, 23641);
+    if (prog == 0 || vars <= prog)
+        return string.Empty;
+
+    int dumpLength = Math.Min(128, vars - prog);
+    return Environment.NewLine +
+           "=== BASIC PROGRAM MEMORY ===" + Environment.NewLine +
+           $"PROG=0x{prog:X4} VARS=0x{vars:X4} LEN={vars - prog}" + Environment.NewLine +
+           DumpMemory(machine, prog, dumpLength);
 }
 
 readonly record struct ScheduledKeyEvent(int Frame, string KeyName, bool Pressed);
