@@ -235,6 +235,10 @@ namespace Spectrum128kEmulator.Tap
             TryGetActivePlaybackBlock(out TapeBlock? block) && block != null &&
             (block.Kind == TapeBlockKind.DirectRecording ||
              (block.Kind == TapeBlockKind.Data && !block.CanUseRomLoadTrap));
+        public bool IsStreamingRomLoadableStandardData =>
+            TryGetActivePlaybackBlock(out TapeBlock? block) && block != null &&
+            block.Kind == TapeBlockKind.Data &&
+            block.CanUseRomLoadTrap;
 
         public void Reset()
         {
@@ -477,7 +481,10 @@ namespace Spectrum128kEmulator.Tap
 
                 bool lengthMatches = block.Payload!.Length == expectedLength;
                 bool flagMatches = block.Flag == expectedFlag;
-                bool canUseEarlySyncTrap = isSyncLoopTrap && lengthMatches && hasStructuredRomLoadContext;
+                bool canUseEarlySyncTrap =
+                    isSyncLoopTrap &&
+                    lengthMatches &&
+                    (hasStructuredRomLoadContext || hasUnstructuredStandardRomLoadContext);
                 if (!hasStructuredRomLoadContext && !hasUnstructuredStandardRomLoadContext)
                 {
                     return false;
@@ -513,6 +520,11 @@ namespace Spectrum128kEmulator.Tap
                         {
                             for (int i = 0; i < block.Payload.Length; i++)
                                 machine.PokeMemory((ushort)(destination + i), block.Payload[i]);
+                        }
+
+                        if (machine.HasPendingMountedLoadUsrContinuation)
+                        {
+                            machine.RefreshPendingMountedLoadInterpreterContext(forceVariableAreaRefresh: true);
                         }
                     }
                     else
@@ -3422,14 +3434,10 @@ namespace Spectrum128kEmulator.Tap
             byte high = variableData[offset + 3];
             byte trailing = variableData[offset + 4];
 
-            if (exponent != 0x00 || trailing != 0x00)
-            {
-                return TryReadSpectrumSmallInteger(machine, baseAddress, out value);
-            }
+            if (TryDecodeSpectrumNumericValue(exponent, sign, low, high, trailing, out value))
+                return true;
 
-            short signedValue = unchecked((short)(low | (high << 8)));
-            value = sign == 0xFF ? -Math.Abs(signedValue) : signedValue;
-            return true;
+            return TryReadSpectrumSmallInteger(machine, baseAddress, out value);
         }
 
         private static int GetLiveBasicVariableEntryLength(
@@ -3494,15 +3502,48 @@ namespace Spectrum128kEmulator.Tap
                 return false;
 
             byte exponent = machine.PeekMemory(address);
-            if (exponent != 0x00)
+            byte sign = machine.PeekMemory((ushort)(address + 1));
+            byte low = machine.PeekMemory((ushort)(address + 2));
+            byte high = machine.PeekMemory((ushort)(address + 3));
+            byte trailing = machine.PeekMemory((ushort)(address + 4));
+            return TryDecodeSpectrumNumericValue(exponent, sign, low, high, trailing, out value);
+        }
+
+        private static bool TryDecodeSpectrumNumericValue(
+            byte exponent,
+            byte signOrMantissa,
+            byte third,
+            byte fourth,
+            byte fifth,
+            out int value)
+        {
+            value = 0;
+
+            if (exponent == 0x00)
+            {
+                if (fifth != 0x00)
+                    return false;
+
+                short signedValue = unchecked((short)(third | (fourth << 8)));
+                value = signOrMantissa == 0xFF ? -Math.Abs(signedValue) : signedValue;
+                return true;
+            }
+
+            uint mantissa =
+                (uint)(((signOrMantissa & 0x7F) | 0x80) << 24) |
+                (uint)(third << 16) |
+                (uint)(fourth << 8) |
+                fifth;
+            int sign = (signOrMantissa & 0x80) != 0 ? -1 : 1;
+            double numericValue = sign * mantissa * Math.Pow(2.0, exponent - 160);
+            double roundedValue = Math.Round(numericValue);
+            if (roundedValue < int.MinValue || roundedValue > int.MaxValue)
                 return false;
 
-            byte sign = machine.PeekMemory((ushort)(address + 1));
-            ushort magnitude = (ushort)(
-                machine.PeekMemory((ushort)(address + 2)) |
-                (machine.PeekMemory((ushort)(address + 3)) << 8));
+            if (Math.Abs(numericValue - roundedValue) > 1e-6)
+                return false;
 
-            value = sign == 0xFF ? -(short)magnitude : magnitude;
+            value = (int)roundedValue;
             return true;
         }
 
@@ -6017,13 +6058,7 @@ namespace Spectrum128kEmulator.Tap
                 byte low = machine.PeekMemory((ushort)(address + 2));
                 byte high = machine.PeekMemory((ushort)(address + 3));
                 byte trailing = machine.PeekMemory((ushort)(address + 4));
-
-                if (exponent != 0x00 || trailing != 0x00)
-                    return false;
-
-                short signedValue = unchecked((short)(low | (high << 8)));
-                value = sign == 0xFF ? -Math.Abs(signedValue) : signedValue;
-                return true;
+                return TryDecodeSpectrumNumericValue(exponent, sign, low, high, trailing, out value);
             }
 
             private static bool TryReadSpectrumSmallInteger(
@@ -6040,12 +6075,44 @@ namespace Spectrum128kEmulator.Tap
                 byte low = data[index + 2];
                 byte high = data[index + 3];
                 byte trailing = data[index + 4];
+                return TryDecodeSpectrumNumericValue(exponent, sign, low, high, trailing, out value);
+            }
 
-                if (exponent != 0x00 || trailing != 0x00)
+            private static bool TryDecodeSpectrumNumericValue(
+                byte exponent,
+                byte signOrMantissa,
+                byte third,
+                byte fourth,
+                byte fifth,
+                out int value)
+            {
+                value = 0;
+
+                if (exponent == 0x00)
+                {
+                    if (fifth != 0x00)
+                        return false;
+
+                    short signedValue = unchecked((short)(third | (fourth << 8)));
+                    value = signOrMantissa == 0xFF ? -Math.Abs(signedValue) : signedValue;
+                    return true;
+                }
+
+                uint mantissa =
+                    (uint)(((signOrMantissa & 0x7F) | 0x80) << 24) |
+                    (uint)(third << 16) |
+                    (uint)(fourth << 8) |
+                    fifth;
+                int sign = (signOrMantissa & 0x80) != 0 ? -1 : 1;
+                double numericValue = sign * mantissa * Math.Pow(2.0, exponent - 160);
+                double roundedValue = Math.Round(numericValue);
+                if (roundedValue < int.MinValue || roundedValue > int.MaxValue)
                     return false;
 
-                short signedValue = unchecked((short)(low | (high << 8)));
-                value = sign == 0xFF ? -Math.Abs(signedValue) : signedValue;
+                if (Math.Abs(numericValue - roundedValue) > 1e-6)
+                    return false;
+
+                value = (int)roundedValue;
                 return true;
             }
 
