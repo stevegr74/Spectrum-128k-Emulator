@@ -111,6 +111,20 @@ namespace Spectrum128kEmulator.Z80
 
         public void Reset()
         {
+            Regs.AF = 0xFFFF;
+            Regs.BC = 0x0000;
+            Regs.DE = 0x0000;
+            Regs.HL = 0x0000;
+            Regs.A_ = 0;
+            Regs.F_ = 0;
+            Regs.B_ = 0;
+            Regs.C_ = 0;
+            Regs.D_ = 0;
+            Regs.E_ = 0;
+            Regs.H_ = 0;
+            Regs.L_ = 0;
+            Regs.IX = 0xFFFF;
+            Regs.IY = 0xFFFF;
             Regs.PC = 0;
             Regs.SP = 0xFFFF;
             Regs.I = 0;
@@ -123,6 +137,7 @@ namespace Spectrum128kEmulator.Z80
 
             eiDelay = 0;
             interruptMode = 1;
+            qFlags = 0;
 
             reportedHighRamEntry = false;
             reportedDiWindowEntry = false;
@@ -134,6 +149,47 @@ namespace Spectrum128kEmulator.Z80
             TStates = 0;
             InstructionFetchCount = 0;
             LastInterruptProgressTStates = 0;
+
+            flagsChangedLastInstruction = false;
+            lastFlagsBeforeInstruction = 0;
+        }
+
+        public void ResetExecutionStatePreserveTiming()
+        {
+            Regs.AF = 0xFFFF;
+            Regs.BC = 0x0000;
+            Regs.DE = 0x0000;
+            Regs.HL = 0x0000;
+            Regs.A_ = 0;
+            Regs.F_ = 0;
+            Regs.B_ = 0;
+            Regs.C_ = 0;
+            Regs.D_ = 0;
+            Regs.E_ = 0;
+            Regs.H_ = 0;
+            Regs.L_ = 0;
+            Regs.IX = 0xFFFF;
+            Regs.IY = 0xFFFF;
+            Regs.PC = 0;
+            Regs.SP = 0xFFFF;
+            Regs.I = 0;
+            Regs.R = 0;
+
+            halted = false;
+            interruptPending = false;
+            IFF1 = false;
+            IFF2 = false;
+
+            eiDelay = 0;
+            interruptMode = 1;
+            qFlags = 0;
+            LastInterruptProgressTStates = TStates;
+
+            reportedHighRamEntry = false;
+            reportedDiWindowEntry = false;
+            reportedLowStackEntry = false;
+            reported17xxStackEntry = false;
+            reportedRomStackWindowEntry = false;
 
             flagsChangedLastInstruction = false;
             lastFlagsBeforeInstruction = 0;
@@ -513,6 +569,7 @@ namespace Spectrum128kEmulator.Z80
 
             flagsChangedLastInstruction = false;
             lastFlagsBeforeInstruction = 0;
+            qFlags = 0;
             LastInterruptProgressTStates = TStates;
 
         }

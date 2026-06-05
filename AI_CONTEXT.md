@@ -1,5 +1,35 @@
 Project: ZX Spectrum 128K Emulator (C# WinForms)
 
+Current checkpoint on 2026-06-05:
+- User-verified accepted baseline remains:
+  - `Exolon.tzx` works
+  - `exolon.tap` works
+  - `Impossible Mission - Bugfix.tzx` works
+  - composite menu-key behaviour is acceptable enough to keep for now
+- Runtime/presentation baseline now kept:
+  - background emulation loop owns the live machine during normal running
+  - the UI presents copied snapshots instead of competing for long-held machine state
+  - tape/snapshot loads pause emulation and start from a clean machine/input boundary
+  - FPS display is now trustworthy enough for user-facing checks again
+- Generic mounted-continuation improvements now kept:
+  - safe mounted `IF ... THEN USR(...)` steps directly evaluate numeric-variable expressions using BASIC-style default-zero semantics
+  - preserved mounted BASIC variable snapshots remain readable after live variable areas are reclaimed
+  - mounted continuations can resume during pauses before custom non-ROM blocks, but not before pending ROM-loadable blocks
+- Batman-specific status from this checkpoint:
+  - repeated loads in the same app session are now consistent
+  - the large mounted standard-data load and trailer complete cleanly
+  - tape state is gone by the late end-state
+  - Batman still ends in a late ROM48 loop around `15DE/15EB/15FB/15FE/10AC` with the Sinclair copyright screen
+  - the remaining structural gap is no longer parser/bootstrap/tape completion; it is the post-load `USR 0` / ROM48 handoff
+- Important rejected directions during this pass:
+  - title-specific tape-policy hacks
+  - electrically accelerating protected/live tape pulse timing
+  - forcing mounted follow-on `USR 0` through ROM BASIC without a visible win
+  - a synthetic ROM1 stack-frame `USR 0` entry modeled on the `SPECTRUM` routine without a visible win
+- Best next step from this checkpoint:
+  - continue the Batman investigation at the generic `USR 0` / ROM48 transition layer
+  - keep validating against `Exolon.tzx`, `exolon.tap`, and `Impossible Mission - Bugfix.tzx` before handing back user builds
+
 Current checkpoint on 2026-05-16:
 - User-verified accepted current baseline:
   - `Exolon.tzx` works

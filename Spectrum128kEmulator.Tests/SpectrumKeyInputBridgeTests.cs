@@ -192,57 +192,56 @@ namespace Spectrum128kEmulator.Tests
         }
 
         [Fact]
-        public void MenuCadence_RepeatedSameKeyTaps_Degrade_Into_A_Hold_While_Tapping_Continues()
+        public void MenuCadence_QuickRetaps_Queue_Distinct_Menu_Pulses()
         {
-            var bridge = new SpectrumKeyInputBridge(8, minHoldTicks: 20);
-            int releaseCount = 0;
+            var bridge = new SpectrumKeyInputBridge(8, minHoldTicks: 40, sameKeyContinuationTicks: 90);
 
-            for (int tick = 0; tick < 40; tick += 2)
-            {
-                bridge.RegisterKeyDown(Keys.Down, new[] { 0, 4 }, _ => 0UL, tick);
-                bridge.RegisterKeyUp(Keys.Down, _ => 0UL, tick + 1);
+            Assert.Equal(
+                new[] { new SpectrumKeyInputBridge.SpectrumKeyStateChange(Keys.Down, true) },
+                bridge.RegisterKeyDown(Keys.Down, new[] { 0, 4 }, _ => 0UL, 0).ToArray());
+            Assert.Empty(bridge.RegisterKeyUp(Keys.Down, _ => 0UL, 1));
 
-                foreach (var change in bridge.CollectStateChanges(_ => 0UL, tick + 1))
-                {
-                    if (!change.Pressed)
-                        releaseCount++;
-                }
-            }
+            Assert.Empty(bridge.RegisterKeyDown(Keys.Down, new[] { 0, 4 }, _ => 0UL, 30));
+            Assert.Empty(bridge.RegisterKeyUp(Keys.Down, _ => 0UL, 31));
 
-            Assert.Equal(0, releaseCount);
-
-            for (int tick = 40; tick < 60; tick++)
-            {
-                foreach (var change in bridge.CollectStateChanges(_ => 0UL, tick))
-                {
-                    if (!change.Pressed)
-                        releaseCount++;
-                }
-            }
-
-            Assert.Equal(1, releaseCount);
+            Assert.Equal(
+                new[] { new SpectrumKeyInputBridge.SpectrumKeyStateChange(Keys.Down, false) },
+                bridge.CollectStateChanges(_ => 0UL, 40).ToArray());
+            Assert.Equal(
+                new[] { new SpectrumKeyInputBridge.SpectrumKeyStateChange(Keys.Down, true) },
+                bridge.CollectStateChanges(_ => 0UL, 41).ToArray());
+            Assert.Equal(
+                new[] { new SpectrumKeyInputBridge.SpectrumKeyStateChange(Keys.Down, false) },
+                bridge.CollectStateChanges(_ => 0UL, 81).ToArray());
         }
 
         [Fact]
         public void CompositeKey_QuickRetap_WithinContinuationWindow_DoesNotReleaseBetweenTaps()
         {
-            var bridge = new SpectrumKeyInputBridge(8, minHoldTicks: 20, sameKeyContinuationTicks: 75);
+            var bridge = new SpectrumKeyInputBridge(8, minHoldTicks: 40, sameKeyContinuationTicks: 90);
 
             bridge.RegisterKeyDown(Keys.Down, new[] { 0, 4 }, _ => 0UL, 0);
-            Assert.Empty(bridge.RegisterKeyUp(Keys.Down, _ => 0UL, 25));
+            Assert.Empty(bridge.RegisterKeyUp(Keys.Down, _ => 0UL, 20));
+            Assert.Empty(bridge.RegisterKeyDown(Keys.Down, new[] { 0, 4 }, _ => 0UL, 30));
+            Assert.Empty(bridge.RegisterKeyUp(Keys.Down, _ => 0UL, 31));
 
-            for (int tick = 25; tick < 60; tick++)
-                Assert.Empty(bridge.CollectStateChanges(_ => 0UL, tick));
-
-            Assert.Empty(bridge.RegisterKeyDown(Keys.Down, new[] { 0, 4 }, _ => 0UL, 60));
-            Assert.Empty(bridge.RegisterKeyUp(Keys.Down, _ => 0UL, 85));
-
-            for (int tick = 85; tick < 160; tick++)
+            for (int tick = 20; tick < 40; tick++)
                 Assert.Empty(bridge.CollectStateChanges(_ => 0UL, tick));
 
             Assert.Equal(
                 new[] { new SpectrumKeyInputBridge.SpectrumKeyStateChange(Keys.Down, false) },
-                bridge.CollectStateChanges(_ => 0UL, 160).ToArray());
+                bridge.CollectStateChanges(_ => 0UL, 40).ToArray());
+
+            Assert.Equal(
+                new[] { new SpectrumKeyInputBridge.SpectrumKeyStateChange(Keys.Down, true) },
+                bridge.CollectStateChanges(_ => 0UL, 41).ToArray());
+
+            for (int tick = 42; tick < 81; tick++)
+                Assert.Empty(bridge.CollectStateChanges(_ => 0UL, tick));
+
+            Assert.Equal(
+                new[] { new SpectrumKeyInputBridge.SpectrumKeyStateChange(Keys.Down, false) },
+                bridge.CollectStateChanges(_ => 0UL, 81).ToArray());
         }
 
         [Fact]
@@ -266,21 +265,20 @@ namespace Spectrum128kEmulator.Tests
                 new[] { new SpectrumKeyInputBridge.SpectrumKeyStateChange(Keys.Down, true) },
                 bridge.RegisterKeyDown(Keys.Down, new[] { 0, 4 }, _ => 0UL, 0).ToArray());
 
-            Assert.Empty(bridge.RegisterKeyUp(Keys.Down, _ => 0UL, 80));
-
-            Assert.Empty(bridge.RegisterKeyDown(Keys.Down, new[] { 0, 4 }, _ => 0UL, 130));
-            Assert.Empty(bridge.RegisterKeyUp(Keys.Down, _ => 0UL, 210));
-
-            for (int tick = 210; tick < 300; tick++)
-                Assert.Empty(bridge.CollectStateChanges(_ => 0UL, tick));
-
             Assert.Equal(
                 new[] { new SpectrumKeyInputBridge.SpectrumKeyStateChange(Keys.Down, false) },
-                bridge.CollectStateChanges(_ => 0UL, 300).ToArray());
+                bridge.RegisterKeyUp(Keys.Down, _ => 0UL, 80).ToArray());
+
+            Assert.Equal(
+                new[] { new SpectrumKeyInputBridge.SpectrumKeyStateChange(Keys.Down, true) },
+                bridge.RegisterKeyDown(Keys.Down, new[] { 0, 4 }, _ => 0UL, 130).ToArray());
+            Assert.Equal(
+                new[] { new SpectrumKeyInputBridge.SpectrumKeyStateChange(Keys.Down, false) },
+                bridge.RegisterKeyUp(Keys.Down, _ => 0UL, 210).ToArray());
         }
 
         [Fact]
-        public void CompositeKey_QuickRetapBeforeMinimumHold_CollapsesIntoSinglePulse()
+        public void CompositeKey_OverlappingRetap_Queues_A_FollowOn_Pulse()
         {
             var bridge = new SpectrumKeyInputBridge(8, minHoldTicks: 40, sameKeyContinuationTicks: 90);
 
@@ -289,10 +287,16 @@ namespace Spectrum128kEmulator.Tests
             Assert.Empty(bridge.RegisterKeyDown(Keys.Down, new[] { 0, 4 }, _ => 0UL, 30));
             Assert.Empty(bridge.RegisterKeyUp(Keys.Down, _ => 0UL, 50));
 
-            Assert.Empty(bridge.CollectStateChanges(_ => 0UL, 50));
             Assert.Equal(
                 new[] { new SpectrumKeyInputBridge.SpectrumKeyStateChange(Keys.Down, false) },
-                bridge.CollectStateChanges(_ => 0UL, 140).ToArray());
+                bridge.CollectStateChanges(_ => 0UL, 40).ToArray());
+            Assert.Equal(
+                new[] { new SpectrumKeyInputBridge.SpectrumKeyStateChange(Keys.Down, true) },
+                bridge.CollectStateChanges(_ => 0UL, 41).ToArray());
+            Assert.Empty(bridge.CollectStateChanges(_ => 0UL, 69));
+            Assert.Equal(
+                new[] { new SpectrumKeyInputBridge.SpectrumKeyStateChange(Keys.Down, false) },
+                bridge.CollectStateChanges(_ => 0UL, 81).ToArray());
         }
 
         [Fact]
@@ -301,11 +305,9 @@ namespace Spectrum128kEmulator.Tests
             var bridge = new SpectrumKeyInputBridge(8, minHoldTicks: 40, sameKeyContinuationTicks: 90);
 
             bridge.RegisterKeyDown(Keys.Down, new[] { 0, 4 }, _ => 0UL, 0);
-            Assert.Empty(bridge.RegisterKeyUp(Keys.Down, _ => 0UL, 80));
-
             Assert.Equal(
                 new[] { new SpectrumKeyInputBridge.SpectrumKeyStateChange(Keys.Down, false) },
-                bridge.CollectStateChanges(_ => 0UL, 170).ToArray());
+                bridge.RegisterKeyUp(Keys.Down, _ => 0UL, 80).ToArray());
 
             Assert.Equal(
                 new[] { new SpectrumKeyInputBridge.SpectrumKeyStateChange(Keys.Down, true) },
@@ -329,6 +331,46 @@ namespace Spectrum128kEmulator.Tests
             Assert.Equal(
                 new[] { new SpectrumKeyInputBridge.SpectrumKeyStateChange(Keys.Down, false) },
                 bridge.CollectStateChanges(_ => 0UL, 40).ToArray());
+        }
+
+        [Fact]
+        public void CompositeKey_SlowerRepeatedTaps_Remain_Distinct_And_Long_Enough_To_Be_Seen()
+        {
+            var bridge = new SpectrumKeyInputBridge(8, minHoldTicks: 40, sameKeyContinuationTicks: 90);
+
+            Assert.Equal(
+                new[] { new SpectrumKeyInputBridge.SpectrumKeyStateChange(Keys.Down, true) },
+                bridge.RegisterKeyDown(Keys.Down, new[] { 0, 4 }, _ => 0UL, 0).ToArray());
+
+            Assert.Empty(bridge.RegisterKeyUp(Keys.Down, _ => 0UL, 25));
+
+            for (int tick = 25; tick < 40; tick++)
+                Assert.Empty(bridge.CollectStateChanges(_ => 0UL, tick));
+
+            Assert.Equal(
+                new[] { new SpectrumKeyInputBridge.SpectrumKeyStateChange(Keys.Down, false) },
+                bridge.CollectStateChanges(_ => 0UL, 40).ToArray());
+
+            Assert.Equal(
+                new[] { new SpectrumKeyInputBridge.SpectrumKeyStateChange(Keys.Down, true) },
+                bridge.RegisterKeyDown(Keys.Down, new[] { 0, 4 }, _ => 0UL, 170).ToArray());
+        }
+
+        [Fact]
+        public void CompositeKey_HeldDown_Remains_Pressed_Until_KeyUp()
+        {
+            var bridge = new SpectrumKeyInputBridge(8, minHoldTicks: 40, sameKeyContinuationTicks: 90);
+
+            Assert.Equal(
+                new[] { new SpectrumKeyInputBridge.SpectrumKeyStateChange(Keys.Down, true) },
+                bridge.RegisterKeyDown(Keys.Down, new[] { 0, 4 }, _ => 0UL, 0).ToArray());
+
+            for (int tick = 1; tick < 120; tick++)
+                Assert.Empty(bridge.CollectStateChanges(_ => 0UL, tick));
+
+            Assert.Equal(
+                new[] { new SpectrumKeyInputBridge.SpectrumKeyStateChange(Keys.Down, false) },
+                bridge.RegisterKeyUp(Keys.Down, _ => 0UL, 120).ToArray());
         }
     }
 }

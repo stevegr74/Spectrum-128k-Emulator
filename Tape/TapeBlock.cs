@@ -183,6 +183,66 @@ namespace Spectrum128kEmulator.Tap
                 null);
         }
 
+        public static TapeBlock ReclassifyAsByteStreamData(TapeBlock source)
+        {
+            if (source == null)
+                throw new ArgumentNullException(nameof(source));
+            if (source.Kind != TapeBlockKind.Data || source.StreamData == null)
+                throw new ArgumentException("Only data blocks with a byte stream can be reclassified.", nameof(source));
+
+            return new TapeBlock(
+                TapeBlockKind.Data,
+                isLoadableRomBlock: false,
+                canUseRomLoadTrap: false,
+                (byte[])source.StreamData.Clone(),
+                payload: null,
+                checksum: 0,
+                source.PilotPulseLength,
+                source.PilotPulseCount,
+                source.SyncFirstPulseLength,
+                source.SyncSecondPulseLength,
+                source.ZeroBitPulseLength,
+                source.OneBitPulseLength,
+                source.UsedBitsInLastByte,
+                source.PauseAfterBlockMs,
+                source.PureTonePulseLength,
+                source.PureTonePulseCount,
+                source.PulseSequence == null ? null : (int[])source.PulseSequence.Clone(),
+                source.DirectRecordingSamples == null ? null : (byte[])source.DirectRecordingSamples.Clone(),
+                source.DirectRecordingSampleTStates,
+                source.SignalLevel);
+        }
+
+        public static TapeBlock ReclassifyAsRomTrapByteStreamData(TapeBlock source)
+        {
+            if (source == null)
+                throw new ArgumentNullException(nameof(source));
+            if (source.Kind != TapeBlockKind.Data || source.StreamData == null)
+                throw new ArgumentException("Only data blocks with a byte stream can be reclassified.", nameof(source));
+
+            return new TapeBlock(
+                TapeBlockKind.Data,
+                isLoadableRomBlock: false,
+                canUseRomLoadTrap: true,
+                (byte[])source.StreamData.Clone(),
+                source.Payload == null ? null : (byte[])source.Payload.Clone(),
+                source.Checksum,
+                source.PilotPulseLength,
+                source.PilotPulseCount,
+                source.SyncFirstPulseLength,
+                source.SyncSecondPulseLength,
+                source.ZeroBitPulseLength,
+                source.OneBitPulseLength,
+                source.UsedBitsInLastByte,
+                source.PauseAfterBlockMs,
+                source.PureTonePulseLength,
+                source.PureTonePulseCount,
+                source.PulseSequence == null ? null : (int[])source.PulseSequence.Clone(),
+                source.DirectRecordingSamples == null ? null : (byte[])source.DirectRecordingSamples.Clone(),
+                source.DirectRecordingSampleTStates,
+                source.SignalLevel);
+        }
+
         public static TapeBlock CreatePureTone(ushort pulseLength, ushort pulseCount)
         {
             return new TapeBlock(

@@ -18,6 +18,8 @@ namespace Spectrum128kEmulator
             public int PressTick;
             public int ReleaseNotBeforeTick;
             public int ReleaseGraceUntilTick;
+            public int BufferedTapCount;
+            public int NextPulsePressTick;
         }
 
         public readonly record struct SpectrumKeyStateChange(Keys Key, bool Pressed);
@@ -42,7 +44,9 @@ namespace Spectrum128kEmulator
             }
 
             state.Rows = rows;
+            bool wasPhysicalDown = state.PhysicalDown;
             state.PhysicalDown = true;
+            bool isCompositeKey = rows.Length > 1;
 
             if (!state.LogicalDown)
             {
@@ -51,7 +55,20 @@ namespace Spectrum128kEmulator
                 state.PressTick = tick;
                 state.ReleaseNotBeforeTick = tick + minHoldTicks;
                 state.ReleaseGraceUntilTick = 0;
+                state.BufferedTapCount = 0;
+                state.NextPulsePressTick = 0;
                 return new[] { new SpectrumKeyStateChange(key, true) };
+            }
+
+            if (isCompositeKey)
+            {
+                state.PendingRelease = false;
+                state.ReleaseGraceUntilTick = 0;
+
+                if (!wasPhysicalDown || state.NextPulsePressTick != 0)
+                    state.BufferedTapCount = Math.Min(state.BufferedTapCount + 1, 1);
+
+                return Array.Empty<SpectrumKeyStateChange>();
             }
 
             if (state.PendingRelease)
@@ -73,10 +90,33 @@ namespace Spectrum128kEmulator
             if (!keyStates.TryGetValue(key, out KeyState? state))
                 return new[] { new SpectrumKeyStateChange(key, false) };
 
+            bool isCompositeKey = state.Rows.Length > 1;
             state.PhysicalDown = false;
 
             if (!state.LogicalDown)
             {
+                if (state.NextPulsePressTick == 0)
+                    keyStates.Remove(key);
+                return Array.Empty<SpectrumKeyStateChange>();
+            }
+
+            if (isCompositeKey)
+            {
+                if (tick < state.ReleaseNotBeforeTick)
+                {
+                    state.PendingRelease = true;
+                    return Array.Empty<SpectrumKeyStateChange>();
+                }
+
+                if (state.BufferedTapCount > 0)
+                {
+                    state.PendingRelease = true;
+                    return Array.Empty<SpectrumKeyStateChange>();
+                }
+
+                state.LogicalDown = false;
+                state.PendingRelease = false;
+                state.ReleaseGraceUntilTick = 0;
                 keyStates.Remove(key);
                 return new[] { new SpectrumKeyStateChange(key, false) };
             }
@@ -111,11 +151,46 @@ namespace Spectrum128kEmulator
             {
                 Keys key = pair.Key;
                 KeyState state = pair.Value;
+
+                if (!state.LogicalDown && state.NextPulsePressTick != 0 && tick >= state.NextPulsePressTick)
+                {
+                    changes ??= new List<SpectrumKeyStateChange>();
+                    changes.Add(new SpectrumKeyStateChange(key, true));
+                    state.LogicalDown = true;
+                    state.PressTick = tick;
+                    state.ReleaseNotBeforeTick = tick + minHoldTicks;
+                    state.NextPulsePressTick = 0;
+                    state.PendingRelease = !state.PhysicalDown;
+                    continue;
+                }
+
                 if (!state.PendingRelease)
                     continue;
 
                 if (tick < state.ReleaseNotBeforeTick)
                     continue;
+
+                if (state.Rows.Length > 1)
+                {
+                    changes ??= new List<SpectrumKeyStateChange>();
+                    changes.Add(new SpectrumKeyStateChange(key, false));
+
+                    state.LogicalDown = false;
+                    state.PendingRelease = false;
+                    state.ReleaseGraceUntilTick = 0;
+
+                    if (state.BufferedTapCount > 0)
+                    {
+                        state.BufferedTapCount--;
+                        state.NextPulsePressTick = tick + 1;
+                    }
+                    else if (!state.PhysicalDown)
+                    {
+                        keyStates.Remove(key);
+                    }
+
+                    continue;
+                }
 
                 if (state.ReleaseGraceUntilTick != 0 && tick < state.ReleaseGraceUntilTick)
                     continue;
