@@ -1318,6 +1318,7 @@ namespace Spectrum128kEmulator
             pendingMountedLoadNextStreamingInterpreterRefreshTStates = 0;
             if (mountedTape != null && !mountedTape.HasMoreBlocks)
                 mountedTape = null;
+            z80.ResetExecutionStatePreserveTiming();
             CurrentRomBank = 1;
             PagingLocked = false;
             frameTStates = FrameTStates128;
@@ -1325,6 +1326,18 @@ namespace Spectrum128kEmulator
                 (PagedRamBank & 0x07) |
                 (ScreenBank == 7 ? 0x08 : 0x00) |
                 0x10);
+            speakerHigh = false;
+            micHigh = false;
+            SpeakerEdge = false;
+            frameStartTStates = z80.TStates;
+            frameStartSpeakerHigh = speakerHigh;
+            frameStartAyState = ay.CaptureAudioState();
+            beeperEvents.Clear();
+            ayWrites.Clear();
+            currentFrameExecutedTStates = 0;
+            completedAudioFrames.Clear();
+            tStatesUntilNextInterrupt = 0;
+            realignInterruptPhaseAfterNextAccept = false;
 
             // USR 0 enters ROM48 from BASIC, but it should not carry a stale
             // mounted-line continuation cursor into the fresh ROM entry path.

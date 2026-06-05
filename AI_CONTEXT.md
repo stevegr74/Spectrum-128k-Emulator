@@ -1,3 +1,20 @@
+Current checkpoint on 2026-06-05:
+- User-verified accepted baseline remains:
+  - `Exolon.tzx` works
+  - `exolon.tap` works
+  - `Impossible Mission - Bugfix.tzx` works
+  - Batman repeated loads in the same app session now behave consistently, but Batman still ends on a black-screen / late-ROM handoff path
+- Generic tape/runtime fixes worth keeping from this checkpoint:
+  - mounted continuations no longer resume during pauses that still precede unstructured standard ROM-loadable data blocks
+  - mounted `USR 0` handoff now clears stale CPU execution state and interrupt/audio bookkeeping before entering ROM48
+  - these are guarded in `MachineCoreTests`
+- Important scope boundary:
+  - Batman is no longer a session-consistency problem
+  - it is still a generic post-load continuation / ROM48 handoff problem after a fully completed mounted standard-data load
+- Best next step from this checkpoint:
+  - continue Batman at the generic mounted `USR` / ROM48 transition layer
+  - keep validating against `Exolon.tzx`, `exolon.tap`, and `Impossible Mission - Bugfix.tzx` before handing back user builds
+
 Project: ZX Spectrum 128K Emulator (C# WinForms)
 
 Current checkpoint on 2026-06-05:
