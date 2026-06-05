@@ -63,7 +63,7 @@ Milestone 7 In Progress - Audio Output Working, Snapshot And Tape Compatibility 
 - `.tap` loading now works for real game cases including `exolon.tap` and `Where Time Stood Still.tap`
 - `.tzx` support is implemented and `Exolon.tzx` is verified working
 - `Impossible Mission - Bugfix.tzx` now loads successfully
-- `Batman - Release 1.tzx` is now deterministic across repeated loads in one app session, but still does not reach gameplay yet
+- `Batman - Release 1.tzx` now behaves consistently across repeated loads in one app session, but still ends on a black-screen / late-ROM handoff path rather than reaching gameplay yet
 - `.rzx` replay support is implemented and `aufmonty.rzx` plays back successfully
 - emulation and audio submission now run on a background loop while the UI presents frames at a fixed 50Hz cadence
 - muted turbo tape loads skip unnecessary per-frame audio-frame construction
@@ -129,7 +129,9 @@ Tape Loading Progress (Milestone 6)
   - mounted continuation variable reads now also decode integer-valued Spectrum floating-point numeric variables generically
   - mounted ROM data loads refresh the preserved BASIC variable snapshot before later continuation steps use it
   - early ROM sync-loop traps can now consume unstructured standard ROM-loadable data blocks, not just structured header/data contexts
-  - mounted continuations can resume during pauses before custom non-ROM blocks, but not before pending ROM-loadable blocks
+- mounted continuations can resume during pauses before custom non-ROM blocks, but not before pending ROM-loadable blocks
+- mounted continuations now also avoid resuming during pauses before unstructured standard ROM-loadable data blocks
+- mounted `USR 0` handoff now resets CPU execution state more completely before entering ROM48, including stale interrupt/audio bookkeeping
   - Batman now completes its mounted standard-data load deterministically and ends in a late ROM48 loop after tape completion, rather than failing earlier through session-state leakage
 - mounted live-tape playback now uses a generic wall-clock turbo path in the app while the tape is actively driving the EAR line
 - emulated FE/tape pulse timing is kept exact during those live phases; the speed-up happens in the UI scheduler rather than by distorting tape data

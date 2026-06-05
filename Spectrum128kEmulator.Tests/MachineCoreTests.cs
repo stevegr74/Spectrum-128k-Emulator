@@ -956,6 +956,39 @@ namespace Spectrum128kEmulator.Tests
         }
 
         [Fact]
+        public void PendingMountedLoadUsrContinuation_Does_Not_Resume_During_Pause_Before_Unstructured_Loadable_Standard_Block()
+        {
+            string romFolder = CreateTempRoms();
+            try
+            {
+                var machine = new Spectrum128Machine(romFolder);
+                machine.MountTape(new Tap.MountedTape(
+                    "paused-before-unstructured-standard",
+                    new[]
+                    {
+                        Tap.TapeBlock.CreatePause(1000),
+                        CreateUnstructuredLoadableStandardDataBlock(new byte[] { 0xFF, 0xAA, 0x00 }, pauseAfterBlockMs: 1000)
+                    }));
+                machine.SetPendingMountedLoadUsrContinuation(0x8000);
+                machine.Cpu.Regs.PC = 0x15FE;
+                machine.Cpu.Regs.SP = 0xFF00;
+
+                MethodInfo resumeMethod = typeof(Spectrum128Machine).GetMethod(
+                    "TryResumePendingMountedLoadUsrContinuation",
+                    BindingFlags.Instance | BindingFlags.NonPublic)!;
+
+                bool resumed = (bool)resumeMethod.Invoke(machine, new object[] { machine.Cpu })!;
+
+                Assert.False(resumed);
+                Assert.Equal((ushort)0x15FE, machine.Cpu.Regs.PC);
+            }
+            finally
+            {
+                Directory.Delete(romFolder, true);
+            }
+        }
+
+        [Fact]
         public void PendingMountedLoadUsrContinuation_Can_Resume_During_Pause_Before_Custom_NonRom_Block()
         {
             string romFolder = CreateTempRoms();
@@ -1360,6 +1393,18 @@ namespace Spectrum128kEmulator.Tests
                 machine.ConfigureFor128kTapeLoad(borderColor: 3);
                 machine.MountTape(new Tap.MountedTape("idle-mounted", Array.Empty<Tap.TapeBlock>()));
                 machine.SetPendingMountedLoadUsrContinuation(0x0000);
+                machine.Cpu.Regs.AF = 0x1234;
+                machine.Cpu.Regs.BC = 0x5678;
+                machine.Cpu.Regs.DE = 0x9ABC;
+                machine.Cpu.Regs.HL = 0xDEF0;
+                machine.Cpu.Regs.IX = 0x1111;
+                machine.Cpu.Regs.IY = 0x2222;
+                machine.Cpu.Regs.SP = 0x3333;
+                machine.Cpu.Regs.I = 0x44;
+                machine.Cpu.Regs.R = 0x55;
+                machine.Cpu.RestoreInterruptState(iff1: true, iff2: true, interruptMode: 1);
+                machine.Cpu.InterruptPending = true;
+                machine.Cpu.AdvanceTStates(1234);
                 machine.Cpu.Regs.PC = 0x2D2B;
 
                 MethodInfo resumeMethod = typeof(Spectrum128Machine).GetMethod(
@@ -1370,6 +1415,18 @@ namespace Spectrum128kEmulator.Tests
 
                 Assert.True(resumed);
                 Assert.Equal((ushort)0x0000, machine.Cpu.Regs.PC);
+                Assert.Equal((ushort)0xFFFF, machine.Cpu.Regs.AF);
+                Assert.Equal((ushort)0x0000, machine.Cpu.Regs.DE);
+                Assert.Equal((ushort)0x0000, machine.Cpu.Regs.HL);
+                Assert.Equal((ushort)0xFFFF, machine.Cpu.Regs.IX);
+                Assert.Equal((ushort)0xFFFF, machine.Cpu.Regs.IY);
+                Assert.Equal((ushort)0xFFFF, machine.Cpu.Regs.SP);
+                Assert.Equal((byte)0, machine.Cpu.Regs.I);
+                Assert.Equal((byte)0, machine.Cpu.Regs.R);
+                Assert.False(machine.Cpu.IFF1);
+                Assert.False(machine.Cpu.IFF2);
+                Assert.False(machine.Cpu.InterruptPending);
+                Assert.Equal((ulong)1234, machine.Cpu.TStates);
                 Assert.Equal(1, machine.CurrentRomBank);
                 Assert.False(machine.PagingLocked);
                 Assert.Equal(0, machine.PagedRamBank);
@@ -1412,6 +1469,37 @@ namespace Spectrum128kEmulator.Tests
         private static ushort ReadWord(Spectrum128Machine machine, ushort address)
         {
             return (ushort)(machine.PeekMemory(address) | (machine.PeekMemory((ushort)(address + 1)) << 8));
+        }
+
+        private static Tap.TapeBlock CreateUnstructuredLoadableStandardDataBlock(byte[] streamData, ushort pauseAfterBlockMs)
+        {
+            Type tapeBlockType = typeof(Tap.TapeBlock);
+            ConstructorInfo constructor = tapeBlockType.GetConstructors(BindingFlags.Instance | BindingFlags.NonPublic)
+                .Single();
+
+            return (Tap.TapeBlock)constructor.Invoke(new object?[]
+            {
+                Tap.TapeBlockKind.Data,
+                true,
+                false,
+                (byte[])streamData.Clone(),
+                null,
+                (byte)0,
+                (ushort)2168,
+                (ushort)3223,
+                (ushort)667,
+                (ushort)735,
+                (ushort)855,
+                (ushort)1710,
+                (byte)8,
+                pauseAfterBlockMs,
+                (ushort)0,
+                (ushort)0,
+                null,
+                null,
+                (ushort)0,
+                null
+            });
         }
 
         private static ulong ExtractFirstInterruptAcceptTStates(string[] events)

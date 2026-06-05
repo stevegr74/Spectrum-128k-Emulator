@@ -218,6 +218,7 @@ namespace Spectrum128kEmulator.Tap
             pendingPrePlaybackPauseTStates <= 0 &&
             !IsActivelyStreamingEarSignal &&
             !HasPendingRomLoadableBlock() &&
+            !HasPendingUnstructuredLoadableStandardDataBlock() &&
             !HasStructuredPendingDataBlock() &&
             (earPlaybackState == EarPlaybackState.Idle || earPlaybackState == EarPlaybackState.Pause);
         public string DebugPlaybackState =>
@@ -339,6 +340,21 @@ namespace Spectrum128kEmulator.Tap
                 index++;
 
             return index < blocks.Count && CanUseRomLoadTrap(blocks[index]);
+        }
+
+        private bool HasPendingUnstructuredLoadableStandardDataBlock()
+        {
+            int index = nextBlockIndex;
+            while (index < blocks.Count &&
+                   (blocks[index].Kind == TapeBlockKind.Metadata || blocks[index].Kind == TapeBlockKind.Pause))
+            {
+                index++;
+            }
+
+            return index < blocks.Count &&
+                   blocks[index].Kind == TapeBlockKind.Data &&
+                   blocks[index].IsLoadableRomBlock &&
+                   !CanUseRomLoadTrap(blocks[index]);
         }
 
         private bool HasPendingPlaybackBlock()
