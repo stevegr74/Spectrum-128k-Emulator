@@ -259,7 +259,7 @@ namespace Spectrum128kEmulator.Tap
             romStreamTrapBlockIndex = -1;
             romStreamTrapByteIndex = 0;
             lastEarSampleTStates = 0;
-            earLevel = false;
+            earLevel = true;
             earPlaybackStarted = false;
             retainedByteStreamTrapAvailable = false;
             earPlaybackState = EarPlaybackState.Idle;
@@ -1108,7 +1108,7 @@ namespace Spectrum128kEmulator.Tap
             retainedByteStreamTrapAvailable = false;
             if (!preserveSignalPhase)
             {
-                earLevel = false;
+                earLevel = true;
                 earPlaybackStarted = false;
             }
 
@@ -1740,6 +1740,23 @@ namespace Spectrum128kEmulator.Tap
                 loadableTimingDivisor: loadableTimingDivisor);
             machine.MountTape(tape);
 
+            bool rawStandardMixedRemainder = RequiresMountedRealtimeForMixedTape(machine, blocks);
+            if (rawStandardMixedRemainder)
+            {
+                Func<Spectrum128Machine, ushort?>? mountedLoadUsrContinuationResolver =
+                    BasicBootstrapExecutor.CreateMountedLoadUsrContinuationResolver(
+                        machine,
+                        BasicProgramStart,
+                        effectiveProgramLength,
+                        effectiveHeader.AutoStartLine,
+                        requireUsrReturnAddressBetweenSteps: false);
+                if (mountedLoadUsrContinuationResolver != null)
+                {
+                    machine.SetPendingMountedLoadUsrContinuationResolver(
+                        mountedLoadUsrContinuationResolver);
+                }
+            }
+
             BootstrapExecutionResult bootstrapExecutionResult = BootstrapExecutionResult.None;
             if (effectiveHeader.AutoStartLine < 32768)
             {
@@ -1880,8 +1897,8 @@ namespace Spectrum128kEmulator.Tap
             if (RequiresMountedRealtimeForMixedTape(machine, blocks))
             {
                 return new TapeLoadPlan(
-                    TapeLoadStrategy.RomBootstrapMounted,
-                    "Tape begins with a BASIC stage followed by raw standard byte streams and should enter the mounted remainder through the ROM path.");
+                    TapeLoadStrategy.BootstrapHybrid,
+                    "Tape begins with a BASIC stage followed by raw standard byte streams and should enter the mounted remainder through the bootstrap loader path.");
             }
 
             if (CanBootstrapBasicProgramAndMountRemaining(blocks))

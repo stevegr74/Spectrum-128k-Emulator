@@ -4210,6 +4210,165 @@ namespace Spectrum128kEmulator.Tests
         }
 
         [Fact]
+        public void PendingMountedLoadUsrContinuation_Preserves_Usable_BasicVariableSnapshot_When_Live_Variable_Area_Collapses_To_EndMarker()
+        {
+            string tempFolder = CreateTempRoms();
+
+            try
+            {
+                byte[] basicLoader = BuildBasicProgram(
+                    BuildBasicLine(30,
+                        Token(249), Ascii(" "), Token(192), Ascii("24244"), NumberMarker(24244)),
+                    BuildBasicLine(40,
+                        Token(250), Ascii(" "), Ascii("a"), Ascii("="),
+                        Token(190), Ascii("23631"), NumberMarker(23631),
+                        Ascii("+"),
+                        Ascii("256"), NumberMarker(256),
+                        Ascii("*"),
+                        Token(190), Ascii("23632"), NumberMarker(23632),
+                        Token(203),
+                        Token(249), Ascii(" "), Token(192),
+                        Ascii("("),
+                        Token(190), Ascii("23633"), NumberMarker(23633),
+                        Ascii("+"),
+                        Ascii("256"), NumberMarker(256),
+                        Ascii("*"),
+                        Token(190), Ascii("23634"), NumberMarker(23634),
+                        Ascii(")")),
+                    BuildBasicLine(50,
+                        Token(249), Ascii(" "), Token(192), Ascii("0"), NumberMarker(0)));
+
+                TapeBlock headerBlock = TapeBlock.CreateData(BuildHeaderBlock(
+                    type: 0,
+                    fileName: "BATLIKE",
+                    dataLength: (ushort)basicLoader.Length,
+                    parameter1: 30,
+                    parameter2: (ushort)basicLoader.Length), 2168, 8063, 667, 735, 855, 1710, 8, 1000);
+
+                MethodInfo parseHeaderInfo = typeof(TapLoader).GetMethod("ParseHeaderInfo", BindingFlags.NonPublic | BindingFlags.Static)!;
+                object header = parseHeaderInfo.Invoke(null, new object[] { headerBlock })!;
+
+                MethodInfo loadBasicProgram = typeof(TapLoader)
+                    .GetMethods(BindingFlags.NonPublic | BindingFlags.Static)
+                    .Single(method =>
+                    {
+                        if (method.Name != "LoadBasicProgram")
+                            return false;
+                        ParameterInfo[] parameters = method.GetParameters();
+                        return parameters.Length == 3 &&
+                               parameters[0].ParameterType == typeof(Spectrum128Machine) &&
+                               parameters[2].ParameterType == typeof(byte[]);
+                    });
+
+                MethodInfo variableReader = typeof(TapLoader).GetMethod(
+                    "TryReadMountedContinuationNumericVariable",
+                    BindingFlags.Static | BindingFlags.NonPublic)!;
+
+                var machine = new Spectrum128Machine(tempFolder);
+                loadBasicProgram.Invoke(null, new object[] { machine, header, basicLoader });
+
+                ushort varsAddress = (ushort)(machine.PeekMemory(23627) | (machine.PeekMemory(23628) << 8));
+                ushort richELineAddress = (ushort)(varsAddress + 7);
+                machine.PokeMemory(varsAddress, 0x61);
+                machine.PokeMemory((ushort)(varsAddress + 1), 0x00);
+                machine.PokeMemory((ushort)(varsAddress + 2), 0x00);
+                machine.PokeMemory((ushort)(varsAddress + 3), 0xB6);
+                machine.PokeMemory((ushort)(varsAddress + 4), 0x5C);
+                machine.PokeMemory((ushort)(varsAddress + 5), 0x00);
+                machine.PokeMemory((ushort)(varsAddress + 6), 0x80);
+                machine.PokeMemory(23641, (byte)(richELineAddress & 0xFF));
+                machine.PokeMemory(23642, (byte)(richELineAddress >> 8));
+                machine.RefreshPendingMountedLoadInterpreterContext(forceVariableAreaRefresh: true);
+
+                ushort collapsedVarsAddress = 0x5CCB;
+                ushort collapsedELineAddress = 0x5CCC;
+                machine.PokeMemory(23627, (byte)(collapsedVarsAddress & 0xFF));
+                machine.PokeMemory(23628, (byte)(collapsedVarsAddress >> 8));
+                machine.PokeMemory(collapsedVarsAddress, 0x80);
+                machine.PokeMemory(23641, (byte)(collapsedELineAddress & 0xFF));
+                machine.PokeMemory(23642, (byte)(collapsedELineAddress >> 8));
+                machine.RefreshPendingMountedLoadInterpreterContext(forceVariableAreaRefresh: true);
+
+                object[] readerArgs = new object[] { machine, "a", 0 };
+                Assert.True((bool)variableReader.Invoke(null, readerArgs)!);
+                Assert.Equal(0x5CB6, (int)readerArgs[2]);
+            }
+            finally
+            {
+                Directory.Delete(tempFolder, true);
+            }
+        }
+
+        [Fact]
+        public void PendingMountedLoadUsrContinuation_Preserves_Usable_BasicVariableSnapshot_When_Live_Variable_Area_Falls_Outside_BasicRam()
+        {
+            string tempFolder = CreateTempRoms();
+
+            try
+            {
+                byte[] basicLoader = BuildBasicProgram(
+                    BuildBasicLine(30,
+                        Token(249), Ascii(" "), Token(192), Ascii("24244"), NumberMarker(24244)));
+
+                TapeBlock headerBlock = TapeBlock.CreateData(BuildHeaderBlock(
+                    type: 0,
+                    fileName: "BATLIKE",
+                    dataLength: (ushort)basicLoader.Length,
+                    parameter1: 30,
+                    parameter2: (ushort)basicLoader.Length), 2168, 8063, 667, 735, 855, 1710, 8, 1000);
+
+                MethodInfo parseHeaderInfo = typeof(TapLoader).GetMethod("ParseHeaderInfo", BindingFlags.NonPublic | BindingFlags.Static)!;
+                object header = parseHeaderInfo.Invoke(null, new object[] { headerBlock })!;
+
+                MethodInfo loadBasicProgram = typeof(TapLoader)
+                    .GetMethods(BindingFlags.NonPublic | BindingFlags.Static)
+                    .Single(method =>
+                    {
+                        if (method.Name != "LoadBasicProgram")
+                            return false;
+                        ParameterInfo[] parameters = method.GetParameters();
+                        return parameters.Length == 3 &&
+                               parameters[0].ParameterType == typeof(Spectrum128Machine) &&
+                               parameters[2].ParameterType == typeof(byte[]);
+                    });
+
+                MethodInfo variableReader = typeof(TapLoader).GetMethod(
+                    "TryReadMountedContinuationNumericVariable",
+                    BindingFlags.Static | BindingFlags.NonPublic)!;
+
+                var machine = new Spectrum128Machine(tempFolder);
+                loadBasicProgram.Invoke(null, new object[] { machine, header, basicLoader });
+
+                ushort varsAddress = (ushort)(machine.PeekMemory(23627) | (machine.PeekMemory(23628) << 8));
+                ushort richELineAddress = (ushort)(varsAddress + 7);
+                machine.PokeMemory(varsAddress, 0x61);
+                machine.PokeMemory((ushort)(varsAddress + 1), 0x00);
+                machine.PokeMemory((ushort)(varsAddress + 2), 0x00);
+                machine.PokeMemory((ushort)(varsAddress + 3), 0xB6);
+                machine.PokeMemory((ushort)(varsAddress + 4), 0x5C);
+                machine.PokeMemory((ushort)(varsAddress + 5), 0x00);
+                machine.PokeMemory((ushort)(varsAddress + 6), 0x80);
+                machine.PokeMemory(23641, (byte)(richELineAddress & 0xFF));
+                machine.PokeMemory(23642, (byte)(richELineAddress >> 8));
+                machine.RefreshPendingMountedLoadInterpreterContext(forceVariableAreaRefresh: true);
+
+                machine.PokeMemory(23627, 0x00);
+                machine.PokeMemory(23628, 0x00);
+                machine.PokeMemory(23641, 0x02);
+                machine.PokeMemory(23642, 0x02);
+                machine.RefreshPendingMountedLoadInterpreterContext(forceVariableAreaRefresh: true);
+
+                object[] readerArgs = new object[] { machine, "a", 0 };
+                Assert.True((bool)variableReader.Invoke(null, readerArgs)!);
+                Assert.Equal(0x5CB6, (int)readerArgs[2]);
+            }
+            finally
+            {
+                Directory.Delete(tempFolder, true);
+            }
+        }
+
+        [Fact]
         public void MountedTape_UsrContinuationBoundary_Remains_False_During_Pause_Before_Pending_RomLoadable_Block()
         {
             TapeBlock firstDataBlock = TapeBlock.CreateData(

@@ -63,7 +63,7 @@ Milestone 7 In Progress - Audio Output Working, Snapshot And Tape Compatibility 
 - `.tap` loading now works for real game cases including `exolon.tap` and `Where Time Stood Still.tap`
 - `.tzx` support is implemented and `Exolon.tzx` is verified working
 - `Impossible Mission - Bugfix.tzx` now loads successfully
-- `Batman - Release 1.tzx` now behaves consistently across repeated loads in one app session, but still ends on a black-screen / late-ROM handoff path rather than reaching gameplay yet
+- `Batman - Release 1.tzx` now loads through to the game path
 - `.rzx` replay support is implemented and `aufmonty.rzx` plays back successfully
 - emulation and audio submission now run on a background loop while the UI presents frames at a fixed 50Hz cadence
 - muted turbo tape loads skip unnecessary per-frame audio-frame construction
@@ -125,6 +125,7 @@ Tape Loading Progress (Milestone 6)
   - `aufmonty.rzx`
 - current generic Batman progress includes:
   - repeated loads in the same app session now behave consistently
+  - raw-standard mixed tapes now use the bootstrap/hybrid mounted path instead of the older ROM-bootstrap-mounted path
   - mounted `IF ... THEN USR(...)` continuation steps directly evaluate safe numeric-variable expressions using BASIC-style default-zero semantics
   - mounted continuation variable reads now also decode integer-valued Spectrum floating-point numeric variables generically
   - mounted ROM data loads refresh the preserved BASIC variable snapshot before later continuation steps use it
@@ -132,12 +133,14 @@ Tape Loading Progress (Milestone 6)
 - mounted continuations can resume during pauses before custom non-ROM blocks, but not before pending ROM-loadable blocks
 - mounted continuations now also avoid resuming during pauses before unstructured standard ROM-loadable data blocks
 - mounted `USR 0` handoff now resets CPU execution state more completely before entering ROM48, including stale interrupt/audio bookkeeping
-  - Batman now completes its mounted standard-data load deterministically and ends in a late ROM48 loop after tape completion, rather than failing earlier through session-state leakage
+- mounted tape idle/reset EAR polarity is now restored to the correct high-idle state
+  - this was the real cause of the Exolon regression while Batman was being brought up
+  - Batman now completes its mounted standard-data load deterministically and reaches the later game path instead of failing on the old black-screen route
 - mounted live-tape playback now uses a generic wall-clock turbo path in the app while the tape is actively driving the EAR line
 - emulated FE/tape pulse timing is kept exact during those live phases; the speed-up happens in the UI scheduler rather than by distorting tape data
 
 Broader `.tzx` compatibility work still remains for additional protected/custom titles.
-The current active structural gap is Batman's post-load `USR 0` / ROM48 handoff after a fully completed mounted standard-data load.
+The current active structural goal is broader `.tzx` compatibility for additional titles beyond the now-working Batman / Exolon / Impossible baseline.
 
 Audio Progress (Milestone 7)
 - AY register model implemented

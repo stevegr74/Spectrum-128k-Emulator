@@ -976,10 +976,17 @@ namespace Spectrum128kEmulator
                         variableData[i] = PeekMemory((ushort)(vars + i));
                 }
 
-                pendingMountedLoadBasicVariableArea = new MountedLoadBasicVariableArea(
+                MountedLoadBasicVariableArea refreshedVariableArea = new MountedLoadBasicVariableArea(
                     vars,
                     eLine,
                     variableData);
+                if (!pendingMountedLoadBasicVariableArea.HasValue ||
+                    ShouldReplacePendingMountedLoadBasicVariableArea(
+                        pendingMountedLoadBasicVariableArea.Value,
+                        refreshedVariableArea))
+                {
+                    pendingMountedLoadBasicVariableArea = refreshedVariableArea;
+                }
             }
 
             if (pendingMountedLoadInterpreterContext.HasValue)
@@ -1020,6 +1027,30 @@ namespace Spectrum128kEmulator
         {
             return pendingMountedLoadBasicVariableArea.HasValue &&
                    pendingMountedLoadBasicVariableArea.Value.Data.Length > 0;
+        }
+
+        private static bool ShouldReplacePendingMountedLoadBasicVariableArea(
+            MountedLoadBasicVariableArea existing,
+            MountedLoadBasicVariableArea candidate)
+        {
+            bool existingUsable = IsUsablePendingMountedLoadBasicVariableArea(existing);
+            bool candidateUsable = IsUsablePendingMountedLoadBasicVariableArea(candidate);
+
+            if (!existingUsable)
+                return true;
+
+            if (!candidateUsable)
+                return false;
+
+            return candidate.Data.Length >= existing.Data.Length;
+        }
+
+        private static bool IsUsablePendingMountedLoadBasicVariableArea(MountedLoadBasicVariableArea variableArea)
+        {
+            return variableArea.Vars >= 0x5B00 &&
+                   variableArea.Vars < variableArea.EditLine &&
+                   variableArea.Data.Length > 1 &&
+                   variableArea.Data[0] != 0x80;
         }
 
         public void SetPendingMountedLoadBasicResume(ushort lineNumber, byte statementIndex)
@@ -1123,10 +1154,10 @@ namespace Spectrum128kEmulator
 
             if (!pendingMountedLoadUsrContinuationRequiresUsrReturnAddress &&
                 mountedTape.IsActivelyStreamingEarSignal &&
-                !PendingMountedLoadHasPreservedBasicVariableSnapshot() &&
                 z80.TStates >= pendingMountedLoadNextStreamingInterpreterRefreshTStates)
             {
-                RefreshPendingMountedLoadInterpreterContext(forceVariableAreaRefresh: true);
+                bool liveVariableAreaPresent = ReadWord(VarsAddress) < ReadWord(EditLineAddress);
+                RefreshPendingMountedLoadInterpreterContext(forceVariableAreaRefresh: liveVariableAreaPresent);
                 pendingMountedLoadNextStreamingInterpreterRefreshTStates =
                     z80.TStates + MountedLoadStreamingInterpreterRefreshIntervalTStates;
             }
