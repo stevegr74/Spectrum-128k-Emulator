@@ -21,6 +21,7 @@ if (args.Length > 0)
     int floatingBusSampleAdjust = 0;
     bool enableDebugCapture = false;
     bool dumpTapeBlocks = false;
+    bool dumpBatmanBasic = false;
     TapeLoadStrategy? forcedTapeStrategy = null;
     (ushort Start, ushort End)? focusedTraceRange = null;
     int focusedTraceStartFrame = 0;
@@ -63,6 +64,10 @@ if (args.Length > 0)
         else if (arg.Equals("dumpblocks=1", StringComparison.OrdinalIgnoreCase))
         {
             dumpTapeBlocks = true;
+        }
+        else if (arg.Equals("dumpbatmanbasic=1", StringComparison.OrdinalIgnoreCase))
+        {
+            dumpBatmanBasic = true;
         }
         else if (arg.StartsWith("strategy=", StringComparison.OrdinalIgnoreCase))
         {
@@ -119,6 +124,12 @@ if (args.Length > 0)
     if (dumpTapeBlocks)
     {
         DumpTapeBlocks(snapshotPath, machine.FrameTStates == Spectrum128Machine.FrameTStates48);
+        return;
+    }
+
+    if (dumpBatmanBasic)
+    {
+        DumpBatmanBasic(snapshotPath);
         return;
     }
 
@@ -347,6 +358,11 @@ if (args.Length > 0)
                         Console.WriteLine($"PREVIEW resolver={(preview.HasValue ? $"0x{preview.Value:X4}" : "null")} pc=0x{machine.Cpu.Regs.PC:X4}");
                         return;
                     }
+                    else if (batmanForceContinuationMode == "clear")
+                    {
+                        machine.ClearPendingMountedLoadUsrContinuation();
+                        Console.WriteLine("PREVIEW forced=clearpending");
+                    }
                 }
                 else
                 {
@@ -447,6 +463,200 @@ static void DumpTapeBlocks(string tapePath, bool stopTapeIf48k)
     DumpBlockList(parsedBlocks);
     Console.WriteLine("=== EXECUTION BLOCKS ===");
     DumpBlockList(executionBlocks);
+}
+
+static void DumpBatmanBasic(string tapePath)
+{
+    Type tapLoaderType = typeof(TapLoader);
+    MethodInfo parseHeaderInfoMethod = tapLoaderType.GetMethod("ParseHeaderInfo", BindingFlags.NonPublic | BindingFlags.Static)!;
+    MethodInfo initMachineMethod = tapLoaderType.GetMethod("InitializeMachineForFakeTapeLoad", BindingFlags.NonPublic | BindingFlags.Static)!;
+    MethodInfo loadBasicProgramMethod = tapLoaderType
+        .GetMethods(BindingFlags.NonPublic | BindingFlags.Static)
+        .Single(method =>
+        {
+            if (method.Name != "LoadBasicProgram")
+                return false;
+            ParameterInfo[] parameters = method.GetParameters();
+            return parameters.Length == 3 &&
+                   parameters[0].ParameterType == typeof(Spectrum128Machine) &&
+                   parameters[2].ParameterType == typeof(byte[]);
+        });
+    Type executorType = tapLoaderType.GetNestedType("BasicBootstrapExecutor", BindingFlags.NonPublic)!;
+    MethodInfo parseLinesMethod = executorType.GetMethod("ParseLines", BindingFlags.NonPublic | BindingFlags.Static)!;
+    MethodInfo createResolverMethod = executorType
+        .GetMethods(BindingFlags.Public | BindingFlags.Static)
+        .Single(method => method.Name == "CreateMountedLoadUsrContinuationResolver" && method.GetParameters().Length == 4);
+    MethodInfo tryGetSnapshotMethod = typeof(Spectrum128Machine).GetMethod(
+        "TryGetPendingMountedLoadBasicVariableSnapshot",
+        BindingFlags.Instance | BindingFlags.NonPublic)!;
+    FieldInfo pendingResolverField = typeof(Spectrum128Machine).GetField(
+        "pendingMountedLoadUsrContinuationResolver",
+        BindingFlags.Instance | BindingFlags.NonPublic)!;
+    FieldInfo pendingVariableAreaField = typeof(Spectrum128Machine).GetField(
+        "pendingMountedLoadBasicVariableArea",
+        BindingFlags.Instance | BindingFlags.NonPublic)!;
+
+    var blocks = TzxLoader.ParseBlocks(File.ReadAllBytes(tapePath));
+    Console.WriteLine($"BATMAN blocks={blocks.Count}");
+    for (int i = 0; i < blocks.Count; i++)
+    {
+        TapeBlock block = blocks[i];
+        Console.WriteLine(
+            $"BATMAN block[{i}] kind={block.Kind} flag=0x{block.Flag:X2} loadable={block.IsLoadableRomBlock} trap={block.CanUseRomLoadTrap} " +
+            $"pause={block.PauseAfterBlockMs} payload={(block.Payload?.Length ?? -1)} stream={(block.StreamData?.Length ?? -1)}");
+    }
+
+    object batmanHeader = parseHeaderInfoMethod.Invoke(null, new object[] { blocks[0] })!;
+    Type batmanHeaderType = batmanHeader.GetType();
+    ushort programLength = (ushort)batmanHeaderType.GetProperty("ProgramLength")!.GetValue(batmanHeader)!;
+    ushort autoStartLine = (ushort)batmanHeaderType.GetProperty("AutoStartLine")!.GetValue(batmanHeader)!;
+    Console.WriteLine($"BATMAN header len={programLength} auto={autoStartLine}");
+
+    string romFolder = Path.Combine(AppContext.BaseDirectory, "ROMs");
+    var machine = new Spectrum128Machine(romFolder);
+    initMachineMethod.Invoke(null, new object[] { machine, false });
+    loadBasicProgramMethod.Invoke(null, new object[] { machine, batmanHeader, blocks[1].Payload! });
+
+    object lines = parseLinesMethod.Invoke(null, new object[] { machine, (ushort)23755, programLength })!;
+    int lineCounter = 0;
+    foreach (object line in (System.Collections.IEnumerable)lines)
+    {
+        Type lineType = line.GetType();
+        ushort number = (ushort)lineType.GetProperty("Number")!.GetValue(line)!;
+        var statements = (System.Collections.IEnumerable)lineType.GetProperty("Statements")!.GetValue(line)!;
+        var renderedStatements = new List<string>();
+        foreach (object stmtObj in statements)
+        {
+            var stmtTokens = new List<string>();
+            foreach (object? token in (System.Collections.IEnumerable)stmtObj)
+                stmtTokens.Add(token?.ToString() ?? string.Empty);
+            renderedStatements.Add(string.Join(" ", stmtTokens));
+        }
+
+        Console.WriteLine($"BATMAN line[{lineCounter++}] {number}: {string.Join(" : ", renderedStatements)}");
+    }
+
+    object? resolver = createResolverMethod.Invoke(null, new object[] { machine, (ushort)23755, programLength, autoStartLine });
+    Console.WriteLine($"BATMAN resolverCreated={(resolver != null ? 1 : 0)}");
+
+    TapeExecutionResult result = TzxLoader.LoadWithPolicy(machine, tapePath);
+    Console.WriteLine($"BATMAN strategy={result.Strategy} consumed={result.ConsumedBlockCount}/{result.TotalBlockCount}");
+    DumpBatmanSnapshot(machine, tryGetSnapshotMethod, "BATMAN snapshot after LoadWithPolicy");
+
+    for (int frame = 0; frame < 15000; frame++)
+    {
+        machine.ExecuteFrame();
+        if (machine.FrameCount is 1 or 10 or 100 or 1000)
+            DumpBatmanSnapshot(machine, tryGetSnapshotMethod, $"BATMAN snapshot frame={machine.FrameCount}");
+        if (machine.FrameCount == 14110)
+        {
+            Console.WriteLine($"BATMAN preview frame={machine.FrameCount} pc=0x{machine.Cpu.Regs.PC:X4} tape={machine.GetMountedTapeDebugState()}");
+            Console.WriteLine(
+                $"BATMAN sysvars CHANS=0x{ReadWord(machine, 23631):X4} CURCHL=0x{ReadWord(machine, 23633):X4} " +
+                $"PROG=0x{ReadWord(machine, 23635):X4} VARS=0x{ReadWord(machine, 23627):X4} ELINE=0x{ReadWord(machine, 23641):X4}");
+
+            DumpBatmanSnapshot(machine, tryGetSnapshotMethod, "BATMAN snapshot preview");
+
+            if (pendingResolverField.GetValue(machine) is Func<Spectrum128Machine, ushort?> previewResolver)
+            {
+                Console.WriteLine($"BATMAN resolver preview=0x{previewResolver(machine):X4}");
+                object? preservedVariableArea = pendingVariableAreaField.GetValue(machine);
+                pendingVariableAreaField.SetValue(machine, null);
+                Console.WriteLine($"BATMAN resolver without snapshot=0x{previewResolver(machine):X4}");
+                pendingVariableAreaField.SetValue(machine, preservedVariableArea);
+            }
+
+            break;
+        }
+    }
+}
+
+static void DumpBatmanSnapshot(Spectrum128Machine machine, MethodInfo tryGetSnapshotMethod, string label)
+{
+    object[] snapshotArgs = { (ushort)0, Array.Empty<byte>() };
+    if (!(bool)tryGetSnapshotMethod.Invoke(machine, snapshotArgs)!)
+    {
+        Console.WriteLine($"{label}: none");
+        return;
+    }
+
+    ushort vars = (ushort)snapshotArgs[0];
+    byte[] data = (byte[])snapshotArgs[1];
+    Console.WriteLine($"{label}: vars=0x{vars:X4} bytes={data.Length}");
+    Console.Write($"{label} data:");
+    for (int i = 0; i < data.Length; i++)
+        Console.Write($" {data[i]:X2}");
+    Console.WriteLine();
+    DumpNumericVariable(data, 'a');
+}
+
+static ushort ReadWord(Spectrum128Machine machine, ushort address)
+{
+    return (ushort)(machine.PeekMemory(address) | (machine.PeekMemory((ushort)(address + 1)) << 8));
+}
+
+static void DumpNumericVariable(byte[] data, char variableName)
+{
+    byte targetHeader = (byte)(0x60 | (char.ToLowerInvariant(variableName) - 'a'));
+    int index = 0;
+    while (index < data.Length)
+    {
+        byte header = data[index];
+        if (header == 0x80)
+        {
+            Console.WriteLine($"BATMAN variable {variableName} not found before end marker");
+            return;
+        }
+
+        int entryLength = GetVariableEntryLength(data, index, header);
+        if (entryLength <= 0 || index + entryLength > data.Length)
+        {
+            Console.WriteLine($"BATMAN variable decode failed at index {index} header=0x{header:X2}");
+            return;
+        }
+
+        if ((header & 0xE0) == 0x60 && header == targetHeader)
+        {
+            Console.WriteLine(
+                $"BATMAN variable {variableName} bytes={data[index + 1]:X2} {data[index + 2]:X2} {data[index + 3]:X2} {data[index + 4]:X2} {data[index + 5]:X2}");
+            return;
+        }
+
+        index += entryLength;
+    }
+
+    Console.WriteLine($"BATMAN variable {variableName} not found");
+}
+
+static int GetVariableEntryLength(byte[] data, int index, byte header)
+{
+    if ((header & 0xE0) == 0x60)
+        return 6;
+
+    if ((header & 0xE0) == 0x40 || (header & 0xE0) == 0xA0 || (header & 0xE0) == 0xC0)
+    {
+        if (index + 2 >= data.Length)
+            return -1;
+        ushort totalLength = (ushort)(data[index + 1] | (data[index + 2] << 8));
+        return 3 + totalLength;
+    }
+
+    if ((header & 0xE0) == 0x20)
+    {
+        int current = index + 1;
+        while (current < data.Length)
+        {
+            byte nameByte = data[current++];
+            if ((nameByte & 0x80) != 0)
+            {
+                if (current + 5 > data.Length)
+                    return -1;
+                return (current - index) + 5;
+            }
+        }
+    }
+
+    return -1;
 }
 
 static void DumpBlockList(IReadOnlyList<TapeBlock> blocks)

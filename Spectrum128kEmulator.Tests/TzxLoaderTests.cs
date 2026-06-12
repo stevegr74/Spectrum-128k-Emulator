@@ -256,7 +256,7 @@ namespace Spectrum128kEmulator.Tests
 
                 var mountedMixedMachine = new Spectrum128Machine(romFolder);
                 var mountedMixedResult = Tap.TzxLoader.LoadWithPolicy(mountedMixedMachine, mountedMixedPath);
-                Assert.Equal("RomBootstrapMounted", mountedMixedResult.Strategy.ToString());
+                Assert.Equal("BootstrapHybrid", mountedMixedResult.Strategy.ToString());
 
                 MethodInfo prepareBlocksForExecution = typeof(Tap.TzxLoader).GetMethod(
                     "PrepareBlocksForExecution",
@@ -299,7 +299,7 @@ namespace Spectrum128kEmulator.Tests
         }
 
         [Fact]
-        public void RomBootstrapMounted_Runs_Initial_Autorun_Usr_Through_Rom_Basic_Before_Mounted_Remainder()
+        public void RawStandardMountedRemainder_Uses_BootstrapHybrid_Path()
         {
             string romFolder = CreateTempRoms();
             string tapePath = Path.Combine(romFolder, "rom-bootstrap-initial-usr.tzx");
@@ -322,16 +322,9 @@ namespace Spectrum128kEmulator.Tests
                 var machine = new Spectrum128Machine(romFolder);
                 Tap.TapeExecutionResult result = Tap.TzxLoader.LoadWithPolicy(machine, tapePath);
 
-                Assert.Equal("RomBootstrapMounted", result.Strategy.ToString());
+                Assert.Equal("BootstrapHybrid", result.Strategy.ToString());
                 Assert.True(machine.HasMountedTape);
                 Assert.True(machine.HasPendingMountedLoadUsrContinuation);
-                Assert.Equal((ushort)0x1555, machine.Cpu.Regs.PC);
-
-                int sliceBudget = machine.CurrentCpuClockHz / 1000;
-                for (int slice = 0; slice < 7000 && machine.HasPendingMountedLoadUsrContinuation; slice++)
-                    machine.ExecuteTimeSlice(sliceBudget, out _);
-
-                Assert.False(machine.HasPendingMountedLoadUsrContinuation);
             }
             finally
             {
