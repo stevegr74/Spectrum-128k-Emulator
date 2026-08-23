@@ -51,6 +51,7 @@ namespace Spectrum128kEmulator.Z80
         private readonly Queue<string> recentInterruptEvents = new Queue<string>();
         private const int RecentTraceCapacity = 256;
         private const int RecentInterruptEventCapacity = 8192;
+        private bool instructionTraceCaptureEnabled;
         private bool reportedHighRamEntry = false;
         private bool reportedDiWindowEntry = false;
         private bool reportedLowStackEntry = false;
@@ -521,6 +522,13 @@ namespace Spectrum128kEmulator.Z80
             recentTrace.Clear();
             recentInterruptEvents.Clear();
             LastInterruptProgressTStates = TStates;
+        }
+
+        public void SetInstructionTraceCaptureEnabled(bool enabled)
+        {
+            instructionTraceCaptureEnabled = enabled;
+            if (!enabled)
+                recentTrace.Clear();
         }
 
         private void RecordInterruptEvent(string eventText, bool countsAsProgress = false)

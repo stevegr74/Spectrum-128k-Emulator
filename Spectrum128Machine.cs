@@ -63,6 +63,7 @@ namespace Spectrum128kEmulator
         private string? autoDebugDumpSnapshot;
         private bool autoDebugDumpSuppressed;
         private bool debugEventCaptureEnabled;
+        private bool screenWriteDiagnosticsEnabled;
         private ushort lastObservedPc;
         private ulong? interruptPulseEndTStates;
         private ushort? focusedTraceStartPc;
@@ -449,6 +450,7 @@ namespace Spectrum128kEmulator
         public void SetDebugEventCaptureEnabled(bool enabled)
         {
             debugEventCaptureEnabled = enabled;
+            cpu.SetInstructionTraceCaptureEnabled(enabled);
             if (!enabled)
             {
                 recentMemoryEvents.Clear();
@@ -778,6 +780,7 @@ namespace Spectrum128kEmulator
             focusedTraceMaxEntries = maxEntries;
             focusedInstructionTrace.Clear();
             debugEventCaptureEnabled = true;
+            cpu.SetInstructionTraceCaptureEnabled(true);
         }
 
         public void DisableFocusedInstructionTrace()
@@ -789,6 +792,7 @@ namespace Spectrum128kEmulator
             focusedTraceMaxEntries = 0;
             focusedInstructionTrace.Clear();
             debugEventCaptureEnabled = false;
+            cpu.SetInstructionTraceCaptureEnabled(false);
             recentMemoryEvents.Clear();
             recentPortEvents.Clear();
         }
@@ -929,6 +933,13 @@ namespace Spectrum128kEmulator
             pendingMountedLoadNextStreamingInterpreterRefreshTStates = 0;
             Trace?.Invoke(
                 $"[MountedLoad] Arm direct continuation entry=0x{entryPoint:X4} requireUsrReturn=0 frame={FrameCount} pc=0x{cpu.Regs.PC:X4}");
+        }
+
+        public void SetScreenWriteDiagnosticsEnabled(bool enabled)
+        {
+            screenWriteDiagnosticsEnabled = enabled;
+            if (!enabled)
+                ClearLogs();
         }
 
         public void SetPendingMountedLoadUsrContinuationResolver(
@@ -1493,13 +1504,13 @@ namespace Spectrum128kEmulator
                 _ => PagedRamBank
             };
 
-            if (addr >= 0x4000 && addr < 0x5B00)
+            if (screenWriteDiagnosticsEnabled && addr >= 0x4000 && addr < 0x5B00)
             {
                 if (!ScreenWriteLog.ContainsKey(addr))
                     ScreenWriteLog[addr] = 0;
                 ScreenWriteLog[addr]++;
             }
-            else if (addr >= 0x5B00 && addr < 0x5C00)
+            else if (screenWriteDiagnosticsEnabled && addr >= 0x5B00 && addr < 0x5C00)
             {
                 if (!AboveScreenWriteLog.ContainsKey(addr))
                     AboveScreenWriteLog[addr] = 0;
@@ -1508,7 +1519,8 @@ namespace Spectrum128kEmulator
             }
 
             ramBanks[bank][addr & 0x3FFF] = value;
-            RecordMemoryEvent($"T={cpu.TStates,10} W {addr:X4}={value:X2} bank={bank} PC={cpu.Regs.PC:X4} SP={cpu.Regs.SP:X4}");
+            if (debugEventCaptureEnabled)
+                RecordMemoryEvent($"T={cpu.TStates,10} W {addr:X4}={value:X2} bank={bank} PC={cpu.Regs.PC:X4} SP={cpu.Regs.SP:X4}");
         }
 
         public byte ReadPort(ushort port)
@@ -1735,7 +1747,8 @@ namespace Spectrum128kEmulator
 
         private void WritePort(ushort port, byte value)
         {
-            RecordPortEvent($"T={cpu.TStates,10} OUT {port:X4}={value:X2} PC={cpu.Regs.PC:X4} SP={cpu.Regs.SP:X4}");
+            if (debugEventCaptureEnabled)
+                RecordPortEvent($"T={cpu.TStates,10} OUT {port:X4}={value:X2} PC={cpu.Regs.PC:X4} SP={cpu.Regs.SP:X4}");
             SpeakerEdge = false;
 
             if ((port & 0x0001) == 0)

@@ -4989,7 +4989,7 @@ namespace Spectrum128kEmulator.Tap
                     programStart,
                     programLength,
                     autoStartLine,
-                    out List<MountedUsrContinuationStep>? continuationSteps))
+                    out List<MountedUsrContinuationStep> continuationSteps))
                 {
                     return null;
                 }
@@ -5030,7 +5030,7 @@ namespace Spectrum128kEmulator.Tap
                     programStart,
                     programLength,
                     autoStartLine,
-                    out List<MountedUsrContinuationStep>? continuationSteps))
+                    out List<MountedUsrContinuationStep> continuationSteps))
                 {
                     return null;
                 }
@@ -5084,9 +5084,9 @@ namespace Spectrum128kEmulator.Tap
                 ushort programStart,
                 ushort programLength,
                 ushort autoStartLine,
-                out List<MountedUsrContinuationStep>? continuationSteps)
+                out List<MountedUsrContinuationStep> continuationSteps)
             {
-                continuationSteps = null;
+                continuationSteps = new List<MountedUsrContinuationStep>();
                 if (programLength == 0)
                     return false;
 
@@ -5099,8 +5099,6 @@ namespace Spectrum128kEmulator.Tap
 
                 bool sawInitialUsr = false;
                 List<List<string>> pendingPreamble = new();
-                continuationSteps = new List<MountedUsrContinuationStep>();
-
                 for (int lineIndex = startLineIndex; lineIndex < parsedLines.Count; lineIndex++)
                 {
                     for (int parsedStatementIndex = 0; parsedStatementIndex < parsedLines[lineIndex].Statements.Count; parsedStatementIndex++)
@@ -5124,7 +5122,6 @@ namespace Spectrum128kEmulator.Tap
                                 if (IsSafeUsrContinuationPreambleStatement(clause))
                                     continue;
 
-                                continuationSteps = null;
                                 return false;
                             }
 
@@ -5151,7 +5148,6 @@ namespace Spectrum128kEmulator.Tap
                                 continue;
                             }
 
-                            continuationSteps = null;
                             return false;
                         }
                     }
