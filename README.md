@@ -62,7 +62,7 @@ Milestone 7 In Progress - Audio Output Working, Snapshot And Tape Compatibility 
 - `.tap` loading works through the ROM-driven path
 - `.tap` loading now works for real game cases including `exolon.tap` and `Where Time Stood Still.tap`
 - `.tzx` support is implemented and `Exolon.tzx` is verified working
-- `Impossible Mission - Bugfix.tzx` now loads successfully
+- `Impossible Mission - Bugfix.tzx` now loads successfully, including its protected loader stage
 - `Batman - Release 1.tzx` now loads through to the game path
 - `.rzx` replay support is implemented and `aufmonty.rzx` plays back successfully
 - emulation and audio submission now run on a background loop while the UI presents frames at a fixed 50Hz cadence
@@ -122,7 +122,13 @@ Tape Loading Progress (Milestone 6)
   - `Exolon.tzx`
   - `Impossible Mission - Bugfix.tzx`
   - `Where Time Stood Still.tap`
+  - `Batman - Release 1.tzx`
   - `aufmonty.rzx`
+- tape execution is selected from parsed tape structure rather than title-specific rules:
+  - standard BASIC chains use the fast bootstrap path where their ROM side effects can be reproduced
+  - mixed and protected tapes retain mounted signal playback for the live/protected stage
+  - the ROM `LD-BYTES` trap remains the shared path for standard header/data loads and VERIFY
+- protected BASIC bootstrap now honours Spectrum `CLEAR -1` semantics, preserving all RAM before a `USR` handoff; this is required by the Impossible Mission loader
 - current generic Batman progress includes:
   - repeated loads in the same app session now behave consistently
   - raw-standard mixed tapes now use the bootstrap/hybrid mounted path instead of the older ROM-bootstrap-mounted path
@@ -139,8 +145,7 @@ Tape Loading Progress (Milestone 6)
 - mounted live-tape playback now uses a generic wall-clock turbo path in the app while the tape is actively driving the EAR line
 - emulated FE/tape pulse timing is kept exact during those live phases; the speed-up happens in the UI scheduler rather than by distorting tape data
 
-Broader `.tzx` compatibility work still remains for additional protected/custom titles.
-The current active structural goal is broader `.tzx` compatibility for additional titles beyond the now-working Batman / Exolon / Impossible baseline.
+Broader `.tzx` compatibility work still remains for additional protected/custom titles. The current active structural goal is expanding the same format, transport, ROM/trap, bootstrap-policy, and regression layers beyond the working Batman / Exolon / Impossible baseline.
 
 Audio Progress (Milestone 7)
 - AY register model implemented

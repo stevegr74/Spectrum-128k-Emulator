@@ -30,7 +30,11 @@ namespace Spectrum128kEmulator.Tap
             if (blocks.Count == 0)
                 throw new InvalidOperationException("The .tzx file does not contain any supported tape blocks.");
 
-            var tape = new MountedTape(Path.GetFileName(path), blocks, skipCustomHeaderForEarPlayback: false);
+            var tape = new MountedTape(
+                Path.GetFileName(path),
+                blocks,
+                skipCustomHeaderForEarPlayback: false,
+                initialEarLevelHigh: false);
             machine.MountTape(tape);
             return new TapMountResult(blocks.Count, Path.GetFileName(path));
         }
@@ -45,7 +49,7 @@ namespace Spectrum128kEmulator.Tap
             var blocks = ParseBlocksForNewTapeLoad(File.ReadAllBytes(path));
             string displayName = Path.GetFileName(path);
             TapeLoadPlan plan = TapLoader.CreateExecutionPlan(machine, blocks);
-            return TapLoader.ExecutePlan(machine, displayName, blocks, plan);
+            return TapLoader.ExecutePlan(machine, displayName, blocks, plan, initialEarLevelHigh: false);
         }
 
         public static TapBootstrapResult BootstrapBasicProgramAndMountRemaining(Spectrum128Machine machine, string path)
@@ -60,7 +64,8 @@ namespace Spectrum128kEmulator.Tap
                 machine,
                 Path.GetFileName(path),
                 blocks,
-                skipCustomHeaderForEarPlayback: false);
+                skipCustomHeaderForEarPlayback: false,
+                initialEarLevelHigh: false);
         }
 
         public static TapBootstrapResult LoadAllStandardBlocksAndAutoStart(Spectrum128Machine machine, string path)
@@ -75,7 +80,8 @@ namespace Spectrum128kEmulator.Tap
                 machine,
                 Path.GetFileName(path),
                 blocks,
-                skipCustomHeaderForEarPlayback: false);
+                skipCustomHeaderForEarPlayback: false,
+                initialEarLevelHigh: false);
         }
 
         public static IReadOnlyList<TapeBlock> ParseBlocks(byte[] fileData)

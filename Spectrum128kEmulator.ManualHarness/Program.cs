@@ -22,6 +22,7 @@ if (args.Length > 0)
     bool enableDebugCapture = false;
     bool dumpTapeBlocks = false;
     bool dumpBatmanBasic = false;
+    bool enableMachineTrace = false;
     TapeLoadStrategy? forcedTapeStrategy = null;
     (ushort Start, ushort End)? focusedTraceRange = null;
     int focusedTraceStartFrame = 0;
@@ -34,13 +35,31 @@ if (args.Length > 0)
     List<ScheduledRegisterEvent> scheduledRegisterEvents = new();
     List<ScheduledMemoryWriteEvent> scheduledMemoryWriteEvents = new();
     List<ScheduledFrameTimingEvent> scheduledFrameTimingEvents = new();
-    if (args.Length > 1)
+    int optionStartIndex = 1;
+    if (args.Length > 1 && !args[1].Contains('='))
+    {
         initialInterruptDelay = int.Parse(args[1]);
-    if (args.Length > 2)
-        frameLimit = int.Parse(args[2]);
-    for (int argIndex = 3; argIndex < args.Length; argIndex++)
+        optionStartIndex = 2;
+    }
+
+    if (args.Length > optionStartIndex && !args[optionStartIndex].Contains('='))
+    {
+        frameLimit = int.Parse(args[optionStartIndex]);
+        optionStartIndex++;
+    }
+
+    for (int argIndex = optionStartIndex; argIndex < args.Length; argIndex++)
     {
         string arg = args[argIndex];
+        if (arg.StartsWith("interrupt=", StringComparison.OrdinalIgnoreCase))
+        {
+            initialInterruptDelay = int.Parse(arg["interrupt=".Length..]);
+        }
+        else if (arg.StartsWith("frames=", StringComparison.OrdinalIgnoreCase))
+        {
+            frameLimit = int.Parse(arg["frames=".Length..]);
+        }
+        else
         if (arg.StartsWith("fbstart=", StringComparison.OrdinalIgnoreCase))
         {
             floatingBusDisplayStartAdjust = int.Parse(arg["fbstart=".Length..]);
@@ -68,6 +87,10 @@ if (args.Length > 0)
         else if (arg.Equals("dumpbatmanbasic=1", StringComparison.OrdinalIgnoreCase))
         {
             dumpBatmanBasic = true;
+        }
+        else if (arg.Equals("machinetrace=1", StringComparison.OrdinalIgnoreCase))
+        {
+            enableMachineTrace = true;
         }
         else if (arg.StartsWith("strategy=", StringComparison.OrdinalIgnoreCase))
         {
@@ -120,6 +143,12 @@ if (args.Length > 0)
     }
 
     Console.WriteLine($"Loading image: {snapshotPath}");
+
+    if (enableMachineTrace)
+    {
+        machine.Trace = message => Console.WriteLine("TRACE " + message);
+        Console.WriteLine("Machine trace enabled.");
+    }
 
     if (dumpTapeBlocks)
     {
@@ -807,7 +836,7 @@ static TapeExecutionResult LoadTapeWithForcedStrategy(
         ? TzxLoader.ParseBlocks(fileData)
         : InvokeTapLoaderParseBlocks(fileData);
     TapeLoadPlan plan = new(strategy, $"Forced harness strategy {strategy}");
-    return InvokeTapLoaderExecutePlan(machine, Path.GetFileName(path), blocks, plan);
+    return InvokeTapLoaderExecutePlan(machine, Path.GetFileName(path), blocks, plan, initialEarLevelHigh: !isTzx);
 }
 
 static IReadOnlyList<TapeBlock> InvokeTapLoaderParseBlocks(byte[] fileData)
@@ -825,7 +854,8 @@ static TapeExecutionResult InvokeTapLoaderExecutePlan(
     Spectrum128Machine machine,
     string displayName,
     IReadOnlyList<TapeBlock> blocks,
-    TapeLoadPlan plan)
+    TapeLoadPlan plan,
+    bool initialEarLevelHigh)
 {
     MethodInfo? executePlan = typeof(TapLoader).GetMethod(
         "ExecutePlan",
@@ -833,7 +863,7 @@ static TapeExecutionResult InvokeTapLoaderExecutePlan(
     if (executePlan == null)
         throw new InvalidOperationException("Could not find TapLoader.ExecutePlan via reflection.");
 
-    return (TapeExecutionResult)executePlan.Invoke(null, new object[] { machine, displayName, blocks, plan })!;
+    return (TapeExecutionResult)executePlan.Invoke(null, new object[] { machine, displayName, blocks, plan, initialEarLevelHigh })!;
 }
 
 static (ushort Start, ushort End) ParseTraceRange(string script)

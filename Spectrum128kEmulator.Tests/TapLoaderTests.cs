@@ -177,6 +177,47 @@ namespace Spectrum128kEmulator.Tests
         }
 
         [Fact]
+        public void MountedTape_PauseBoundary_Keeps_EarLow_When_Next_Block_Starts()
+        {
+            string tempFolder = CreateTempRoms();
+
+            try
+            {
+                var machine = new Spectrum128Machine(tempFolder);
+                var tape = new MountedTape(
+                    "pause-boundary",
+                    new TapeBlock[]
+                    {
+                        TapeBlock.CreateByteStreamData(new byte[] { 0x80 }, 855, 1710, 1, 1),
+                        TapeBlock.CreatePureTone(100, 1)
+                    },
+                    skipCustomHeaderForEarPlayback: false);
+                machine.MountTape(tape);
+
+                for (int i = 0; i < 64 && GetPrivateField(tape, "earPlaybackState").ToString() != "Pause"; i++)
+                {
+                    machine.Cpu.AddTStates(5000);
+                    _ = machine.DebugReadPort(0x00FE);
+                }
+
+                Assert.Equal("Pause", GetPrivateField(tape, "earPlaybackState").ToString());
+                Assert.True((bool)GetPrivateField(tape, "earLevel"));
+
+                MethodInfo advanceEarPulse = typeof(MountedTape).GetMethod(
+                    "AdvanceEarPulse",
+                    BindingFlags.Instance | BindingFlags.NonPublic)!;
+                advanceEarPulse.Invoke(tape, Array.Empty<object>());
+
+                Assert.Equal("PureTone", GetPrivateField(tape, "earPlaybackState").ToString());
+                Assert.False((bool)GetPrivateField(tape, "earLevel"));
+            }
+            finally
+            {
+                Directory.Delete(tempFolder, true);
+            }
+        }
+
+        [Fact]
         public void MountedTape_NaturalByteStreamCompletion_DoesNotRetainIdleProtectedByteStreamForRomTrap()
         {
             string tempFolder = CreateTempRoms();
@@ -264,6 +305,40 @@ namespace Spectrum128kEmulator.Tests
 
             Assert.True(romTape.IsActivelyStreamingEarSignal);
             Assert.False(romTape.IsStreamingProtectedByteStream);
+        }
+
+        [Fact]
+        public void MountedTape_ProtectedByteStreamWithTrailingPause_EndsWithoutSyntheticEofTransition()
+        {
+            string tempFolder = CreateTempRoms();
+
+            try
+            {
+                var machine = new Spectrum128Machine(tempFolder);
+                var tape = new MountedTape(
+                    "protected-eof",
+                    new TapeBlock[]
+                    {
+                        TapeBlock.CreateByteStreamData(new byte[] { 0x55 }, 855, 1710, 8, 1)
+                    },
+                    initialBlockIndex: 0,
+                    skipCustomHeaderForEarPlayback: false);
+                machine.MountTape(tape);
+
+                for (int i = 0; i < 64 && tape.IsActivelyDrivingEarLine; i++)
+                {
+                    machine.Cpu.AddTStates(5000);
+                    _ = machine.DebugReadPort(0x00FE);
+                }
+
+                Assert.Equal("Idle", GetPrivateField(tape, "earPlaybackState").ToString());
+                Assert.Equal(1, (int)GetPrivateField(tape, "nextBlockIndex"));
+                Assert.False((bool)GetPrivateField(tape, "retainedByteStreamTrapAvailable"));
+            }
+            finally
+            {
+                Directory.Delete(tempFolder, true);
+            }
         }
 
         [Fact]
@@ -481,6 +556,69 @@ namespace Spectrum128kEmulator.Tests
                 Assert.Equal((byte)0x33, machine.PeekMemory(0x8002));
                 Assert.Equal((byte)0x44, machine.PeekMemory(0x8003));
                 Assert.Equal(1, (int)GetPrivateField(tape, "nextBlockIndex"));
+            }
+            finally
+            {
+                Directory.Delete(tempFolder, true);
+            }
+        }
+
+        [Fact]
+        public void MountedTape_RomTrap_StructuredBasicSideEffects_Resume_Original_Caller()
+        {
+            string tempFolder = CreateTempRoms();
+
+            try
+            {
+                byte[] basicProgram = BuildBasicProgram(
+                    BuildBasicLine(10,
+                        Token(244), Ascii("23624"), Comma(), Ascii("5"), NumberMarker(5)));
+
+                TapeBlock headerBlock = TapeBlock.CreateData(
+                    BuildHeaderBlock(
+                        type: 0,
+                        fileName: "BASRET",
+                        dataLength: (ushort)basicProgram.Length,
+                        parameter1: 10,
+                        parameter2: (ushort)basicProgram.Length),
+                    2168, 8063, 667, 735, 855, 1710, 8, 1000);
+                TapeBlock dataBlock = TapeBlock.CreateData(
+                    BuildDataBlock(basicProgram),
+                    2168, 3223, 667, 735, 855, 1710, 8, 1000);
+
+                MethodInfo parseHeaderInfo = typeof(TapLoader).GetMethod(
+                    "ParseHeaderInfo",
+                    BindingFlags.NonPublic | BindingFlags.Static)!;
+                object header = parseHeaderInfo.Invoke(null, new object[] { headerBlock })!;
+
+                var machine = new Spectrum128Machine(tempFolder);
+                var tape = new MountedTape(
+                    "structured-basic-return",
+                    new[] { headerBlock, dataBlock },
+                    initialBlockIndex: 0,
+                    skipCustomHeaderForEarPlayback: false);
+                machine.MountTape(tape);
+
+                SetPrivateField(tape, "nextBlockIndex", 1);
+                SetPrivateField(tape, "state", Enum.Parse(GetPrivateField(tape, "state").GetType(), "ExpectData"));
+                SetPrivateField(tape, "expectedDataLength", (int?)basicProgram.Length);
+                SetPrivateField(tape, "pendingHeaderName", "BASRET");
+                SetPrivateField(tape, "pendingHeaderInfo", header);
+
+                machine.Cpu.Regs.PC = 0x056B;
+                machine.Cpu.Regs.SP = 0x9000;
+                machine.PokeMemory(0x9000, 0x34);
+                machine.PokeMemory(0x9001, 0x12);
+                machine.Cpu.Regs.IX = 23755;
+                machine.Cpu.Regs.DE = (ushort)basicProgram.Length;
+                machine.Cpu.Regs.A = 0xFF;
+                machine.Cpu.Regs.F = 0x01;
+                machine.Cpu.Regs.A_ = 0xFF;
+                machine.Cpu.Regs.F_ = 0x01;
+
+                Assert.True(tape.TryHandleRomLoadTrap(machine, machine.Cpu));
+                Assert.Equal((ushort)0x1234, machine.Cpu.Regs.PC);
+                Assert.Equal((byte)5, machine.PeekMemory(23624));
             }
             finally
             {
@@ -1520,7 +1658,7 @@ namespace Spectrum128kEmulator.Tests
                 MethodInfo parseBlocks = typeof(TapLoader).GetMethod("ParseBlocks", BindingFlags.NonPublic | BindingFlags.Static)!;
                 MethodInfo loadRomBootstrap = typeof(TapLoader).GetMethod("LoadLeadingBasicProgramAndMountRemainingForRomAutoStart", BindingFlags.NonPublic | BindingFlags.Static)!;
                 IReadOnlyList<TapeBlock> blocks = (IReadOnlyList<TapeBlock>)parseBlocks.Invoke(null, new object[] { tap })!;
-                TapBootstrapResult result = (TapBootstrapResult)loadRomBootstrap.Invoke(null, new object[] { machine, "rom-driven.tap", blocks, true, 1, 1 })!;
+                TapBootstrapResult result = (TapBootstrapResult)loadRomBootstrap.Invoke(null, new object[] { machine, "rom-driven.tap", blocks, true, 1, 1, true })!;
 
                 Assert.Equal(4, result.TotalBlockCount);
                 Assert.Equal(2, result.ConsumedBlockCount);
@@ -2431,6 +2569,115 @@ namespace Spectrum128kEmulator.Tests
                 Assert.Equal((byte)1, machine.PeekMemory(32768));
                 Assert.Equal((byte)2, machine.PeekMemory(32769));
                 Assert.False(machine.HasMountedTape && machine.MountedTape!.HasRemainingBlocks);
+            }
+            finally
+            {
+                Directory.Delete(tempFolder, true);
+            }
+        }
+
+        [Fact]
+        public void BasicBootstrapExecutor_ApplyClear_Relocates_Low_Machine_Stack()
+        {
+            string tempFolder = CreateTempRoms();
+
+            try
+            {
+                var machine = new Spectrum128Machine(tempFolder);
+                MethodInfo initializeMachine = typeof(TapLoader).GetMethod("InitializeMachineForFakeTapeLoad", BindingFlags.NonPublic | BindingFlags.Static)!;
+                Type executorType = typeof(TapLoader).GetNestedType("BasicBootstrapExecutor", BindingFlags.NonPublic)!;
+                ConstructorInfo constructor = executorType.GetConstructor(
+                    BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic,
+                    binder: null,
+                    new[] { typeof(Spectrum128Machine), typeof(ushort), typeof(ushort), typeof(bool) },
+                    modifiers: null)!;
+                MethodInfo applyClear = executorType.GetMethod("ApplyClear", BindingFlags.Instance | BindingFlags.NonPublic)!;
+
+                initializeMachine.Invoke(null, new object[] { machine, false });
+                machine.Cpu.Regs.SP = 0x5CFE;
+                object executor = constructor.Invoke(new object[] { machine, (ushort)23755, (ushort)0, false });
+
+                applyClear.Invoke(executor, new object[] { 65535 });
+
+                Assert.Equal((ushort)0xFF58, machine.Cpu.Regs.SP);
+                Assert.Equal((ushort)0xFFFE, ReadWord(machine, 23730));
+                Assert.Equal((ushort)0xFFFF, ReadWord(machine, 23649));
+                Assert.Equal((ushort)0xFFFF, ReadWord(machine, 23651));
+                Assert.Equal((ushort)0xFFFF, ReadWord(machine, 23653));
+
+                // BASIC loaders conventionally use CLEAR -1 to retain all RAM.
+                applyClear.Invoke(executor, new object[] { -1 });
+
+                Assert.Equal((ushort)0xFFFE, ReadWord(machine, 23730));
+                Assert.Equal((ushort)0xFFFF, ReadWord(machine, 23649));
+                Assert.Equal((ushort)0xFFFF, ReadWord(machine, 23651));
+                Assert.Equal((ushort)0xFFFF, ReadWord(machine, 23653));
+            }
+            finally
+            {
+                Directory.Delete(tempFolder, true);
+            }
+        }
+
+        [Fact]
+        public void TryExecuteImmediateSideEffectProgram_Preserves_Live_XPtr_For_Protected_Handoff()
+        {
+            string tempFolder = CreateTempRoms();
+
+            try
+            {
+                byte[] program = BuildBasicProgram(
+                    BuildBasicLine(0,
+                        Token(244), Ascii("40000"), NumberMarker(40000), Comma(),
+                        Token(190), Ascii("23647"), NumberMarker(23647),
+                        Colon(),
+                        Token(244), Ascii("40001"), NumberMarker(40001), Comma(),
+                        Token(190), Ascii("23648"), NumberMarker(23648)));
+
+                var machine = new Spectrum128Machine(tempFolder);
+                MethodInfo initializeMachine = typeof(TapLoader).GetMethod("InitializeMachineForFakeTapeLoad", BindingFlags.NonPublic | BindingFlags.Static)!;
+                MethodInfo loadBasicProgram = typeof(TapLoader)
+                    .GetMethods(BindingFlags.NonPublic | BindingFlags.Static)
+                    .Single(method =>
+                    {
+                        if (method.Name != "LoadBasicProgram")
+                            return false;
+                        ParameterInfo[] parameters = method.GetParameters();
+                        return parameters.Length == 3 &&
+                               parameters[0].ParameterType == typeof(Spectrum128Machine) &&
+                               parameters[2].ParameterType == typeof(byte[]);
+                    });
+                MethodInfo parseHeaderInfo = typeof(TapLoader).GetMethod("ParseHeaderInfo", BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Static)!;
+                Type executorType = typeof(TapLoader).GetNestedType("BasicBootstrapExecutor", BindingFlags.NonPublic)!;
+                ConstructorInfo constructor = executorType.GetConstructor(
+                    BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic,
+                    binder: null,
+                    new[] { typeof(Spectrum128Machine), typeof(ushort), typeof(ushort), typeof(bool) },
+                    modifiers: null)!;
+                MethodInfo executeImmediate = executorType.GetMethod(
+                    "TryExecuteImmediateSideEffectProgram",
+                    BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public)!;
+
+                initializeMachine.Invoke(null, new object[] { machine, false });
+                TapeBlock headerBlock = TapeBlock.CreateData(BuildHeaderBlock(
+                    type: 0,
+                    fileName: "XPTRCHK",
+                    dataLength: (ushort)program.Length,
+                    parameter1: 0,
+                    parameter2: (ushort)program.Length), 2168, 8063, 667, 735, 855, 1710, 8, 1000);
+                object header = parseHeaderInfo.Invoke(null, new object[] { headerBlock })!;
+                loadBasicProgram.Invoke(null, new object[] { machine, header, program });
+                machine.PokeMemory(23647, 0x34);
+                machine.PokeMemory(23648, 0x12);
+
+                object executor = constructor.Invoke(new object[] { machine, (ushort)23755, (ushort)program.Length, false });
+                bool executed = (bool)executeImmediate.Invoke(
+                    executor,
+                    new object[] { (ushort)program.Length, (ushort)program.Length, (ushort)0, true })!;
+
+                Assert.True(executed);
+                Assert.Equal((byte)0x34, machine.PeekMemory(40000));
+                Assert.Equal((byte)0x12, machine.PeekMemory(40001));
             }
             finally
             {
