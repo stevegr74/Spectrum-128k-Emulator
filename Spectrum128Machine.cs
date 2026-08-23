@@ -927,6 +927,8 @@ namespace Spectrum128kEmulator
             pendingMountedLoadUsrContinuationRequiresUsrReturnAddress = false;
             pendingMountedLoadPreserveLiveInterpreterStateForDirectUsrEntry = false;
             pendingMountedLoadNextStreamingInterpreterRefreshTStates = 0;
+            Trace?.Invoke(
+                $"[MountedLoad] Arm direct continuation entry=0x{entryPoint:X4} requireUsrReturn=0 frame={FrameCount} pc=0x{cpu.Regs.PC:X4}");
         }
 
         public void SetPendingMountedLoadUsrContinuationResolver(
@@ -938,11 +940,15 @@ namespace Spectrum128kEmulator
             pendingMountedLoadUsrContinuationRequiresUsrReturnAddress = requireUsrReturnAddress;
             pendingMountedLoadPreserveLiveInterpreterStateForDirectUsrEntry = false;
             pendingMountedLoadNextStreamingInterpreterRefreshTStates = 0;
+            Trace?.Invoke(
+                $"[MountedLoad] Arm resolver requireUsrReturn={(requireUsrReturnAddress ? 1 : 0)} frame={FrameCount} pc=0x{cpu.Regs.PC:X4}");
         }
 
         public void SetPendingMountedLoadDirectUsrContextPolicy(bool preserveLiveInterpreterState)
         {
             pendingMountedLoadPreserveLiveInterpreterStateForDirectUsrEntry = preserveLiveInterpreterState;
+            Trace?.Invoke(
+                $"[MountedLoad] DirectUsrContext preserveLiveInterpreter={(preserveLiveInterpreterState ? 1 : 0)} frame={FrameCount} pc=0x{cpu.Regs.PC:X4}");
         }
 
         internal bool PendingMountedLoadUsrContinuationRequiresUsrReturnAddress =>
@@ -950,6 +956,8 @@ namespace Spectrum128kEmulator
 
         public void ClearPendingMountedLoadUsrContinuation()
         {
+            bool hadPendingContinuation = pendingMountedLoadUsrContinuationResolver != null ||
+                pendingMountedLoadBasicResumeLine.HasValue;
             pendingMountedLoadUsrContinuationResolver = null;
             pendingMountedLoadUsrContinuationRequiresUsrReturnAddress = false;
             pendingMountedLoadBasicResumeLine = null;
@@ -959,6 +967,11 @@ namespace Spectrum128kEmulator
             pendingMountedLoadResumeCursorOverride = null;
             pendingMountedLoadPreserveLiveInterpreterStateForDirectUsrEntry = false;
             pendingMountedLoadNextStreamingInterpreterRefreshTStates = 0;
+            if (hadPendingContinuation)
+            {
+                Trace?.Invoke(
+                    $"[MountedLoad] Clear pending continuation frame={FrameCount} pc=0x{cpu.Regs.PC:X4}");
+            }
         }
 
         public void RefreshPendingMountedLoadInterpreterContext(bool forceVariableAreaRefresh = false)
@@ -1057,6 +1070,8 @@ namespace Spectrum128kEmulator
         {
             pendingMountedLoadBasicResumeLine = lineNumber;
             pendingMountedLoadBasicResumeStatement = statementIndex;
+            Trace?.Invoke(
+                $"[MountedLoad] Arm BASIC resume line={lineNumber} stmt={statementIndex} frame={FrameCount} pc=0x{cpu.Regs.PC:X4}");
         }
 
         public void SetPendingMountedLoadResumeCursorOverride(
@@ -1065,6 +1080,8 @@ namespace Spectrum128kEmulator
             ushort? xPtr = null)
         {
             pendingMountedLoadResumeCursorOverride = new MountedLoadResumeCursorOverride(kCur, chAdd, xPtr);
+            Trace?.Invoke(
+                $"[MountedLoad] Cursor override KCUR={(kCur.HasValue ? $"0x{kCur.Value:X4}" : "live")} CHADD={(chAdd.HasValue ? $"0x{chAdd.Value:X4}" : "live")} XPTR={(xPtr.HasValue ? $"0x{xPtr.Value:X4}" : "live")} frame={FrameCount} pc=0x{cpu.Regs.PC:X4}");
         }
 
         internal bool TryGetPendingMountedLoadBasicVariableArea(out ushort vars, out ushort eLine)
@@ -1154,10 +1171,10 @@ namespace Spectrum128kEmulator
 
             if (!pendingMountedLoadUsrContinuationRequiresUsrReturnAddress &&
                 mountedTape.IsActivelyStreamingEarSignal &&
+                !PendingMountedLoadHasPreservedBasicVariableSnapshot() &&
                 z80.TStates >= pendingMountedLoadNextStreamingInterpreterRefreshTStates)
             {
-                bool liveVariableAreaPresent = ReadWord(VarsAddress) < ReadWord(EditLineAddress);
-                RefreshPendingMountedLoadInterpreterContext(forceVariableAreaRefresh: liveVariableAreaPresent);
+                RefreshPendingMountedLoadInterpreterContext(forceVariableAreaRefresh: true);
                 pendingMountedLoadNextStreamingInterpreterRefreshTStates =
                     z80.TStates + MountedLoadStreamingInterpreterRefreshIntervalTStates;
             }
@@ -1168,6 +1185,9 @@ namespace Spectrum128kEmulator
             if (!CanResumeMountedLoadUsrContinuation(z80.Regs.PC, mountedTape))
                 return false;
 
+            Trace?.Invoke(
+                $"[MountedLoad] Resume gate open frame={FrameCount} pc=0x{z80.Regs.PC:X4} basicResume={(pendingMountedLoadBasicResumeLine.HasValue ? 1 : 0)} requireUsrReturn={(pendingMountedLoadUsrContinuationRequiresUsrReturnAddress ? 1 : 0)}");
+
             Func<Spectrum128Machine, ushort?> resolver = pendingMountedLoadUsrContinuationResolver;
             pendingMountedLoadUsrContinuationResolver = null;
             pendingMountedLoadUsrContinuationRequiresUsrReturnAddress = false;
@@ -1176,7 +1196,11 @@ namespace Spectrum128kEmulator
                 pendingMountedLoadPreserveLiveInterpreterStateForDirectUsrEntry;
             pendingMountedLoadPreserveLiveInterpreterStateForDirectUsrEntry = false;
             if (!resolvedEntryPoint.HasValue)
+            {
+                Trace?.Invoke(
+                    $"[MountedLoad] Resolver dropped continuation frame={FrameCount} pc=0x{z80.Regs.PC:X4}");
                 return false;
+            }
 
             if (pendingMountedLoadBasicResumeLine.HasValue)
             {
@@ -1193,6 +1217,8 @@ namespace Spectrum128kEmulator
                 WriteMemory((ushort)(PpcAddress + 1), (byte)(lineNumber >> 8));
                 WriteMemory(SubPpcAddress, statementIndex);
                 z80.Regs.PC = MainExecutionLoopAddress;
+                Trace?.Invoke(
+                    $"[MountedLoad] Resume BASIC line={lineNumber} stmt={statementIndex} -> pc=0x{z80.Regs.PC:X4} frame={FrameCount}");
                 return true;
             }
 
@@ -1201,6 +1227,8 @@ namespace Spectrum128kEmulator
             if (entryPoint == 0)
             {
                 EnterUsr0Mode(z80);
+                Trace?.Invoke(
+                    $"[MountedLoad] Resume USR0 frame={FrameCount} pc=0x{z80.Regs.PC:X4}");
                 return true;
             }
 
@@ -1221,6 +1249,8 @@ namespace Spectrum128kEmulator
             z80.Regs.H_ = (byte)(EndCalcLiteralAddress >> 8);
             z80.Regs.L_ = (byte)(EndCalcLiteralAddress & 0xFF);
             z80.Regs.PC = entryPoint;
+            Trace?.Invoke(
+                $"[MountedLoad] Resume direct entry=0x{entryPoint:X4} frame={FrameCount} sp=0x{z80.Regs.SP:X4}");
             return true;
         }
 

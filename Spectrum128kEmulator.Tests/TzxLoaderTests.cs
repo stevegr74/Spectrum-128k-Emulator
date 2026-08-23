@@ -149,6 +149,67 @@ namespace Spectrum128kEmulator.Tests
         }
 
         [Fact]
+        public void Mount_Starts_Tzx_Playback_With_Low_Ear_Level()
+        {
+            string romFolder = CreateTempRoms();
+            string tapePath = Path.Combine(romFolder, "low-start.tzx");
+
+            try
+            {
+                File.WriteAllBytes(
+                    tapePath,
+                    BuildTzx(
+                        BuildPureToneBlock(2168, 4)));
+
+                var machine = new Spectrum128Machine(romFolder);
+
+                Tap.TzxLoader.Mount(machine, tapePath);
+
+                Assert.True(machine.HasMountedTape);
+                FieldInfo earLevelField = typeof(Tap.MountedTape).GetField("earLevel", BindingFlags.Instance | BindingFlags.NonPublic)!;
+                Assert.False((bool)earLevelField.GetValue(machine.MountedTape!)!);
+            }
+            finally
+            {
+                Directory.Delete(romFolder, true);
+            }
+        }
+
+        [Fact]
+        public void MountedTape_ProtectedTail_EndOfStream_Returns_Ear_High()
+        {
+            var tape = new Tap.MountedTape(
+                "protected-tail",
+                new[]
+                {
+                    Tap.TapeBlock.CreateByteStreamData(
+                        new byte[] { 0xA5 },
+                        zeroBitPulseLength: 855,
+                        oneBitPulseLength: 1710,
+                        usedBitsInLastByte: 8,
+                        pauseAfterBlockMs: 1)
+                },
+                initialEarLevelHigh: false);
+
+            bool sawEndTransition = false;
+            for (ulong tStates = 0; tStates < 200000; tStates += 128)
+            {
+                tape.ReadEarBit(tStates);
+                if (tape.DebugPlaybackState.Contains("EarState=EndOfStreamTransition", StringComparison.Ordinal))
+                {
+                    sawEndTransition = true;
+                }
+
+                if (!tape.IsActivelyDrivingEarLine)
+                    break;
+            }
+
+            Assert.True(sawEndTransition);
+            Assert.Contains("EarState=Idle", tape.DebugPlaybackState, StringComparison.Ordinal);
+            Assert.Contains("EarLevel=1", tape.DebugPlaybackState, StringComparison.Ordinal);
+        }
+
+        [Fact]
         public void LoadWithPolicy_Uses_Explicit_TapePlan_Layer()
         {
             string romFolder = CreateTempRoms();
@@ -333,6 +394,78 @@ namespace Spectrum128kEmulator.Tests
         }
 
         [Fact]
+        public void TryExecuteLoadedMountedBasicProgram_ImmediateProtectedHandoffStage_DoesNotArmMountedContinuation()
+        {
+            string romFolder = CreateTempRoms();
+
+            try
+            {
+                byte[] protectedHandoffProgram = BuildBasicProgram(
+                    BuildBasicLine(0,
+                        Token(231), Ascii("1"), NumberMarker(1),
+                        Ascii(":"), Token(218), Ascii("0"), NumberMarker(0),
+                        Ascii(":"), Token(217), Ascii("0"), NumberMarker(0),
+                        Ascii(":"), Token(251),
+                        Ascii(":"), Token(244), Ascii("23662"), NumberMarker(23662),
+                        Ascii(","), Token(190), Ascii("23618"), NumberMarker(23618)));
+
+                Tap.TapeBlock headerBlock = Tap.TapeBlock.CreateData(
+                    BuildSpectrumHeaderBlock(
+                        type: 0,
+                        fileName: "IM1",
+                        dataLength: (ushort)protectedHandoffProgram.Length,
+                        parameter1: 0,
+                        parameter2: (ushort)protectedHandoffProgram.Length),
+                    2168,
+                    8063,
+                    667,
+                    735,
+                    855,
+                    1710,
+                    8,
+                    1000);
+
+                MethodInfo parseHeaderInfo = typeof(Tap.TapLoader).GetMethod("ParseHeaderInfo", BindingFlags.NonPublic | BindingFlags.Static)!;
+                object header = parseHeaderInfo.Invoke(null, new object[] { headerBlock })!;
+
+                MethodInfo loadBasicProgram = typeof(Tap.TapLoader)
+                    .GetMethods(BindingFlags.NonPublic | BindingFlags.Static)
+                    .Single(method =>
+                    {
+                        if (method.Name != "LoadBasicProgram")
+                            return false;
+                        ParameterInfo[] parameters = method.GetParameters();
+                        return parameters.Length == 3 &&
+                               parameters[0].ParameterType == typeof(Spectrum128Machine) &&
+                               parameters[2].ParameterType == typeof(byte[]);
+                    });
+
+                var machine = new Spectrum128Machine(romFolder);
+                loadBasicProgram.Invoke(null, new object[] { machine, header, protectedHandoffProgram });
+
+                MethodInfo tryExecuteLoadedMountedBasicProgram = typeof(Tap.TapLoader).GetMethod(
+                    "TryExecuteLoadedMountedBasicProgram",
+                    BindingFlags.NonPublic | BindingFlags.Static)!;
+                bool executed = (bool)tryExecuteLoadedMountedBasicProgram.Invoke(
+                    null,
+                    new object[]
+                    {
+                        machine,
+                        (ushort)protectedHandoffProgram.Length,
+                        (ushort)protectedHandoffProgram.Length,
+                        (ushort)0
+                    })!;
+
+                Assert.True(executed);
+                Assert.False(machine.HasPendingMountedLoadUsrContinuation);
+            }
+            finally
+            {
+                Directory.Delete(romFolder, true);
+            }
+        }
+
+        [Fact]
         public void LoadWithPolicy_DoesNotDependOnCurrentMachineMode_For_StopIf48k_Blocks()
         {
             string romFolder = CreateTempRoms();
@@ -483,6 +616,111 @@ namespace Spectrum128kEmulator.Tests
                 Assert.Equal((byte)77, machine.PeekMemory(23662));
                 Assert.Equal((byte)88, machine.PeekMemory(23663));
                 Assert.Equal((byte)99, machine.PeekMemory(23664));
+            }
+            finally
+            {
+                Directory.Delete(romFolder, true);
+            }
+        }
+
+        [Fact]
+        public void LoadWithPolicy_ThreeStageStandardBasicPrefixWithOpaqueFinalStage_DoesNotUse_LeadingStandardChainFakeLoad()
+        {
+            string romFolder = CreateTempRoms();
+            string tapePath = Path.Combine(romFolder, "three-stage-opaque-prefix.tzx");
+
+            try
+            {
+                byte[] firstStagePatch = BuildBasicProgram(
+                    BuildBasicLine(9000, Token(239)));
+                byte[] secondBasicStage = BuildBasicProgram(
+                    BuildBasicLine(0,
+                        Token(231), Ascii("1"), NumberMarker(1),
+                        Ascii(":"), Token(218), Ascii("0"), NumberMarker(0),
+                        Ascii(":"), Token(253), Ascii("65535"), NumberMarker(65535),
+                        Ascii(":"), Token(239)));
+                byte[] opaqueFinalStage = BuildBasicProgram(
+                    BuildBasicLine(0,
+                        Token(244), Ascii("23662"), NumberMarker(23662), Ascii(","), Token(190), Ascii("23641"), NumberMarker(23641),
+                        Ascii(":"), Token(239)));
+
+                File.WriteAllBytes(
+                    tapePath,
+                    BuildTzx(
+                        BuildArchiveInfoBlock(),
+                        BuildStandardSpeedDataBlock(BuildSpectrumHeaderBlock(type: 0, fileName: "PATCH", dataLength: (ushort)firstStagePatch.Length, parameter1: 9000, parameter2: (ushort)firstStagePatch.Length), pauseMs: 1000),
+                        BuildStandardSpeedDataBlock(BuildSpectrumDataBlock(firstStagePatch), pauseMs: 1000),
+                        BuildStandardSpeedDataBlock(BuildSpectrumHeaderBlock(type: 0, fileName: "IMPOSS", dataLength: (ushort)secondBasicStage.Length, parameter1: 0, parameter2: (ushort)secondBasicStage.Length), pauseMs: 1000),
+                        BuildStandardSpeedDataBlock(BuildSpectrumDataBlock(secondBasicStage), pauseMs: 1000),
+                        BuildStandardSpeedDataBlock(BuildSpectrumHeaderBlock(type: 0, fileName: "IM1", dataLength: (ushort)opaqueFinalStage.Length, parameter1: 0, parameter2: (ushort)opaqueFinalStage.Length), pauseMs: 1000),
+                        BuildStandardSpeedDataBlock(BuildSpectrumDataBlock(opaqueFinalStage), pauseMs: 1000),
+                        BuildPureToneBlock(2168, 32),
+                        BuildPulseSequenceBlock(855, 1710),
+                        BuildPureDataBlock(new byte[] { 0xAA, 0x55, 0xF0 }, usedBitsInLastByte: 8, pauseMs: 250)));
+
+                var machine = new Spectrum128Machine(romFolder);
+                MethodInfo createExecutionPlan = typeof(Tap.TapLoader).GetMethod(
+                    "CreateExecutionPlan",
+                    BindingFlags.Static | BindingFlags.NonPublic)!;
+                IReadOnlyList<Tap.TapeBlock> blocks = Tap.TzxLoader.ParseBlocks(File.ReadAllBytes(tapePath));
+                object plan = createExecutionPlan.Invoke(null, new object[] { machine, blocks })!;
+                string strategy = plan.GetType().GetProperty("Strategy")!.GetValue(plan)!.ToString()!;
+
+                Assert.NotEqual("LeadingStandardChainFakeLoad", strategy);
+            }
+            finally
+            {
+                Directory.Delete(romFolder, true);
+            }
+        }
+
+        [Fact]
+        public void LoadWithPolicy_ThreeStageMixedPrefix_With_ProtectedImmediateFinalStage_Uses_BootstrapHybrid()
+        {
+            string romFolder = CreateTempRoms();
+            string tapePath = Path.Combine(romFolder, "three-stage-protected-rom-prefix.tzx");
+
+            try
+            {
+                byte[] firstStagePatch = BuildBasicProgram(
+                    BuildBasicLine(9000, Token(239)));
+                byte[] secondBasicStage = BuildBasicProgram(
+                    BuildBasicLine(0,
+                        Token(231), Ascii("1"), NumberMarker(1),
+                        Ascii(":"), Token(218), Ascii("0"), NumberMarker(0),
+                        Ascii(":"), Token(253), Ascii("65535"), NumberMarker(65535),
+                        Ascii(":"), Token(239)));
+                byte[] protectedImmediateStage = BuildBasicProgram(
+                    BuildBasicLine(0, Ascii("Protected by SPEEDLOCK")),
+                    BuildBasicLine(0,
+                        Token(231), Ascii("1"), NumberMarker(1),
+                        Ascii(":"), Token(218), Ascii("0"), NumberMarker(0),
+                        Ascii(":"), Token(217), Ascii("0"), NumberMarker(0),
+                        Ascii(":"), Token(251),
+                        Ascii(":"), Token(244), Ascii("23662"), NumberMarker(23662), Ascii(","), Token(190), Ascii("23618"), NumberMarker(23618),
+                        Ascii(":"), Token(244), Ascii("23663"), NumberMarker(23663), Ascii(","), Token(190), Ascii("23619"), NumberMarker(23619),
+                        Ascii(":"), Token(244), Ascii("23664"), NumberMarker(23664), Ascii(","), Token(190), Ascii("23621"), NumberMarker(23621)));
+
+                File.WriteAllBytes(
+                    tapePath,
+                    BuildTzx(
+                        BuildArchiveInfoBlock(),
+                        BuildStandardSpeedDataBlock(BuildSpectrumHeaderBlock(type: 0, fileName: "PATCH", dataLength: (ushort)firstStagePatch.Length, parameter1: 9000, parameter2: (ushort)firstStagePatch.Length), pauseMs: 1000),
+                        BuildStandardSpeedDataBlock(BuildSpectrumDataBlock(firstStagePatch), pauseMs: 1000),
+                        BuildStandardSpeedDataBlock(BuildSpectrumHeaderBlock(type: 0, fileName: "IMPOSS", dataLength: (ushort)secondBasicStage.Length, parameter1: 0, parameter2: (ushort)secondBasicStage.Length), pauseMs: 1000),
+                        BuildStandardSpeedDataBlock(BuildSpectrumDataBlock(secondBasicStage), pauseMs: 1000),
+                        BuildStandardSpeedDataBlock(BuildSpectrumHeaderBlock(type: 0, fileName: "IM1", dataLength: (ushort)protectedImmediateStage.Length, parameter1: 0, parameter2: (ushort)protectedImmediateStage.Length), pauseMs: 1000),
+                        BuildStandardSpeedDataBlock(BuildSpectrumDataBlock(protectedImmediateStage), pauseMs: 1000),
+                        BuildPureToneBlock(2168, 32),
+                        BuildPulseSequenceBlock(855, 1710),
+                        BuildPureDataBlock(new byte[] { 0xAA, 0x55, 0xF0 }, usedBitsInLastByte: 8, pauseMs: 250)));
+
+                var machine = new Spectrum128Machine(romFolder);
+                Tap.TapeExecutionResult result = Tap.TzxLoader.LoadWithPolicy(machine, tapePath);
+
+                Assert.Equal("BootstrapHybrid", result.Strategy.ToString());
+                Assert.Equal(3, result.ConsumedBlockCount);
+                Assert.True(machine.HasMountedTape);
             }
             finally
             {
@@ -1156,7 +1394,7 @@ namespace Spectrum128kEmulator.Tests
                 DumpSysVars("Raw after execute", rawMachine);
 
                 var romDrivenMachine = new Spectrum128Machine(romFolder);
-                romBootstrapMethod.Invoke(null, new object[] { romDrivenMachine, "Impossible Mission.tzx", blocks, false, 1 });
+                romBootstrapMethod.Invoke(null, new object[] { romDrivenMachine, "Impossible Mission.tzx", blocks, false, 1, 1 });
                 for (int frame = 0; frame < 400; frame++)
                 {
                     romDrivenMachine.ExecuteFrame();
@@ -1546,6 +1784,31 @@ namespace Spectrum128kEmulator.Tests
                 }
 
                 var canBootstrapLoaded = typeof(Tap.TapLoader).GetMethod("CanBootstrapLoadedBasicProgram", BindingFlags.NonPublic | BindingFlags.Static)!;
+                MethodInfo tryExecuteLoadedMountedBasicProgram = typeof(Tap.TapLoader).GetMethod(
+                    "TryExecuteLoadedMountedBasicProgram",
+                    BindingFlags.NonPublic | BindingFlags.Static)!;
+                Type executorType = typeof(Tap.TapLoader).GetNestedType("BasicBootstrapExecutor", BindingFlags.NonPublic)!;
+                MethodInfo parseLinesMethod = executorType.GetMethod("ParseLines", BindingFlags.NonPublic | BindingFlags.Static)!;
+                MethodInfo canHandleLoadedProgramMethod = executorType.GetMethod("CanHandleLoadedProgram", BindingFlags.Public | BindingFlags.Static)!;
+                MethodInfo canExecuteImmediateSideEffectProgramMethod = executorType.GetMethod("CanExecuteImmediateSideEffectProgram", BindingFlags.Public | BindingFlags.Static)!;
+                MethodInfo requiresMountedLoadSemanticsMethod = executorType.GetMethod("RequiresMountedLoadSemantics", BindingFlags.Public | BindingFlags.Static)!;
+                MethodInfo requiresRomDrivenMountedLoadedProgramMethod = executorType.GetMethod("RequiresRomDrivenMountedLoadedProgram", BindingFlags.Public | BindingFlags.Static)!;
+                MethodInfo createResolverMethod = executorType
+                    .GetMethods(BindingFlags.Public | BindingFlags.Static)
+                    .Single(method => method.Name == "CreateMountedLoadUsrContinuationResolver" && method.GetParameters().Length == 4);
+                MethodInfo initializeMachineForFakeTapeLoadMethod = typeof(Tap.TapLoader).GetMethod("InitializeMachineForFakeTapeLoad", BindingFlags.NonPublic | BindingFlags.Static)!;
+                MethodInfo loadBasicProgramMethod = typeof(Tap.TapLoader)
+                    .GetMethods(BindingFlags.NonPublic | BindingFlags.Static)
+                    .Single(method =>
+                    {
+                        if (method.Name != "LoadBasicProgram")
+                            return false;
+
+                        ParameterInfo[] parameters = method.GetParameters();
+                        return parameters.Length == 3 &&
+                               parameters[0].ParameterType == typeof(Spectrum128Machine) &&
+                               parameters[2].ParameterType == typeof(byte[]);
+                    });
                 for (int i = 0; i + 1 < blocks.Count; i++)
                 {
                     if (!blocks[i].CanUseRomLoadTrap || blocks[i].Flag != 0x00 || blocks[i].Payload?.Length != 17 || blocks[i + 1].Flag != 0xFF)
@@ -1564,7 +1827,73 @@ namespace Spectrum128kEmulator.Tests
                     bool canBootstrap = (bool)canBootstrapLoaded.Invoke(null, new object[] { machine, header, blocks[i + 1].Payload!, use128kMode })!;
                     string fileName = (string)header.GetType().GetProperty("FileName", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic)!.GetValue(header)!;
                     ushort autoStart = (ushort)header.GetType().GetProperty("AutoStartLine", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic)!.GetValue(header)!;
-                    Console.WriteLine($"Program '{fileName}' auto={autoStart} canBootstrap={canBootstrap}");
+                    ushort programLength = (ushort)header.GetType().GetProperty("ProgramLength", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic)!.GetValue(header)!;
+                    var programMachine = new Spectrum128Machine(romFolder);
+                    initializeMachineForFakeTapeLoadMethod.Invoke(null, new object[] { programMachine, use128kMode });
+                    loadBasicProgramMethod.Invoke(null, new object[] { programMachine, header, blocks[i + 1].Payload! });
+                    object lines = parseLinesMethod.Invoke(null, new object[] { programMachine, (ushort)23755, programLength })!;
+                    bool canHandleLoaded = (bool)canHandleLoadedProgramMethod.Invoke(null, new object[] { programMachine, (ushort)23755, programLength, autoStart })!;
+                    bool canExecuteImmediate = (bool)canExecuteImmediateSideEffectProgramMethod.Invoke(null, new object[] { programMachine, (ushort)23755, programLength, autoStart })!;
+                    bool requiresMountedLoadSemantics = (bool)requiresMountedLoadSemanticsMethod.Invoke(null, new object[] { programMachine, (ushort)23755, programLength, autoStart })!;
+                    bool requiresRomDrivenMountedLoadedProgram = (bool)requiresRomDrivenMountedLoadedProgramMethod.Invoke(null, new object[] { programMachine, (ushort)23755, programLength, autoStart })!;
+                    object? resolver = createResolverMethod.Invoke(null, new object[] { programMachine, (ushort)23755, programLength, autoStart });
+                    Console.WriteLine(
+                        $"Program '{fileName}' auto={autoStart} len={programLength} canBootstrap={canBootstrap} " +
+                        $"canHandle={canHandleLoaded} immediate={canExecuteImmediate} mountedSemantics={requiresMountedLoadSemantics} " +
+                        $"romDriven={requiresRomDrivenMountedLoadedProgram} resolver={(resolver != null ? 1 : 0)}");
+
+                    if (string.Equals(fileName, "IM1", StringComparison.OrdinalIgnoreCase))
+                    {
+                        foreach (ushort executeLength in new[] { programLength, (ushort)blocks[i + 1].Payload!.Length })
+                        {
+                            var executeMachine = new Spectrum128Machine(romFolder);
+                            initializeMachineForFakeTapeLoadMethod.Invoke(null, new object[] { executeMachine, use128kMode });
+                            loadBasicProgramMethod.Invoke(null, new object[] { executeMachine, header, blocks[i + 1].Payload! });
+                            bool executedMounted = (bool)tryExecuteLoadedMountedBasicProgram.Invoke(
+                                null,
+                                new object[]
+                                {
+                                    executeMachine,
+                                    programLength,
+                                    executeLength,
+                                    autoStart
+                                })!;
+                            Console.WriteLine(
+                                $"IM1 direct execute len={executeLength}: executed={executedMounted} pendingUsr={executeMachine.HasPendingMountedLoadUsrContinuation} " +
+                                $"PC=0x{executeMachine.Cpu.Regs.PC:X4} SP=0x{executeMachine.Cpu.Regs.SP:X4}");
+                            DumpSysVars($"IM1 direct execute len={executeLength}", executeMachine);
+                        }
+                    }
+
+                    int lineCounter = 0;
+                    foreach (object line in (System.Collections.IEnumerable)lines)
+                    {
+                        Type lineType = line.GetType();
+                        ushort number = (ushort)lineType.GetProperty("Number")!.GetValue(line)!;
+                        ushort dataAddress = (ushort)lineType.GetProperty("DataAddress", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic)!.GetValue(line)!;
+                        var statements = (System.Collections.IEnumerable)lineType.GetProperty("Statements")!.GetValue(line)!;
+                        var renderedStatements = new List<string>();
+                        foreach (object stmtObj in statements)
+                        {
+                            var stmtTokens = new List<string>();
+                            foreach (object? token in (System.Collections.IEnumerable)stmtObj)
+                                stmtTokens.Add(token?.ToString() ?? string.Empty);
+
+                            renderedStatements.Add(string.Join(" ", stmtTokens));
+                        }
+
+                        var rawBytes = new List<string>();
+                        for (ushort address = dataAddress; address < dataAddress + 64; address++)
+                        {
+                            byte value = programMachine.PeekMemory(address);
+                            rawBytes.Add(value.ToString("X2"));
+                            if (value == 0x0D)
+                                break;
+                        }
+
+                        Console.WriteLine(
+                            $"  {fileName} {lineCounter++}: {number}: {string.Join(" : ", renderedStatements)} raw={string.Join(" ", rawBytes)}");
+                    }
                 }
 
                 Tap.TapeExecutionResult result = Tap.TzxLoader.LoadWithPolicy(machine, tzxPath);
@@ -1650,6 +1979,14 @@ namespace Spectrum128kEmulator.Tests
             static ushort ReadWord(Spectrum128Machine m, ushort addr)
                 => (ushort)(m.PeekMemory(addr) | (m.PeekMemory((ushort)(addr + 1)) << 8));
 
+            static string DumpBytes(Spectrum128Machine m, ushort start, int length)
+            {
+                var bytes = new byte[length];
+                for (int i = 0; i < length; i++)
+                    bytes[i] = m.PeekMemory((ushort)(start + i));
+                return string.Join(" ", bytes.Select(b => b.ToString("X2")));
+            }
+
                 ushort[] addrs =
                 {
                     23611, 23612, 23613, 23618, 23624, 23627, 23633, 23635, 23637, 23639, 23641, 23647, 23649, 23651, 23653, 23662
@@ -1662,6 +1999,9 @@ namespace Spectrum128kEmulator.Tests
             ushort ptr = ReadWord(machine, 23633);
             Console.WriteLine($"  [E_LINE]={machine.PeekMemory(eLine):X2} {machine.PeekMemory((ushort)(eLine + 1)):X2}");
             Console.WriteLine($"  [PTR23633]={machine.PeekMemory(ptr):X2} {machine.PeekMemory((ushort)(ptr + 1)):X2}");
+            Console.WriteLine($"  [8000]={DumpBytes(machine, 0x8000, 32)}");
+            Console.WriteLine($"  [FC80]={DumpBytes(machine, 0xFC80, 32)}");
+            Console.WriteLine($"  [FD00]={DumpBytes(machine, 0xFD00, 32)}");
             Console.WriteLine($"  PC={machine.Cpu.Regs.PC:X4} SP={machine.Cpu.Regs.SP:X4}");
         }
 

@@ -142,6 +142,7 @@ namespace Spectrum128kEmulator.Tap
         private readonly int initialPrePlaybackPauseTStates;
         private readonly int nonRomTimingDivisor;
         private readonly int loadableTimingDivisor;
+        private readonly bool initialEarLevelHigh;
         private int nextBlockIndex;
         private int earPlaybackBlockIndex;
         private int earStreamByteIndex;
@@ -195,7 +196,8 @@ namespace Spectrum128kEmulator.Tap
             bool skipCustomHeaderForEarPlayback = true,
             int initialPrePlaybackPauseTStates = 0,
             int nonRomTimingDivisor = 1,
-            int loadableTimingDivisor = 1)
+            int loadableTimingDivisor = 1,
+            bool initialEarLevelHigh = true)
         {
             DisplayName = string.IsNullOrWhiteSpace(displayName) ? "unnamed.tap" : displayName;
             this.blocks = blocks ?? throw new ArgumentNullException(nameof(blocks));
@@ -203,6 +205,7 @@ namespace Spectrum128kEmulator.Tap
             this.initialPrePlaybackPauseTStates = Math.Max(0, initialPrePlaybackPauseTStates);
             this.nonRomTimingDivisor = Math.Max(1, nonRomTimingDivisor);
             this.loadableTimingDivisor = Math.Max(1, loadableTimingDivisor);
+            this.initialEarLevelHigh = initialEarLevelHigh;
             if (initialBlockIndex < 0 || initialBlockIndex > blocks.Count)
                 throw new ArgumentOutOfRangeException(nameof(initialBlockIndex));
 
@@ -259,7 +262,7 @@ namespace Spectrum128kEmulator.Tap
             romStreamTrapBlockIndex = -1;
             romStreamTrapByteIndex = 0;
             lastEarSampleTStates = 0;
-            earLevel = true;
+            earLevel = initialEarLevelHigh;
             earPlaybackStarted = false;
             retainedByteStreamTrapAvailable = false;
             earPlaybackState = EarPlaybackState.Idle;
@@ -506,17 +509,26 @@ namespace Spectrum128kEmulator.Tap
                     return false;
                 }
 
+                bool appliedStructuredBasicProgramSideEffects = false;
                 if ((flagMatches && lengthMatches) || canUseEarlySyncTrap)
                 {
                     success = true;
 
                     if (isLoad || canUseEarlySyncTrap)
                     {
+                        if (pendingHeaderInfo != null && pendingHeaderInfo.Type == 0)
+                        {
+                            machine.Trace?.Invoke(
+                                $"[RomTrap] BASIC stage load file={pendingHeaderInfo.FileName} auto={pendingHeaderInfo.AutoStartLine} len={pendingHeaderInfo.ProgramLength} caller=0x{callerReturnAddress:X4} preserve={(ShouldApplyStructuredBasicProgramLoadSideEffects(callerReturnAddress) ? 1 : 0)}");
+                        }
+
                         if (state == TapeState.ExpectData &&
                             pendingHeaderInfo != null &&
                             pendingHeaderInfo.Type == 0 &&
                             ShouldApplyStructuredBasicProgramLoadSideEffects(callerReturnAddress))
                         {
+                            appliedStructuredBasicProgramSideEffects = true;
+                            RelocateActiveStackIfLoadWouldOverlap(machine, cpu, 23755, (ushort)block.Payload!.Length);
                             TapLoader.LoadBasicProgram(machine, pendingHeaderInfo, block.Payload!, preserveInterpreterWorkspace: true);
                             if (TapLoader.ShouldReloadStructuredMountedBasicProgramWithoutPreservingInterpreterWorkspace(
                                 machine,
@@ -531,9 +543,12 @@ namespace Spectrum128kEmulator.Tap
                                 pendingHeaderInfo.ProgramLength,
                                 (ushort)block.Payload!.Length,
                                 pendingHeaderInfo.AutoStartLine);
+                            machine.Trace?.Invoke(
+                                $"[RomTrap] BASIC side-effects applied file={pendingHeaderInfo.FileName} pending={(machine.HasPendingMountedLoadUsrContinuation ? 1 : 0)} pc=0x{machine.Cpu.Regs.PC:X4}");
                         }
                         else
                         {
+                            RelocateActiveStackIfLoadWouldOverlap(machine, cpu, destination, (ushort)block.Payload.Length);
                             for (int i = 0; i < block.Payload.Length; i++)
                                 machine.PokeMemory((ushort)(destination + i), block.Payload[i]);
                         }
@@ -558,6 +573,28 @@ namespace Spectrum128kEmulator.Tap
 
                 AdvanceBlockState(block);
                 SyncEarPlaybackToNextBlock(block.PauseAfterBlockMs);
+
+                if (appliedStructuredBasicProgramSideEffects)
+                {
+                    ushort loadedProgramLength = pendingHeaderInfo != null && block.Payload != null
+                        ? (ushort)Math.Min(pendingHeaderInfo.ProgramLength, block.Payload.Length)
+                        : (ushort)0;
+                    bool requiresRomDrivenMountedProgram =
+                        pendingHeaderInfo != null &&
+                        TapLoader.RequiresRomDrivenStructuredMountedProgram(
+                            machine,
+                            pendingHeaderInfo,
+                            loadedProgramLength);
+                    trapReturnAddress = (machine.HasPendingMountedLoadUsrContinuation || requiresRomDrivenMountedProgram)
+                        ? GetRomTrapReturnAddress(
+                            machine,
+                            cpu,
+                            isSyncLoopTrap,
+                            hasUnstructuredStandardRomLoadContext)
+                        : callerReturnAddress;
+                    machine.Trace?.Invoke(
+                        $"[RomTrap] BASIC side-effects return file={(pendingHeaderInfo?.FileName ?? "?")} pending={(machine.HasPendingMountedLoadUsrContinuation ? 1 : 0)} requiresRomDriven={(requiresRomDrivenMountedProgram ? 1 : 0)} return=0x{trapReturnAddress:X4}");
+                }
             }
 
             CompleteTrap(
@@ -566,6 +603,53 @@ namespace Spectrum128kEmulator.Tap
                 success,
                 returnAddress: trapReturnAddress);
             return true;
+        }
+
+        private static void RelocateActiveStackIfLoadWouldOverlap(
+            Spectrum128Machine machine,
+            Z80Cpu cpu,
+            ushort loadAddress,
+            ushort loadLength)
+        {
+            if (loadLength == 0)
+                return;
+
+            const int stackWindowSize = 0x100;
+            ushort stackStart = cpu.Regs.SP;
+            uint loadStart = loadAddress;
+            uint loadEndExclusive = (uint)loadAddress + loadLength;
+            uint stackEndExclusive = (uint)stackStart + stackWindowSize;
+            if (stackEndExclusive <= loadStart || stackStart >= loadEndExclusive)
+                return;
+
+            ushort relocatedStackStart = FindSafeStackRelocationAddress(loadAddress, loadLength, stackWindowSize);
+            if (relocatedStackStart == stackStart)
+                return;
+
+            var stackBytes = new byte[stackWindowSize];
+            for (int i = 0; i < stackWindowSize; i++)
+                stackBytes[i] = machine.PeekMemory((ushort)(stackStart + i));
+
+            for (int i = 0; i < stackWindowSize; i++)
+                machine.PokeMemory((ushort)(relocatedStackStart + i), stackBytes[i]);
+
+            cpu.Regs.SP = relocatedStackStart;
+        }
+
+        private static ushort FindSafeStackRelocationAddress(ushort loadAddress, ushort loadLength, int stackWindowSize)
+        {
+            uint loadStart = loadAddress;
+            uint loadEndExclusive = (uint)loadAddress + loadLength;
+
+            for (int candidateEndExclusive = 0x10000; candidateEndExclusive >= stackWindowSize; candidateEndExclusive -= 0x100)
+            {
+                ushort candidateStart = (ushort)(candidateEndExclusive - stackWindowSize);
+                uint candidateEnd = (uint)candidateStart + (uint)stackWindowSize;
+                if (candidateEnd <= loadStart || candidateStart >= loadEndExclusive)
+                    return candidateStart;
+            }
+
+            return (ushort)(0x10000 - stackWindowSize);
         }
 
         private static ushort GetRomTrapReturnAddress(
@@ -820,6 +904,7 @@ namespace Spectrum128kEmulator.Tap
             byte[] payload = new byte[expectedLength];
             if (expectedLength > 0)
                 Buffer.BlockCopy(block.StreamData, payloadStart, payload, 0, expectedLength);
+            bool appliedStructuredBasicProgramSideEffects = false;
             if (isLoad || isSyncLoopTrap)
             {
                 for (int i = 0; i < expectedLength; i++)
@@ -827,6 +912,11 @@ namespace Spectrum128kEmulator.Tap
 
                 if (useFramedRecord)
                 {
+                    appliedStructuredBasicProgramSideEffects =
+                        ShouldApplyStructuredBasicProgramLoadSideEffects(callerReturnAddress) &&
+                        recordFlag == DataFlag &&
+                        pendingHeaderInfo != null &&
+                        pendingHeaderInfo.Type == 0;
                     ApplyByteStreamRecordSideEffects(
                         machine,
                         recordFlag,
@@ -861,11 +951,22 @@ namespace Spectrum128kEmulator.Tap
                 StartEarPlaybackBlock(blockIndex + 1, preserveSignalPhase: false);
             }
 
+            ushort trapReturnAddress = appliedStructuredBasicProgramSideEffects
+                ? (
+                    machine.HasPendingMountedLoadUsrContinuation ||
+                    (pendingHeaderInfo != null &&
+                     TapLoader.RequiresRomDrivenStructuredMountedProgram(
+                         machine,
+                         pendingHeaderInfo,
+                         (ushort)Math.Min(pendingHeaderInfo.ProgramLength, payload.Length))))
+                    ? GetRomTrapReturnAddress(machine, cpu, isSyncLoopTrap, hasUnstructuredStandardRomLoadContext: true)
+                    : callerReturnAddress
+                : GetRomTrapReturnAddress(machine, cpu, isSyncLoopTrap, hasUnstructuredStandardRomLoadContext: true);
             CompleteTrap(
                 machine,
                 cpu,
                 success: true,
-                returnAddress: GetRomTrapReturnAddress(machine, cpu, isSyncLoopTrap, hasUnstructuredStandardRomLoadContext: true));
+                returnAddress: trapReturnAddress);
             return true;
         }
 
@@ -1108,7 +1209,7 @@ namespace Spectrum128kEmulator.Tap
             retainedByteStreamTrapAvailable = false;
             if (!preserveSignalPhase)
             {
-                earLevel = true;
+                earLevel = initialEarLevelHigh;
                 earPlaybackStarted = false;
             }
 
@@ -1249,8 +1350,6 @@ namespace Spectrum128kEmulator.Tap
                     {
                         earPlaybackState = EarPlaybackState.Pause;
                         earPulseLengthTStates = GetPauseLengthTStates(block);
-                        if (block.IsLoadableRomBlock)
-                            earLevel = false;
                         return;
                     }
 
@@ -1281,7 +1380,6 @@ namespace Spectrum128kEmulator.Tap
                         {
                             earPlaybackState = EarPlaybackState.Pause;
                             earPulseLengthTStates = GetPauseLengthTStates(block);
-                            earLevel = false;
                             return;
                         }
 
@@ -1319,7 +1417,6 @@ namespace Spectrum128kEmulator.Tap
                     {
                         earPlaybackState = EarPlaybackState.Pause;
                         earPulseLengthTStates = GetPauseLengthTStates(block);
-                        earLevel = false;
                         return;
                     }
 
@@ -1327,6 +1424,7 @@ namespace Spectrum128kEmulator.Tap
                     return;
 
                 case EarPlaybackState.Pause:
+                    earLevel = false;
                     AdvanceLogicalPositionAfterLivePlaybackBlockIfNeeded(earPlaybackBlockIndex, block);
 
                     if (ShouldRetainCompletedByteStreamForRomTrap(earPlaybackBlockIndex, block))
@@ -1337,7 +1435,7 @@ namespace Spectrum128kEmulator.Tap
                         return;
                     }
 
-                    StartEarPlaybackBlock(earNextBlockIndexAfterPause, preserveSignalPhase: false);
+                    StartEarPlaybackBlock(earNextBlockIndexAfterPause, preserveSignalPhase: true);
                     return;
 
                 case EarPlaybackState.EndOfStreamTransition:
@@ -1681,7 +1779,8 @@ namespace Spectrum128kEmulator.Tap
             IReadOnlyList<TapeBlock> blocks,
             bool skipCustomHeaderForEarPlayback = true,
             int nonRomTimingDivisor = 1,
-            int loadableTimingDivisor = 1)
+            int loadableTimingDivisor = 1,
+            bool initialEarLevelHigh = true)
         {
             if (machine == null)
                 throw new ArgumentNullException(nameof(machine));
@@ -1737,25 +1836,9 @@ namespace Spectrum128kEmulator.Tap
                 initialBlockIndex: playbackStartBlockIndex,
                 skipCustomHeaderForEarPlayback: skipCustomHeaderForEarPlayback,
                 nonRomTimingDivisor: nonRomTimingDivisor,
-                loadableTimingDivisor: loadableTimingDivisor);
+                loadableTimingDivisor: loadableTimingDivisor,
+                initialEarLevelHigh: initialEarLevelHigh);
             machine.MountTape(tape);
-
-            bool rawStandardMixedRemainder = RequiresMountedRealtimeForMixedTape(machine, blocks);
-            if (rawStandardMixedRemainder)
-            {
-                Func<Spectrum128Machine, ushort?>? mountedLoadUsrContinuationResolver =
-                    BasicBootstrapExecutor.CreateMountedLoadUsrContinuationResolver(
-                        machine,
-                        BasicProgramStart,
-                        effectiveProgramLength,
-                        effectiveHeader.AutoStartLine,
-                        requireUsrReturnAddressBetweenSteps: false);
-                if (mountedLoadUsrContinuationResolver != null)
-                {
-                    machine.SetPendingMountedLoadUsrContinuationResolver(
-                        mountedLoadUsrContinuationResolver);
-                }
-            }
 
             BootstrapExecutionResult bootstrapExecutionResult = BootstrapExecutionResult.None;
             if (effectiveHeader.AutoStartLine < 32768)
@@ -1780,7 +1863,8 @@ namespace Spectrum128kEmulator.Tap
                             initialBlockIndex: adjustedPlaybackStartBlockIndex,
                             skipCustomHeaderForEarPlayback: skipCustomHeaderForEarPlayback,
                             nonRomTimingDivisor: nonRomTimingDivisor,
-                            loadableTimingDivisor: loadableTimingDivisor);
+                            loadableTimingDivisor: loadableTimingDivisor,
+                            initialEarLevelHigh: initialEarLevelHigh);
                         machine.MountTape(tape);
                     }
                 }
@@ -1911,7 +1995,8 @@ namespace Spectrum128kEmulator.Tap
             Spectrum128Machine machine,
             string displayName,
             IReadOnlyList<TapeBlock> blocks,
-            TapeLoadPlan plan)
+            TapeLoadPlan plan,
+            bool initialEarLevelHigh = true)
         {
             int nonRomTimingDivisor = GetProtectedLiveTapeTimingDivisor(plan.Strategy, blocks);
             int loadableTimingDivisor = GetPreloadedLoadableReplayTimingDivisor(plan.Strategy);
@@ -1926,7 +2011,8 @@ namespace Spectrum128kEmulator.Tap
                         skipCustomHeaderForEarPlayback: false,
                         remountPlaybackRemainder: FindFirstCustomHeaderBlockIndex(blocks) >= 0,
                         stopBeforeFirstCustomHeader: false,
-                        loadableTimingDivisor: loadableTimingDivisor);
+                        loadableTimingDivisor: loadableTimingDivisor,
+                        initialEarLevelHigh: initialEarLevelHigh);
                     return new TapeExecutionResult(
                         TapeLoadStrategy.FullFakeLoad,
                         result.TotalBlockCount,
@@ -1943,7 +2029,8 @@ namespace Spectrum128kEmulator.Tap
                         blocks,
                         skipCustomHeaderForEarPlayback: false,
                         nonRomTimingDivisor: nonRomTimingDivisor,
-                        loadableTimingDivisor: loadableTimingDivisor);
+                        loadableTimingDivisor: loadableTimingDivisor,
+                        initialEarLevelHigh: initialEarLevelHigh);
                     return new TapeExecutionResult(
                         TapeLoadStrategy.LeadingStandardChainFakeLoad,
                         result.TotalBlockCount,
@@ -1960,7 +2047,8 @@ namespace Spectrum128kEmulator.Tap
                         blocks,
                         skipCustomHeaderForEarPlayback: false,
                         nonRomTimingDivisor: nonRomTimingDivisor,
-                        loadableTimingDivisor: loadableTimingDivisor);
+                        loadableTimingDivisor: loadableTimingDivisor,
+                        initialEarLevelHigh: initialEarLevelHigh);
                     return new TapeExecutionResult(
                         TapeLoadStrategy.RomBootstrapMounted,
                         result.TotalBlockCount,
@@ -1977,7 +2065,8 @@ namespace Spectrum128kEmulator.Tap
                         blocks,
                         skipCustomHeaderForEarPlayback: false,
                         nonRomTimingDivisor: nonRomTimingDivisor,
-                        loadableTimingDivisor: loadableTimingDivisor);
+                        loadableTimingDivisor: loadableTimingDivisor,
+                        initialEarLevelHigh: initialEarLevelHigh);
                     return new TapeExecutionResult(
                         TapeLoadStrategy.BootstrapHybrid,
                         result.TotalBlockCount,
@@ -1994,7 +2083,8 @@ namespace Spectrum128kEmulator.Tap
                         displayName,
                         blocks,
                         nonRomTimingDivisor: nonRomTimingDivisor,
-                        loadableTimingDivisor: loadableTimingDivisor);
+                        loadableTimingDivisor: loadableTimingDivisor,
+                        initialEarLevelHigh: initialEarLevelHigh);
                     machine.MountTape(tape);
                     LogMountedTape(tape, blocks);
                     return new TapeExecutionResult(
@@ -2060,7 +2150,8 @@ namespace Spectrum128kEmulator.Tap
             bool remountPlaybackRemainder = true,
             bool stopBeforeFirstCustomHeader = false,
             int nonRomTimingDivisor = 1,
-            int loadableTimingDivisor = 1)
+            int loadableTimingDivisor = 1,
+            bool initialEarLevelHigh = true)
         {
             if (!stopBeforeFirstCustomHeader && !CanLoadAllStandardTapeBlocks(blocks))
                 throw new InvalidOperationException("The tape image contains nonstandard blocks and cannot be fully fake-loaded.");
@@ -2072,7 +2163,8 @@ namespace Spectrum128kEmulator.Tap
                     machine,
                     displayName,
                     blocks,
-                    skipCustomHeaderForEarPlayback);
+                    skipCustomHeaderForEarPlayback,
+                    initialEarLevelHigh: initialEarLevelHigh);
             }
 
             InitializeMachineForFakeTapeLoad(machine, use128kMode);
@@ -2164,7 +2256,8 @@ namespace Spectrum128kEmulator.Tap
                         adjustedPlaybackStartBlockIndex,
                         skipCustomHeaderForEarPlayback: skipCustomHeaderForEarPlayback,
                         nonRomTimingDivisor: nonRomTimingDivisor,
-                        loadableTimingDivisor: loadableTimingDivisor);
+                        loadableTimingDivisor: loadableTimingDivisor,
+                        initialEarLevelHigh: initialEarLevelHigh);
                     machine.MountTape(playbackTape);
                 }
             }
@@ -2355,31 +2448,28 @@ namespace Spectrum128kEmulator.Tap
                 return false;
             }
 
-            int additionalProgramCount = 0;
-
             index += 2;
-            while (true)
+            int programCount = 1;
+            while (index + 1 < blocks.Count)
             {
                 while (index < blocks.Count && blocks[index].Kind == TapeBlockKind.Metadata)
                     index++;
-
-                if (index >= blocks.Count)
-                    return false;
 
                 if (index + 1 >= blocks.Count || !IsStandardHeaderBlock(blocks[index]) || blocks[index + 1].Flag != DataFlag)
                     break;
 
                 TapHeaderInfo header = ParseHeaderInfo(blocks[index]);
                 if (header.Type != ProgramType)
-                    return false;
+                    break;
+
                 if (!CanBootstrapLoadedBasicProgram(machine, header, blocks[index + 1].Payload!, use128kMode))
                     return false;
 
-                additionalProgramCount++;
+                programCount++;
                 index += 2;
             }
 
-            return additionalProgramCount > 0;
+            return programCount > 1;
         }
 
         private static bool RequiresMountedRealtimeForMixedTape(
@@ -2433,7 +2523,8 @@ namespace Spectrum128kEmulator.Tap
             IReadOnlyList<TapeBlock> blocks,
             bool skipCustomHeaderForEarPlayback,
             int nonRomTimingDivisor = 1,
-            int loadableTimingDivisor = 1)
+            int loadableTimingDivisor = 1,
+            bool initialEarLevelHigh = true)
         {
             if (machine == null)
                 throw new ArgumentNullException(nameof(machine));
@@ -2489,7 +2580,8 @@ namespace Spectrum128kEmulator.Tap
                     initialBlockIndex: consumedBlockCount,
                     skipCustomHeaderForEarPlayback: skipCustomHeaderForEarPlayback,
                     nonRomTimingDivisor: 1,
-                    loadableTimingDivisor: loadableTimingDivisor);
+                    loadableTimingDivisor: loadableTimingDivisor,
+                    initialEarLevelHigh: initialEarLevelHigh);
                 machine.MountTape(prefixTape);
             }
 
@@ -2511,7 +2603,8 @@ namespace Spectrum128kEmulator.Tap
                     initialBlockIndex: prefixEndIndex,
                     skipCustomHeaderForEarPlayback: skipCustomHeaderForEarPlayback,
                     nonRomTimingDivisor: nonRomTimingDivisor,
-                    loadableTimingDivisor: loadableTimingDivisor);
+                    loadableTimingDivisor: loadableTimingDivisor,
+                    initialEarLevelHigh: initialEarLevelHigh);
                 machine.MountTape(playbackTape);
             }
             else
@@ -2631,7 +2724,8 @@ namespace Spectrum128kEmulator.Tap
             IReadOnlyList<TapeBlock> blocks,
             bool skipCustomHeaderForEarPlayback = true,
             int nonRomTimingDivisor = 1,
-            int loadableTimingDivisor = 1)
+            int loadableTimingDivisor = 1,
+            bool initialEarLevelHigh = true)
         {
             if (machine == null)
                 throw new ArgumentNullException(nameof(machine));
@@ -2707,7 +2801,8 @@ namespace Spectrum128kEmulator.Tap
                     initialBlockIndex: consumedBlockCount,
                     skipCustomHeaderForEarPlayback: skipCustomHeaderForEarPlayback,
                     nonRomTimingDivisor: nonRomTimingDivisor,
-                    loadableTimingDivisor: loadableTimingDivisor);
+                    loadableTimingDivisor: loadableTimingDivisor,
+                    initialEarLevelHigh: initialEarLevelHigh);
                 machine.MountTape(tape);
             }
 
@@ -3237,17 +3332,77 @@ namespace Spectrum128kEmulator.Tap
             ushort autoStartLine)
         {
             if (!BasicBootstrapExecutor.CanHandleLoadedProgram(machine, BasicProgramStart, programLength, autoStartLine))
+            {
+                machine.Trace?.Invoke(
+                    $"[MountedLoad] Loaded BASIC program rejected len={programLength} data={dataLength} auto={autoStartLine}");
                 return false;
+            }
 
             var executor = new BasicBootstrapExecutor(machine, BasicProgramStart, programLength, ignoreLoadStatements: false);
+            bool requiresRomDrivenMountedLoadedProgram =
+                BasicBootstrapExecutor.RequiresRomDrivenMountedLoadedProgram(
+                    machine,
+                    BasicProgramStart,
+                    programLength,
+                    autoStartLine);
+            machine.Trace?.Invoke(
+                $"[MountedLoad] Loaded BASIC decision len={programLength} data={dataLength} auto={autoStartLine} requiresRomDriven={(requiresRomDrivenMountedLoadedProgram ? 1 : 0)}");
             if (executor.TryExecuteImmediateSideEffectProgram(programLength, dataLength, autoStartLine))
+            {
+                machine.Trace?.Invoke(
+                    $"[MountedLoad] Immediate side-effect execution completed len={programLength} auto={autoStartLine}");
                 return true;
+            }
 
             if (BasicBootstrapExecutor.RequiresMountedLoadSemantics(machine, BasicProgramStart, programLength, autoStartLine))
-                return false;
+            {
+                machine.Trace?.Invoke(
+                    $"[MountedLoad] Loaded BASIC requires mounted-load semantics len={programLength} auto={autoStartLine}");
+                Func<Spectrum128Machine, ushort?>? mountedLoadUsrContinuationResolver =
+                    BasicBootstrapExecutor.CreateMountedLoadUsrContinuationResolver(
+                        machine,
+                        BasicProgramStart,
+                        programLength,
+                        autoStartLine);
+                if (mountedLoadUsrContinuationResolver != null)
+                {
+                    machine.Trace?.Invoke(
+                        $"[MountedLoad] Armed mounted-load continuation len={programLength} auto={autoStartLine}");
+                    machine.SetPendingMountedLoadUsrContinuationResolver(mountedLoadUsrContinuationResolver);
+                }
+                else
+                {
+                    machine.Trace?.Invoke(
+                        $"[MountedLoad] Mounted-load continuation resolver was null len={programLength} auto={autoStartLine}");
+                }
 
-            if (BasicBootstrapExecutor.RequiresRomDrivenMountedLoadedProgram(machine, BasicProgramStart, programLength, autoStartLine))
                 return false;
+            }
+
+            if (requiresRomDrivenMountedLoadedProgram)
+            {
+                machine.Trace?.Invoke(
+                    $"[MountedLoad] Loaded BASIC requires deferred ROM BASIC continuation len={programLength} auto={autoStartLine}");
+                Func<Spectrum128Machine, ushort?>? romBasicContinuationResolver =
+                    BasicBootstrapExecutor.CreateMountedLoadRomBasicContinuationResolver(
+                        machine,
+                        BasicProgramStart,
+                        programLength,
+                        autoStartLine);
+                if (romBasicContinuationResolver != null)
+                {
+                    machine.Trace?.Invoke(
+                        $"[MountedLoad] Armed deferred ROM BASIC continuation len={programLength} auto={autoStartLine}");
+                    machine.SetPendingMountedLoadUsrContinuationResolver(romBasicContinuationResolver);
+                }
+                else
+                {
+                    machine.Trace?.Invoke(
+                        $"[MountedLoad] Deferred ROM BASIC continuation resolver was null len={programLength} auto={autoStartLine}");
+                }
+
+                return false;
+            }
 
             ExecuteBootstrapBasicAutoStart(
                 machine,
@@ -3266,8 +3421,28 @@ namespace Spectrum128kEmulator.Tap
             if (programLength == 0)
                 return false;
 
-            return BasicBootstrapExecutor.RequiresMountedLoadSemantics(machine, BasicProgramStart, programLength, autoStartLine) ||
-                   BasicBootstrapExecutor.RequiresRomDrivenMountedLoadedProgram(machine, BasicProgramStart, programLength, autoStartLine);
+            if (BasicBootstrapExecutor.RequiresMountedLoadSemantics(machine, BasicProgramStart, programLength, autoStartLine))
+                return true;
+
+            return BasicBootstrapExecutor.RequiresRomDrivenMountedLoadedProgram(
+                machine,
+                BasicProgramStart,
+                programLength,
+                autoStartLine);
+        }
+
+        internal static bool RequiresRomDrivenStructuredMountedProgram(
+            Spectrum128Machine machine,
+            TapHeaderInfo header,
+            ushort loadedProgramLength)
+        {
+            return header.Type == ProgramType &&
+                   loadedProgramLength != 0 &&
+                   BasicBootstrapExecutor.RequiresRomDrivenMountedLoadedProgram(
+                       machine,
+                       BasicProgramStart,
+                       loadedProgramLength,
+                       header.AutoStartLine);
         }
 
         private readonly record struct BootstrapExecutionResult(int IgnoredLoadCount, int ConsumedMountedLoadCount)
@@ -3883,6 +4058,14 @@ namespace Spectrum128kEmulator.Tap
                 WriteWord(machine, ChAddAddress, eLine);
             }
 
+            private void UpdateInterpreterPointersForDisplay()
+            {
+                ushort eLine = ReadWord(machine, EditLineAddress);
+                WriteWord(machine, CurChlAddress, ScreenChannelDescriptorAddress);
+                WriteWord(machine, KCurAddress, eLine);
+                WriteWord(machine, ChAddAddress, eLine);
+            }
+
             private void ApplyPrintSideEffects(BasicLine line, int statementIndex, List<string> statement)
             {
                 UpdateInterpreterPointersForPrint();
@@ -3941,6 +4124,32 @@ namespace Spectrum128kEmulator.Tap
             {
                 machine.PokeMemory(FlagsSystemVariableAddress, (byte)(machine.PeekMemory(FlagsSystemVariableAddress) | 0x20));
                 machine.PokeMemory(TvFlagSystemVariableAddress, (byte)(machine.PeekMemory(TvFlagSystemVariableAddress) | 0x20));
+                UpdateInterpreterPointersForDisplay();
+            }
+
+            private static ushort ClampClearTopAddress(int clearAddress)
+            {
+                // Spectrum BASIC uses CLEAR -1 as the conventional spelling for
+                // "all available RAM". Clamp it after applying that signed value.
+                if (clearAddress < 0)
+                    return 0xFFFE;
+
+                return (ushort)Math.Clamp(clearAddress, 0x5D00, 0xFFFE);
+            }
+
+            private static ushort GetWorkspaceAddressForClear(ushort top)
+            {
+                return (ushort)(top + 1);
+            }
+
+            private static ushort GetMachineStackPointerForClear(ushort top)
+            {
+                return top >= DefaultStackPointer ? DefaultStackPointer : top;
+            }
+
+            private static bool ShouldRelocateMachineStackAfterClear(Spectrum128Machine machine, ushort top)
+            {
+                return machine.Cpu.Regs.SP > top || machine.Cpu.Regs.SP < 0x8000;
             }
 
             private bool TryAdoptLoadedProgram(
@@ -3975,7 +4184,8 @@ namespace Spectrum128kEmulator.Tap
             internal bool TryExecuteImmediateSideEffectProgram(
                 ushort loadedProgramLength,
                 ushort loadedDataLength,
-                ushort loadedAutoStartLine)
+                ushort loadedAutoStartLine,
+                bool preserveProtectedInterpreterHandoffCursor = true)
             {
                 if (loadedProgramLength == 0)
                     return false;
@@ -3987,8 +4197,13 @@ namespace Spectrum128kEmulator.Tap
                 if (startLineIndex < 0 || !CanExecuteImmediateSideEffectProgram(loadedLines, startLineIndex))
                     return false;
 
+                bool preservesInterpreterHandoff =
+                    preserveProtectedInterpreterHandoffCursor &&
+                    TouchesProtectedInterpreterHandoff(loadedLines, startLineIndex);
+                ushort liveXPtr = ReadWord(machine, XPtrAddress);
                 PrepareLoadedProgramExecutionContext(loadedProgramLength, loadedDataLength);
-                bool preservesInterpreterHandoff = TouchesProtectedInterpreterHandoff(loadedLines, startLineIndex);
+                if (preservesInterpreterHandoff)
+                    WriteWord(machine, XPtrAddress, liveXPtr);
                 var savedVariables = new Dictionary<string, int>(variables, StringComparer.OrdinalIgnoreCase);
                 variables.Clear();
                 try
@@ -4007,7 +4222,9 @@ namespace Spectrum128kEmulator.Tap
                 }
             }
 
-            private void PrepareLoadedProgramExecutionContext(ushort loadedProgramLength, ushort loadedDataLength)
+            private void PrepareLoadedProgramExecutionContext(
+                ushort loadedProgramLength,
+                ushort loadedDataLength)
             {
                 ushort programStart = BasicProgramStart;
                 ushort varsAddress = (ushort)(programStart + loadedProgramLength);
@@ -4037,6 +4254,7 @@ namespace Spectrum128kEmulator.Tap
 
             private static bool CanExecuteImmediateSideEffectProgram(List<BasicLine> parsedLines, int startLineIndex)
             {
+                bool sawExecutableSideEffect = false;
                 for (int lineIndex = startLineIndex; lineIndex < parsedLines.Count; lineIndex++)
                 {
                     foreach (List<string> statement in parsedLines[lineIndex].Statements)
@@ -4059,6 +4277,7 @@ namespace Spectrum128kEmulator.Tap
                             case "CLS":
                             case "CLEAR":
                             case "POKE":
+                                sawExecutableSideEffect = true;
                                 continue;
                         }
 
@@ -4066,7 +4285,7 @@ namespace Spectrum128kEmulator.Tap
                     }
                 }
 
-                return true;
+                return sawExecutableSideEffect;
             }
 
             private static bool TouchesProtectedInterpreterHandoff(List<BasicLine> parsedLines, int startLineIndex)
@@ -4213,6 +4432,8 @@ namespace Spectrum128kEmulator.Tap
                 if (startLineIndex < 0)
                     return false;
 
+                bool sawExecutableStatement = false;
+
                 // Repeated or non-monotonic line numbers usually mean a protected or
                 // interpreter-sensitive chained loader stage. Let the real ROM path
                 // continue with those instead of trying to fake-execute them.
@@ -4248,6 +4469,7 @@ namespace Spectrum128kEmulator.Tap
                             case "FOR":
                             case "NEXT":
                             case "RANDOMIZE":
+                                sawExecutableStatement = true;
                                 continue;
                         }
 
@@ -4255,7 +4477,7 @@ namespace Spectrum128kEmulator.Tap
                     }
                 }
 
-                return true;
+                return sawExecutableStatement;
             }
 
             private static bool CanExecuteProtectedProgram(List<BasicLine> parsedLines, ushort autoStartLine)
@@ -4303,13 +4525,15 @@ namespace Spectrum128kEmulator.Tap
 
             private void ApplyClear(int clearAddress)
             {
-                ushort top = (ushort)Math.Clamp(clearAddress, 0x5D00, 0xFFFF);
+                ushort top = ClampClearTopAddress(clearAddress);
+                ushort workspace = GetWorkspaceAddressForClear(top);
                 WriteWord(machine, RamTopAddress, top);
                 WriteWord(machine, PhysicalRamTopAddress, top);
-                WriteWord(machine, StackBottomAddress, top);
-                WriteWord(machine, StackEndAddress, top);
-                if (machine.Cpu.Regs.SP > top)
-                    machine.Cpu.Regs.SP = top;
+                WriteWord(machine, WorkspaceAddress, workspace);
+                WriteWord(machine, StackBottomAddress, workspace);
+                WriteWord(machine, StackEndAddress, workspace);
+                if (ShouldRelocateMachineStackAfterClear(machine, top))
+                    machine.Cpu.Regs.SP = GetMachineStackPointerForClear(top);
             }
 
             private IEnumerable<int> CollectDataValues(int? restoreLineNumber = null)
@@ -4796,10 +5020,40 @@ namespace Spectrum128kEmulator.Tap
                     return null;
                 }
 
+                MountedUsrContinuationStep firstStep;
                 if (continuationSteps.Count == 0)
-                    return null;
+                {
+                    if (!TryBuildInitialMountedUsrContinuationStep(
+                            machine,
+                            programStart,
+                            programLength,
+                            autoStartLine,
+                            out MountedUsrContinuationStep? initialStep) ||
+                        initialStep is null)
+                    {
+                        if (!TryBuildInitialRomBasicResumeStep(
+                                machine,
+                                programStart,
+                                programLength,
+                                autoStartLine,
+                                out MountedUsrContinuationStep? romResumeStep) ||
+                            romResumeStep is null)
+                        {
+                            return null;
+                        }
 
-                MountedUsrContinuationStep firstStep = continuationSteps[0];
+                        firstStep = (MountedUsrContinuationStep)romResumeStep;
+                    }
+                    else
+                    {
+                        firstStep = (MountedUsrContinuationStep)initialStep;
+                    }
+                }
+                else
+                {
+                    firstStep = continuationSteps[0];
+                }
+
                 return currentMachine =>
                 {
                     UpdateMountedUsrContinuationRomResumeContext(currentMachine, firstStep);
@@ -4944,6 +5198,52 @@ namespace Spectrum128kEmulator.Tap
 
                             return false;
                         }
+                    }
+                }
+
+                return false;
+            }
+
+            private static bool TryBuildInitialRomBasicResumeStep(
+                Spectrum128Machine machine,
+                ushort programStart,
+                ushort programLength,
+                ushort autoStartLine,
+                out MountedUsrContinuationStep? continuationStep)
+            {
+                continuationStep = null;
+                if (programLength == 0)
+                    return false;
+
+                List<BasicLine> parsedLines = ParseLines(machine, programStart, programLength);
+                int startLineIndex = autoStartLine == 0
+                    ? 0
+                    : parsedLines.FindIndex(line => line.Number == autoStartLine);
+                if (startLineIndex < 0)
+                    return false;
+
+                for (int lineIndex = startLineIndex; lineIndex < parsedLines.Count; lineIndex++)
+                {
+                    if (parsedLines[lineIndex].StatementTokenSpans.Count == 0)
+                        continue;
+
+                    for (int statementIndex = 0; statementIndex < parsedLines[lineIndex].StatementTokenSpans.Count; statementIndex++)
+                    {
+                        List<TokenSpan> statementTokens = parsedLines[lineIndex].StatementTokenSpans[statementIndex];
+                        if (statementTokens.Count == 0)
+                            continue;
+
+                        continuationStep = new MountedUsrContinuationStep(
+                            parsedLines[lineIndex].Number,
+                            statementIndex,
+                            0,
+                            parsedLines[lineIndex].StatementByteOffsets[statementIndex],
+                            statementTokens[0].ByteOffset,
+                            statementTokens[0].ByteOffset,
+                            parsedLines[lineIndex].DataAddress,
+                            Array.Empty<string[]>(),
+                            Array.Empty<string>());
+                        return true;
                     }
                 }
 
@@ -5859,10 +6159,10 @@ namespace Spectrum128kEmulator.Tap
 
             private static void ApplyMountedContinuationClear(Spectrum128Machine machine, int clearAddress)
             {
-                ushort top = (ushort)Math.Clamp(clearAddress, 0x5D00, 0xFFFF);
+                ushort top = ClampClearTopAddress(clearAddress);
                 WriteWord(machine, RamTopAddress, top);
                 WriteWord(machine, PhysicalRamTopAddress, top);
-                ushort workspace = (ushort)(top + 1);
+                ushort workspace = GetWorkspaceAddressForClear(top);
                 WriteWord(machine, VarsAddress, workspace);
                 WriteWord(machine, EditLineAddress, workspace);
                 WriteWord(machine, WorkspaceAddress, workspace);
@@ -5870,6 +6170,8 @@ namespace Spectrum128kEmulator.Tap
                 WriteWord(machine, StackEndAddress, workspace);
                 WriteWord(machine, KCurAddress, workspace);
                 WriteWord(machine, ChAddAddress, workspace);
+                if (ShouldRelocateMachineStackAfterClear(machine, top))
+                    machine.Cpu.Regs.SP = GetMachineStackPointerForClear(top);
             }
 
             private static void TryUpdateMountedUsrContinuationBasicVariable(
