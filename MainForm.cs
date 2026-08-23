@@ -11,7 +11,7 @@ namespace Spectrum128kEmulator
     public partial class MainForm : Form
     {
         private static readonly bool LogFrameDiagnostics = false;
-        private static readonly bool LogUnimplementedOpcodes = true;
+        private static readonly bool LogUnimplementedOpcodes = false;
         private static readonly bool LogPagingWrites = false;
         private static readonly bool EnableInputDiagnostics = false;
         private static readonly bool EnablePerformanceDiagnostics = false;
@@ -130,15 +130,19 @@ namespace Spectrum128kEmulator
         private Spectrum128Machine CreateConfiguredMachine()
         {
             var configuredMachine = new Spectrum128Machine(romFolder);
-            configuredMachine.Trace = s =>
+            configuredMachine.SetScreenWriteDiagnosticsEnabled(LogFrameDiagnostics);
+            if (LogUnimplementedOpcodes || LogPagingWrites)
             {
-                if ((LogUnimplementedOpcodes && s.StartsWith("UNIMPL")) ||
-                    (LogPagingWrites && s.StartsWith("[7FFD]")))
+                configuredMachine.Trace = s =>
                 {
-                    Console.WriteLine(s);
-                    Console.Out.Flush();
-                }
-            };
+                    if ((LogUnimplementedOpcodes && s.StartsWith("UNIMPL")) ||
+                        (LogPagingWrites && s.StartsWith("[7FFD]")))
+                    {
+                        Console.WriteLine(s);
+                        Console.Out.Flush();
+                    }
+                };
+            }
             return configuredMachine;
         }
 
