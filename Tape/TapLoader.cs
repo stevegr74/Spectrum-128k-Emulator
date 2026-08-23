@@ -1840,6 +1840,21 @@ namespace Spectrum128kEmulator.Tap
                 initialEarLevelHigh: initialEarLevelHigh);
             machine.MountTape(tape);
 
+            // A BASIC bootstrap followed by raw standard records must retain the
+            // interpreter continuation that consumes those records before USR runs.
+            if (RequiresMountedRealtimeForMixedTape(machine, blocks))
+            {
+                Func<Spectrum128Machine, ushort?>? continuationResolver =
+                    BasicBootstrapExecutor.CreateMountedLoadUsrContinuationResolver(
+                        machine,
+                        BasicProgramStart,
+                        effectiveProgramLength,
+                        effectiveHeader.AutoStartLine,
+                        requireUsrReturnAddressBetweenSteps: false);
+                if (continuationResolver != null)
+                    machine.SetPendingMountedLoadUsrContinuationResolver(continuationResolver);
+            }
+
             BootstrapExecutionResult bootstrapExecutionResult = BootstrapExecutionResult.None;
             if (effectiveHeader.AutoStartLine < 32768)
             {

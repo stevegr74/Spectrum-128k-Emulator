@@ -176,6 +176,35 @@ namespace Spectrum128kEmulator.Tests
         }
 
         [Fact]
+        public void LoadPolicy_Uses_High_Start_For_Standard_Rom_Tzx_And_Low_Start_For_Mixed_Tzx()
+        {
+            MethodInfo usesStandardRomSignalStart = typeof(Tap.TzxLoader).GetMethod(
+                "UsesStandardRomSignalStart",
+                BindingFlags.NonPublic | BindingFlags.Static)!;
+            Tap.TapeBlock standardBlock = Tap.TapeBlock.CreateData(
+                new byte[] { 0x00, 0x00 },
+                2168,
+                8063,
+                667,
+                735,
+                855,
+                1710,
+                8,
+                1000);
+            Tap.TapeBlock protectedBlock = Tap.TapeBlock.CreatePureTone(2168, 32);
+
+            bool standardStartHigh = (bool)usesStandardRomSignalStart.Invoke(
+                null,
+                new object[] { new[] { standardBlock } })!;
+            bool mixedStartHigh = (bool)usesStandardRomSignalStart.Invoke(
+                null,
+                new object[] { new[] { standardBlock, protectedBlock } })!;
+
+            Assert.True(standardStartHigh);
+            Assert.False(mixedStartHigh);
+        }
+
+        [Fact]
         public void MountedTape_ProtectedTail_EndOfStream_Returns_Ear_High()
         {
             var tape = new Tap.MountedTape(

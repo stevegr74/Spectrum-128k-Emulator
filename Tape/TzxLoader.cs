@@ -49,7 +49,12 @@ namespace Spectrum128kEmulator.Tap
             var blocks = ParseBlocksForNewTapeLoad(File.ReadAllBytes(path));
             string displayName = Path.GetFileName(path);
             TapeLoadPlan plan = TapLoader.CreateExecutionPlan(machine, blocks);
-            return TapLoader.ExecutePlan(machine, displayName, blocks, plan, initialEarLevelHigh: false);
+            return TapLoader.ExecutePlan(
+                machine,
+                displayName,
+                blocks,
+                plan,
+                initialEarLevelHigh: UsesStandardRomSignalStart(blocks));
         }
 
         public static TapBootstrapResult BootstrapBasicProgramAndMountRemaining(Spectrum128Machine machine, string path)
@@ -115,6 +120,22 @@ namespace Spectrum128kEmulator.Tap
         internal static IReadOnlyList<TapeBlock> PrepareBlocksForExecution(IReadOnlyList<TapeBlock> blocks)
         {
             return NormalizeRomLoadableStandardDataBlocks(blocks);
+        }
+
+        private static bool UsesStandardRomSignalStart(IReadOnlyList<TapeBlock> blocks)
+        {
+            bool sawPlaybackBlock = false;
+            foreach (TapeBlock block in blocks)
+            {
+                if (block.Kind == TapeBlockKind.Metadata)
+                    continue;
+
+                sawPlaybackBlock = true;
+                if (block.Kind != TapeBlockKind.Data || !block.CanUseRomLoadTrap)
+                    return false;
+            }
+
+            return sawPlaybackBlock;
         }
 
         private static IReadOnlyList<TapeBlock> NormalizeRomLoadableStandardDataBlocks(IReadOnlyList<TapeBlock> blocks)
