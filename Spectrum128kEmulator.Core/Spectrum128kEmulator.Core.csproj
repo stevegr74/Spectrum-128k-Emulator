@@ -1,0 +1,29 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Include="..\Spectrum128Machine.cs" Link="Spectrum128Machine.cs" />
+    <Compile Include="..\BorderFrame.cs" Link="BorderFrame.cs" />
+    <Compile Include="..\SpectrumFrameBuffer.cs" Link="SpectrumFrameBuffer.cs" />
+    <Compile Include="..\SnapshotLoader.cs" Link="SnapshotLoader.cs" />
+    <Compile Include="..\Z80SnapshotLoader.cs" Link="Z80SnapshotLoader.cs" />
+    <Compile Include="..\RzxLoader.cs" Link="RzxLoader.cs" />
+    <Compile Include="..\RzxPlaybackSession.cs" Link="RzxPlaybackSession.cs" />
+    <Compile Include="..\Z80\**\*.cs" Link="Z80\%(RecursiveDir)%(Filename)%(Extension)" />
+    <Compile Include="..\Tape\**\*.cs" Link="Tape\%(RecursiveDir)%(Filename)%(Extension)" />
+    <Compile Include="..\Audio\AudioFrame.cs" Link="Audio\AudioFrame.cs" />
+    <Compile Include="..\Audio\Ay8912.cs" Link="Audio\Ay8912.cs" />
+    <Compile Include="..\Audio\AyAudioState.cs" Link="Audio\AyAudioState.cs" />
+    <Compile Include="..\Audio\AySampleGenerator.cs" Link="Audio\AySampleGenerator.cs" />
+    <Compile Include="..\Audio\BeeperEvent.cs" Link="Audio\BeeperEvent.cs" />
+    <Compile Include="..\Audio\BeeperSampleGenerator.cs" Link="Audio\BeeperSampleGenerator.cs" />
+    <Compile Include="..\Audio\MixedSampleGenerator.cs" Link="Audio\MixedSampleGenerator.cs" />
+    <Compile Include="..\Audio\TStateSampleClock.cs" Link="Audio\TStateSampleClock.cs" />
+    <Compile Include="..\Audio\VolumeTables.cs" Link="Audio\VolumeTables.cs" />
+  </ItemGroup>
+</Project>

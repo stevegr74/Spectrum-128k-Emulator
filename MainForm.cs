@@ -37,6 +37,7 @@ namespace Spectrum128kEmulator
         private static readonly long PresentationIntervalTicks =
             System.Diagnostics.Stopwatch.Frequency / PresentationFramesPerSecond;
         private readonly Bitmap screenBitmap = new Bitmap(Spectrum128Machine.ScreenWidth, Spectrum128Machine.ScreenHeight, PixelFormat.Format32bppArgb);
+        private readonly SpectrumFrameBuffer presentationFrameBuffer = new SpectrumFrameBuffer();
         private readonly System.Windows.Forms.Timer frameTimer = new System.Windows.Forms.Timer { Interval = 1 };
         private readonly PictureBox screenBox = new PictureBox
         {
@@ -76,6 +77,7 @@ namespace Spectrum128kEmulator
         private double performancePresentMilliseconds;
         private readonly byte[] latestScreenBankData = new byte[0x4000];
         private int latestBorderColor;
+        private BorderFrame? latestBorderFrame;
         private bool latestFlashPhase;
         private int totalPresentedFrameCount;
         private bool hasPresentationState;
@@ -988,6 +990,7 @@ namespace Spectrum128kEmulator
             {
                 Buffer.BlockCopy(screenBankData, 0, latestScreenBankData, 0, latestScreenBankData.Length);
                 latestBorderColor = sourceMachine.BorderColor;
+                latestBorderFrame = sourceMachine.LastCompletedBorderFrame;
                 latestFlashPhase = sourceMachine.FlashPhase;
                 hasPresentationState = true;
             }
@@ -1000,6 +1003,7 @@ namespace Spectrum128kEmulator
 
             byte[] screenBankCopy = new byte[latestScreenBankData.Length];
             int borderColor;
+            BorderFrame? borderFrame;
             bool flashPhase;
             lock (presentationStateLock)
             {
@@ -1008,15 +1012,16 @@ namespace Spectrum128kEmulator
 
                 Buffer.BlockCopy(latestScreenBankData, 0, screenBankCopy, 0, latestScreenBankData.Length);
                 borderColor = latestBorderColor;
+                borderFrame = latestBorderFrame;
                 flashPhase = latestFlashPhase;
             }
 
             long renderStartTicks = frameClock.ElapsedTicks;
-            SpectrumRenderer.RenderToBitmap(
-                screenBitmap,
-                screenBankCopy,
-                borderColor,
-                flashPhase);
+            if (borderFrame == null)
+                presentationFrameBuffer.Render(screenBankCopy, borderColor, flashPhase);
+            else
+                presentationFrameBuffer.Render(screenBankCopy, borderFrame, flashPhase);
+            SpectrumRenderer.RenderToBitmap(screenBitmap, presentationFrameBuffer);
             long renderEndTicks = frameClock.ElapsedTicks;
 
             screenBox.Image = screenBitmap;

@@ -8,7 +8,7 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\Spectrum128kEmulator.csproj" />
+    <ProjectReference Include="..\Spectrum128kEmulator.Core\Spectrum128kEmulator.Core.csproj" />
   </ItemGroup>
 
 </Project>

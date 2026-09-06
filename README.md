@@ -46,7 +46,7 @@ This project focuses on correctness, clean architecture, and incremental develop
 
 ## Current Status
 
-Milestone 7 In Progress - Audio Output Working, Snapshot And Tape Compatibility Stabilized
+Milestones 1-5 are complete. Tape compatibility and audio polish remain active work. Core/UI decoupling, clock-driven audio, and ULA/video timing are planned as the next coordinated architecture milestones.
 
 - Emulator boots into 128K menu
 - Menu navigation works
@@ -89,13 +89,14 @@ Milestone 7 In Progress - Audio Output Working, Snapshot And Tape Compatibility 
   - tape/snapshot loads pause emulation and start from a clean machine/input boundary
 - Z80 core refactored into focused partial files without intended behaviour changes
 
-CPU Compliance
+CPU Compliance Baseline
 - ZEXDOC runs to completion in a headless runner
 - ZEXALL runs to completion in a headless runner
-- All instruction groups pass
+- All ZEXDOC/ZEXALL instruction groups pass in the current headless harness
 - DAA implementation fixed and validated
+- Exact flags for block-I/O instructions (`INI`, `IND`, `INIR`, `INDR`, `OUTI`, `OUTD`, `OTIR`, `OTDR`) remain a known gap and are tracked in the current development plan
 
-ZEXDOC and ZEXALL are used as the authoritative validation sources for CPU correctness.
+ZEXDOC and ZEXALL are major CPU regression gates, but they are not treated as proof that every undocumented or I/O-data-dependent behaviour is complete.
 
 Snapshot Support Progress (Milestone 5)
 - 48K `.sna` loading implemented and verified (real game runs)
@@ -164,11 +165,54 @@ Audio Progress (Milestone 7)
 - Timing/performance polish still in progress
 - Remaining polish is mostly app-side input responsiveness rather than core audio generation
 
+## Current Development Plan
+
+The active ULA work is isolated on `feature/ula-contention-border`; `master` remains the accepted tape and runtime baseline.
+
+1. **Complete Z80 block-I/O flags before extending video timing.**
+   - Replace the provisional `INI`/`IND`/`OUTI`/`OUTD` flag handling with the hardware-derived formulas for `S`, `Z`, `F5`, `H`, `F3`, `P/V`, `N`, and `C`.
+   - Add table-driven tests across transfer data and register boundary cases.
+   - Rerun ZEXDOC/ZEXALL as a regression gate, while recognising they do not fully validate port-data-dependent behaviour.
+
+2. **Decouple the emulator core from WinForms before extending timing-sensitive output.**
+   - Extract a headless `net8.0` engine library that owns machine execution, T-state progression, memory, tape, keyboard matrix state, and platform-neutral video/audio output.
+   - Keep WinForms, `System.Drawing`, Windows audio APIs, menus, and frame scheduling in a frontend adapter rather than in the emulation core.
+   - Expose the frame buffer as platform-neutral pixel data and make the existing Windows renderer an adapter, preserving a later cross-platform or WebAssembly frontend path.
+   - Start with `net8.0` rather than forcing `netstandard2.0`; the latter would constrain the current modern runtime and does not itself make a WebAssembly frontend possible.
+
+3. **Make audio production clock-driven from master T-states.**
+   - Timestamp AY and beeper state changes against the machine T-state clock, then generate PCM through a deterministic sample-phase accumulator.
+   - The frontend may queue already-produced PCM, but must not determine emulated audio pitch from wall-clock frame delivery.
+   - Add tests that prove exact sample counts for a T-state interval and stable pitch when frontend scheduling is delayed or catches up.
+
+4. **Build ULA contention as a timing model, not a title-specific compatibility tweak.**
+   - Keep separate documented 48K and 128K timing profiles.
+   - Cover contended memory, contended I/O, frame phase, and paged 128K banks with focused tests.
+   - Do not merge a timing change that regresses the verified tape or snapshot matrix.
+
+5. **Add border rendering and timestamped border effects.**
+   - Render the visible Spectrum border around the active `256x192` display.
+   - Record port `FE` colour changes at their emulated T-state and render them on the corresponding raster region.
+   - Validate static borders first, then raster effects and their interaction with contention.
+
+6. **Use the compatibility matrix as the merge gate.**
+   - `exolon.tap` and `Exolon.tzx`
+   - `Where Time Stood Still.tap`
+   - `Impossible Mission - Bugfix.tzx`
+   - `Batman - Release 1.tzx`
+   - representative `.sna` / `.z80` snapshots, `aufmonty.rzx`, ZEXDOC, and ZEXALL
+
 ---
 
 ## Architecture
 
 The emulator is structured for clarity and testability:
+
+- `Spectrum128kEmulator.Core` (`net8.0`)
+  Headless engine library containing machine execution, CPU, tape, snapshots/RZX, audio synthesis, and the platform-neutral ARGB frame buffer. It has no WinForms, `System.Drawing`, or Windows audio-device dependency.
+
+- `Spectrum128kEmulator` (`net10.0-windows`)
+  WinForms frontend that owns host input, menus, presentation scheduling, `Bitmap` blitting, and Windows audio output while consuming the core library.
 
 
 - `Z80/` / `Z80Cpu.cs`  
@@ -205,7 +249,10 @@ The emulator is structured for clarity and testability:
   Memory, paging, keyboard, ROM mapping, interrupts, frame timing, machine-level tape integration, and audio state capture
 
 - `SpectrumRenderer`  
-  Converts screen memory into pixel output
+  Current Windows pixel-output adapter; planned to consume a platform-neutral engine frame buffer
+
+- `MainForm` / Windows audio pipeline
+  Current WinForms frontend and platform audio output; planned to remain outside the headless emulator engine
 
 - `SnapshotLoader` / `Z80SnapshotLoader`  
   Snapshot loading support
@@ -348,11 +395,12 @@ Notes:
 - Frame-based execution loop
 - Interrupt cadence established
 
-### Milestone 4 - Z80 Compliance Complete
+### Milestone 4 - Z80 Compliance Baseline Complete
 - ZEXDOC runs to completion
 - ZEXALL runs to completion
 - All instruction groups passing
-- CPU behaviour validated against hardware-derived tests
+- Core CPU behaviour validated by compliance tests and targeted regressions
+- Block-I/O flag completion remains active work because those flags are I/O-data-dependent and partly undocumented
 
 ### Milestone 5 - Snapshots Complete
 - 48K `.sna` loading complete and verified
@@ -360,12 +408,15 @@ Notes:
 - Real snapshot validated (`robocop128k.z80` playable)
 - Snapshot-format-specific restore paths now stabilised for current `.sna` and `.z80` support
 
-### Milestone 6 - Tape Loading Complete
+### Milestone 6 - Tape Loading And Compatibility In Progress
 - `.tap` parsing implemented
+- `.tzx` parsing and structure-driven playback implemented
 - fake loader path available
 - ROM-driven tape loading path implemented
 - VERIFY path implemented
 - deterministic sequencing and rewind implemented
+- Verified protected-loader examples include Exolon, Impossible Mission, and Batman
+- Broader protected/custom TZX compatibility remains ongoing
 
 ### Milestone 7 - Audio (In Progress)
 - AY-3-8912 register emulation
@@ -382,18 +433,28 @@ Notes:
 - Timing/performance polish still in progress
 - Remaining input responsiveness polish is outside the core audio path
 
+### Milestone 8 - Core/UI Decoupling And Clock-Driven Audio (In Progress On Feature Branch)
+- A platform-neutral ARGB frame buffer now sits below the Windows `Bitmap` adapter, with direct pixel regression coverage
+- A headless `net8.0` core library now contains the machine, CPU, tape, snapshot/RZX, audio synthesis, and frame-buffer model; the WinForms frontend and ZEX runner consume it
+- AY and beeper PCM sample counts now use a deterministic master-T-state accumulator; the frontend only queues produced PCM
+- Regression tests prove that split execution slices produce the same sample count as a combined interval and preserve fractional 48K samples across frames
+
+### Milestone 9 - ULA Timing And Border Effects (Ready To Merge From Feature Branch)
+- Static visible borders and timestamped `OUT (FE)` raster border changes are rendered through the platform-neutral frame buffer
+- 48K and 128K ULA contention coverage includes display phase, contended memory, contended I/O, and every paged 128K RAM bank
+- The core/UI boundary and clock-driven audio contract are in place; the focused CPU, renderer, audio, machine, snapshot/RZX, and full tape regression suites are green
+
 ---
 
 ## Future Improvements
 
-- ULA contention timing
 - Scanline-accurate rendering
-- Border effects
 - Demo compatibility improvements
 - Higher-fidelity tape timing
 - Extended tape compatibility
 - Remaining menu/input responsiveness polish for games like Jet Set Willy
 - Broader real-game validation
+- Additional platform frontends, including a browser/WebAssembly adapter once the headless engine boundary is established
 
 ---
 
@@ -402,7 +463,7 @@ Notes:
 - Standard library only (no external dependencies)
 - Incremental development (no large rewrites)
 - Behaviour verified with tests, ZEXDOC, and ZEXALL
-- Clear separation between emulation and UI
+- Clear separation between emulation and UI, with platform-neutral video and audio contracts
 - Headless tooling for reproducible debugging
 
 ---

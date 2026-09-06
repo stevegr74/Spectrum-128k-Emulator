@@ -42,19 +42,31 @@ namespace Spectrum128kEmulator.Audio
                 throw new ArgumentNullException(nameof(frame));
 
             int sampleCount = GetSampleCount(frame.FrameTStates, SampleRate, frame.CpuClockHz);
+            return GenerateFrameSamples(frame, sampleCount);
+        }
+
+        internal short[] GenerateFrameSamples(AudioFrame frame, int sampleCount)
+        {
+            if (frame == null)
+                throw new ArgumentNullException(nameof(frame));
+
             short[] samples = new short[sampleCount];
-            MixFrameSamples(frame, samples);
+            MixFrameSamples(frame, samples, sampleCount);
             return samples;
         }
 
         internal void MixFrameSamples(AudioFrame frame, short[] destination)
+        {
+            MixFrameSamples(frame, destination, GetSampleCount(frame.FrameTStates, SampleRate, frame.CpuClockHz));
+        }
+
+        internal void MixFrameSamples(AudioFrame frame, short[] destination, int sampleCount)
         {
             if (frame == null)
                 throw new ArgumentNullException(nameof(frame));
             if (destination == null)
                 throw new ArgumentNullException(nameof(destination));
 
-            int sampleCount = GetSampleCount(frame.FrameTStates, SampleRate, frame.CpuClockHz);
             if (destination.Length < sampleCount)
                 throw new ArgumentException("Destination buffer is too small.", nameof(destination));
 

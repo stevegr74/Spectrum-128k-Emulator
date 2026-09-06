@@ -16,12 +16,35 @@
   </ItemGroup>
 
   <ItemGroup>
+    <ProjectReference Include="Spectrum128kEmulator.Core\Spectrum128kEmulator.Core.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
     <Compile Remove="obj\**\*.cs" />
     <Compile Remove="bin\**\*.cs" />
     <Compile Remove="tmp\**\*.cs" />
     <Compile Remove="Spectrum128kEmulator.Tests\**\*.cs" />
     <Compile Remove="Spectrum128kEmulator.ManualHarness\**\*.cs" />
 	<Compile Remove="Spectrum128kEmulator.Z80Compliance\**\*.cs" />
+    <Compile Remove="Spectrum128kEmulator.Core\**\*.cs" />
+    <Compile Remove="Spectrum128Machine.cs" />
+    <Compile Remove="BorderFrame.cs" />
+    <Compile Remove="SpectrumFrameBuffer.cs" />
+    <Compile Remove="SnapshotLoader.cs" />
+    <Compile Remove="Z80SnapshotLoader.cs" />
+    <Compile Remove="RzxLoader.cs" />
+    <Compile Remove="RzxPlaybackSession.cs" />
+    <Compile Remove="Z80\**\*.cs" />
+    <Compile Remove="Tape\**\*.cs" />
+    <Compile Remove="Audio\AudioFrame.cs" />
+    <Compile Remove="Audio\Ay8912.cs" />
+    <Compile Remove="Audio\AyAudioState.cs" />
+    <Compile Remove="Audio\AySampleGenerator.cs" />
+    <Compile Remove="Audio\BeeperEvent.cs" />
+    <Compile Remove="Audio\BeeperSampleGenerator.cs" />
+    <Compile Remove="Audio\MixedSampleGenerator.cs" />
+    <Compile Remove="Audio\TStateSampleClock.cs" />
+    <Compile Remove="Audio\VolumeTables.cs" />
     <EmbeddedResource Remove="obj\**\*" />
     <EmbeddedResource Remove="bin\**\*" />
     <EmbeddedResource Remove="tmp\**\*" />
@@ -31,9 +54,11 @@
     <EmbeddedResource Remove="Spectrum128kEmulator.Tests\**\*" />
     <EmbeddedResource Remove="Spectrum128kEmulator.ManualHarness\**\*" />
 	<EmbeddedResource Remove="Spectrum128kEmulator.Z80Compliance\**\*" />
+	<EmbeddedResource Remove="Spectrum128kEmulator.Core\**\*" />
     <None Remove="Spectrum128kEmulator.Tests\**\*" />
     <None Remove="Spectrum128kEmulator.ManualHarness\**\*" />
 	<None Remove="Spectrum128kEmulator.Z80Compliance\**\*" />
+	<None Remove="Spectrum128kEmulator.Core\**\*" />
   </ItemGroup>
 
 </Project>
