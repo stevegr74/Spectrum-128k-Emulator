@@ -18,8 +18,12 @@ namespace Spectrum128kEmulator
         // representative phase instead of the uncontended top border.
         public const int Default48kSnapshotResumeFramePhase = 27347;
         public const int CpuClockHz = CpuClockHz128;
-        public const int ScreenWidth = 256;
-        public const int ScreenHeight = 192;
+        public const int ActiveDisplayWidth = 256;
+        public const int ActiveDisplayHeight = 192;
+        public const int BorderLeftWidth = 32;
+        public const int BorderTopHeight = 24;
+        public const int ScreenWidth = ActiveDisplayWidth + (BorderLeftWidth * 2);
+        public const int ScreenHeight = ActiveDisplayHeight + (BorderTopHeight * 2);
         private const int DisplayLineTStates = 224;
         private const int DisplayAreaStartTStates48 = 14347;
         private const int DisplayAreaVisibleLineTStates = 128;
@@ -47,10 +51,13 @@ namespace Spectrum128kEmulator
         private bool micHigh;
         private bool frameStartSpeakerHigh;
         private ulong frameStartTStates;
+        private int frameStartBorderColor;
         private int currentFrameExecutedTStates;
         private int lastAudioFrameTStates = FrameTStates128;
         private readonly List<Audio.BeeperEvent> beeperEvents = new List<Audio.BeeperEvent>();
         private readonly List<Audio.AyRegisterWrite> ayWrites = new List<Audio.AyRegisterWrite>();
+        private readonly List<BorderEvent> borderEvents = new List<BorderEvent>();
+        private BorderFrame lastCompletedBorderFrame = new BorderFrame(FrameTStates128, 1, Array.Empty<BorderEvent>());
         private Audio.AyAudioState? frameStartAyState;
         private readonly Queue<Audio.AudioFrame> completedAudioFrames = new Queue<Audio.AudioFrame>();
         private bool captureAudioFramesEnabled = true;
@@ -75,6 +82,7 @@ namespace Spectrum128kEmulator
         private int floatingBusDisplayStartAdjustTStates;
         private int floatingBusSampleAdjustTStates;
         private int frameTStates = FrameTStates128;
+        private bool uses48kMemoryMap;
         private int tStatesUntilNextInterrupt;
         private bool realignInterruptPhaseAfterNextAccept;
         private Func<Spectrum128Machine, ushort?>? pendingMountedLoadUsrContinuationResolver;
@@ -224,6 +232,7 @@ namespace Spectrum128kEmulator
         public int FrameTStates => frameTStates;
         public int CurrentCpuClockHz => frameTStates == FrameTStates48 ? CpuClockHz48 : CpuClockHz128;
         public bool FlashPhase => ((FrameCount / 16) & 1) != 0;
+        public BorderFrame LastCompletedBorderFrame => lastCompletedBorderFrame;
 
         public Dictionary<ushort, int> ScreenWriteLog { get; } = new Dictionary<ushort, int>();
         public Dictionary<ushort, int> AboveScreenWriteLog { get; } = new Dictionary<ushort, int>();
@@ -268,10 +277,13 @@ namespace Spectrum128kEmulator
             lastAyRegister = 0;
             cpu.Reset();
             frameStartTStates = cpu.TStates;
+            frameStartBorderColor = BorderColor;
             frameStartSpeakerHigh = speakerHigh;
             frameStartAyState = ay.CaptureAudioState();
             beeperEvents.Clear();
             ayWrites.Clear();
+            borderEvents.Clear();
+            lastCompletedBorderFrame = new BorderFrame(frameTStates, BorderColor, Array.Empty<BorderEvent>());
             currentFrameExecutedTStates = 0;
             completedAudioFrames.Clear();
             ClearDebugHistory();
@@ -314,6 +326,7 @@ namespace Spectrum128kEmulator
                 frameStartAyState,
                 ayWrites));
             currentFrameExecutedTStates = 0;
+            CompleteFrameBorderCapture();
             FrameCount++;
         }
 
@@ -427,6 +440,7 @@ namespace Spectrum128kEmulator
                 }
 
                 currentFrameExecutedTStates = 0;
+                CompleteFrameBorderCapture();
                 FrameCount++;
                 completedFrames++;
             }
@@ -607,18 +621,19 @@ namespace Spectrum128kEmulator
 
         private ulong Get48kContentionDelay(ulong tStates)
         {
-            if (frameTStates != FrameTStates48)
+            int timingFrameTStates = frameTStates == FrameTStates48 ? FrameTStates48 : FrameTStates128;
+            int contentionStartTStates = timingFrameTStates == FrameTStates48 ? 14335 : 14361;
+            int lineTStates = timingFrameTStates == FrameTStates48 ? 224 : 228;
+
+            ulong frameOffset = tStates % (ulong)timingFrameTStates;
+            if (frameOffset < (ulong)contentionStartTStates)
                 return 0;
 
-            ulong frameOffset = tStates % (ulong)FrameTStates48;
-            if (frameOffset < 14335UL)
+            ulong displayOffset = frameOffset - (ulong)contentionStartTStates;
+            if (displayOffset >= (ulong)(lineTStates * DisplayAreaLineCount))
                 return 0;
 
-            ulong displayOffset = frameOffset - 14335UL;
-            if (displayOffset >= (ulong)(DisplayLineTStates * DisplayAreaLineCount))
-                return 0;
-
-            int lineTState = (int)(displayOffset % (ulong)DisplayLineTStates);
+            int lineTState = (int)(displayOffset % (ulong)lineTStates);
             if (lineTState >= DisplayAreaVisibleLineTStates)
                 return 0;
 
@@ -626,7 +641,13 @@ namespace Spectrum128kEmulator
             return phase < 6 ? (ulong)(6 - phase) : 0;
         }
 
-        private bool Is48kContendedMemoryAddress(ushort addr) => addr >= 0x4000 && addr < 0x8000;
+        private bool Is48kContendedMemoryAddress(ushort addr)
+        {
+            if (addr >= 0x4000 && addr < 0x8000)
+                return true;
+
+            return !uses48kMemoryMap && addr >= 0xC000 && (PagedRamBank & 0x01) != 0;
+        }
 
         private void Apply48kMemoryContention(ushort addr)
         {
@@ -638,12 +659,9 @@ namespace Spectrum128kEmulator
                 cpu.AddTStates(delay);
         }
 
-        private ulong Get48kIoContentionDelay(ushort port)
+        private ulong GetIoContentionDelay(ushort port)
         {
-            if (frameTStates != FrameTStates48)
-                return 0;
-
-            bool highContended = (port & 0xFF00) >= 0x4000 && (port & 0xFF00) <= 0x7F00;
+            bool highContended = Is48kContendedMemoryAddress((ushort)(port & 0xFF00));
             bool lowBitClear = (port & 0x0001) == 0;
 
             if (!highContended && !lowBitClear)
@@ -699,7 +717,7 @@ namespace Spectrum128kEmulator
 
         private byte ReadPortWithContention(ushort port)
         {
-            ulong delay = Get48kIoContentionDelay(port);
+            ulong delay = GetIoContentionDelay(port);
             if (delay != 0)
                 cpu.AddTStates(delay);
 
@@ -708,7 +726,7 @@ namespace Spectrum128kEmulator
 
         private void WritePortWithContention(ushort port, byte value)
         {
-            ulong delay = Get48kIoContentionDelay(port);
+            ulong delay = GetIoContentionDelay(port);
             if (delay != 0)
                 cpu.AddTStates(delay);
 
@@ -1393,6 +1411,7 @@ namespace Spectrum128kEmulator
             z80.ResetExecutionStatePreserveTiming();
             CurrentRomBank = 1;
             PagingLocked = false;
+            uses48kMemoryMap = false;
             frameTStates = FrameTStates128;
             last7ffdValue = (byte)(
                 (PagedRamBank & 0x07) |
@@ -1539,7 +1558,7 @@ namespace Spectrum128kEmulator
 
         private byte ReadPortTimed(ushort port, int sampleOffsetTStates)
         {
-            ulong contentionDelay = Get48kIoContentionDelay(port);
+            ulong contentionDelay = GetIoContentionDelay(port);
             if (contentionDelay != 0)
                 cpu.AddTStates(contentionDelay);
 
@@ -1678,6 +1697,7 @@ namespace Spectrum128kEmulator
             ScreenBank = 5;
             CurrentRomBank = 1; // Use the 48 BASIC ROM in your current setup.
             PagingLocked = true;
+            uses48kMemoryMap = true;
             BorderColor = borderColor & 0x07;
             frameTStates = targetFrameTStates;
             FrameCount = 0;
@@ -1729,6 +1749,7 @@ namespace Spectrum128kEmulator
             ScreenBank = ((last7ffdValue & 0x08) != 0) ? 7 : 5;
             CurrentRomBank = ((last7ffdValue & 0x10) != 0) ? 1 : 0;
             PagingLocked = (last7ffdValue & 0x20) != 0;
+            uses48kMemoryMap = false;
             BorderColor = borderColor & 0x07;
             frameTStates = FrameTStates128;
             FrameCount = 0;
@@ -1754,6 +1775,7 @@ namespace Spectrum128kEmulator
             if ((port & 0x0001) == 0)
             {
                 BorderColor = value & 0x07;
+                RecordBorderEvent(BorderColor);
                 micHigh = (value & 0x08) != 0;
 
                 bool newSpeakerHigh = (value & 0x10) != 0;
@@ -1805,10 +1827,12 @@ namespace Spectrum128kEmulator
         private void BeginFrameAudioCapture()
         {
             frameStartTStates = cpu.TStates;
+            frameStartBorderColor = BorderColor;
             frameStartSpeakerHigh = speakerHigh;
             frameStartAyState = captureAudioFramesEnabled ? ay.CaptureAudioState() : null;
             beeperEvents.Clear();
             ayWrites.Clear();
+            borderEvents.Clear();
         }
 
         private void RecordBeeperEvent(bool newSpeakerHigh)
@@ -1829,6 +1853,18 @@ namespace Spectrum128kEmulator
             ulong elapsed = cpu.TStates - frameStartTStates;
             int offset = (int)Math.Min((ulong)int.MaxValue, elapsed);
             ayWrites.Add(new Audio.AyRegisterWrite(offset, register, value));
+        }
+
+        private void RecordBorderEvent(int color)
+        {
+            ulong elapsed = cpu.TStates - frameStartTStates;
+            int offset = (int)Math.Min((ulong)int.MaxValue, elapsed);
+            borderEvents.Add(new BorderEvent(offset, color));
+        }
+
+        private void CompleteFrameBorderCapture()
+        {
+            lastCompletedBorderFrame = new BorderFrame(frameTStates, frameStartBorderColor, borderEvents);
         }
     }
 }

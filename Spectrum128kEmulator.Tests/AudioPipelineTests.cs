@@ -52,9 +52,11 @@ namespace Spectrum128kEmulator.Tests
                 Array.Empty<BeeperEvent>());
 
             pipeline.SubmitFrame(frame);
+            pipeline.SubmitFrame(frame);
 
             Assert.NotNull(output.LastSamples);
             Assert.Equal(881, output.LastSamples!.Length);
+            Assert.Equal(1761, output.TotalSamplesWritten);
         }
 
         private sealed class RecordingAudioOutput : IAudioOutput
@@ -66,10 +68,12 @@ namespace Spectrum128kEmulator.Tests
 
             public uint SampleRate { get; }
             public short[]? LastSamples { get; private set; }
+            public int TotalSamplesWritten { get; private set; }
 
             public void WriteSamples(short[] monoSamples)
             {
                 LastSamples = monoSamples ?? throw new ArgumentNullException(nameof(monoSamples));
+                TotalSamplesWritten += monoSamples.Length;
             }
 
             public void Dispose()

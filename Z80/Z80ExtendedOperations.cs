@@ -313,13 +313,7 @@ namespace Spectrum128kEmulator.Z80
 
             Regs.HL = increment ? (ushort)(Regs.HL + 1) : (ushort)(Regs.HL - 1);
             Regs.B = (byte)(Regs.B - 1);
-
-            // Minimal first-pass flag behaviour:
-            // N is set
-            // Z reflects B == 0
-            // Other flags can be refined later if needed for compatibility
-            SetFlag(Flag.N, true);
-            SetFlag(Flag.Z, Regs.B == 0);
+            ApplyBlockIoFlags(value, increment ? Regs.C + 1 : Regs.C - 1);
 
             if (repeat && Regs.B != 0)
             {
@@ -338,9 +332,7 @@ namespace Spectrum128kEmulator.Z80
 
             Regs.HL = increment ? (ushort)(Regs.HL + 1) : (ushort)(Regs.HL - 1);
             Regs.B = (byte)(Regs.B - 1);
-
-            SetFlag(Flag.N, true);
-            SetFlag(Flag.Z, Regs.B == 0);
+            ApplyBlockIoFlags(value, Regs.L);
 
             int instructionTStates;
             if (repeat && Regs.B != 0)
@@ -354,6 +346,23 @@ namespace Spectrum128kEmulator.Z80
             }
 
             WritePortTimed(Regs.BC, value, instructionTStates);
+        }
+
+        private void ApplyBlockIoFlags(byte value, int adjustment)
+        {
+            // Z80 block-I/O flags are derived from the decremented B register
+            // and the carry from the data plus direction-dependent adjustment.
+            int sum = value + (adjustment & 0xFF);
+            byte parityOperand = (byte)((sum & 0x07) ^ Regs.B);
+
+            Regs.F = 0;
+            SetFlag(Flag.S, (Regs.B & 0x80) != 0);
+            SetFlag(Flag.Z, Regs.B == 0);
+            CopyUndocumentedFlagsFrom(Regs.B);
+            SetFlag(Flag.H, sum > 0xFF);
+            SetFlag(Flag.P, Parity(parityOperand));
+            SetFlag(Flag.N, (value & 0x80) != 0);
+            SetFlag(Flag.C, sum > 0xFF);
         }
 
         private byte CompareAInternal(byte value)
