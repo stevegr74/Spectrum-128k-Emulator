@@ -46,6 +46,28 @@ namespace Spectrum128kEmulator
 
         public Audio.Ay8912 Ay => ay;
 
+        public bool HasAudibleOutput
+        {
+            get
+            {
+                if (speakerHigh || beeperEvents.Count != 0)
+                    return true;
+
+                byte mixer = ay.ReadRegister(7);
+                for (int channel = 0; channel < 3; channel++)
+                {
+                    byte volume = ay.ReadRegister((byte)(8 + channel));
+                    bool channelHasVolume = (volume & 0x1F) != 0;
+                    bool toneEnabled = (mixer & (1 << channel)) == 0;
+                    bool noiseEnabled = (mixer & (1 << (channel + 3))) == 0;
+                    if (channelHasVolume && (toneEnabled || noiseEnabled))
+                        return true;
+                }
+
+                return false;
+            }
+        }
+
         private byte lastAyRegister;
         private bool speakerHigh;
         private bool micHigh;
@@ -63,8 +85,11 @@ namespace Spectrum128kEmulator
         private bool captureAudioFramesEnabled = true;
 
         private const int DebugHistoryCapacity = 8192;
+        private const int DebugWatchHistoryCapacity = 512;
         private readonly Queue<string> recentMemoryEvents = new Queue<string>();
         private readonly Queue<string> recentPortEvents = new Queue<string>();
+        private readonly HashSet<ushort> debugMemoryWatchAddresses = new HashSet<ushort>();
+        private readonly Queue<string> watchedMemoryEvents = new Queue<string>();
         private bool autoDebugDumpPending;
         private string? autoDebugDumpReason;
         private string? autoDebugDumpSnapshot;
@@ -78,6 +103,7 @@ namespace Spectrum128kEmulator
         private int focusedTraceStartFrame;
         private int focusedTraceFrameLimit;
         private int focusedTraceMaxEntries;
+        private ushort? focusedTraceStopPc;
         private readonly Queue<string> focusedInstructionTrace = new Queue<string>();
         private int floatingBusDisplayStartAdjustTStates;
         private int floatingBusSampleAdjustTStates;
@@ -249,6 +275,7 @@ namespace Spectrum128kEmulator
             PagedRamBank = 0;
             CurrentRomBank = 0;
             PagingLocked = false;
+            uses48kMemoryMap = false;
             ScreenBank = 5;
             BorderColor = 1;
             FrameCount = 0;
@@ -406,6 +433,12 @@ namespace Spectrum128kEmulator
                 int actualExecutedTStates = (int)Math.Min((ulong)int.MaxValue, cpu.TStates - tStatesBefore);
                 executedTStates += actualExecutedTStates;
                 mountedTape?.AdvanceToTime(cpu.TStates);
+
+                // A diagnostic client may stop the CPU before the next instruction.
+                // Do not spin the scheduler with an unchanged T-state count in that case.
+                if (cpu.ExecutionStopped)
+                    break;
+
                 tStatesBudget -= actualExecutedTStates;
                 if (tStatesBudget < 0)
                     tStatesBudget = 0;
@@ -470,6 +503,16 @@ namespace Spectrum128kEmulator
                 recentMemoryEvents.Clear();
                 recentPortEvents.Clear();
             }
+        }
+
+        // Kept dormant in normal emulation; the manual harness enables this only for
+        // sparse, address-specific diagnostics that must survive noisy loader loops.
+        public void SetDebugMemoryWriteWatch(IEnumerable<ushort> addresses)
+        {
+            debugMemoryWatchAddresses.Clear();
+            watchedMemoryEvents.Clear();
+            foreach (ushort address in addresses)
+                debugMemoryWatchAddresses.Add(address);
         }
 
         public void SetAudioFrameCaptureEnabled(bool enabled)
@@ -573,6 +616,15 @@ namespace Spectrum128kEmulator
                 sb.AppendLine(line);
             sb.AppendLine();
 
+            if (watchedMemoryEvents.Count > 0 || debugMemoryWatchAddresses.Count > 0)
+            {
+                sb.AppendLine("=== WATCHED MEMORY WRITES ===");
+                sb.AppendLine($"Addresses={string.Join(',', debugMemoryWatchAddresses.Select(address => address.ToString("X4")))}");
+                foreach (string line in watchedMemoryEvents)
+                    sb.AppendLine(line);
+                sb.AppendLine();
+            }
+
             sb.AppendLine("=== RECENT PORT EVENTS ===");
             foreach (string line in recentPortEvents)
                 sb.AppendLine(line);
@@ -619,6 +671,13 @@ namespace Spectrum128kEmulator
                 recentPortEvents.Dequeue();
         }
 
+        private void RecordWatchedMemoryEvent(string line)
+        {
+            watchedMemoryEvents.Enqueue(line);
+            while (watchedMemoryEvents.Count > DebugWatchHistoryCapacity)
+                watchedMemoryEvents.Dequeue();
+        }
+
         private ulong Get48kContentionDelay(ulong tStates)
         {
             int timingFrameTStates = frameTStates == FrameTStates48 ? FrameTStates48 : FrameTStates128;
@@ -659,7 +718,7 @@ namespace Spectrum128kEmulator
                 cpu.AddTStates(delay);
         }
 
-        private ulong GetIoContentionDelay(ushort port)
+        private ulong GetIoContentionDelay(ushort port, int ioCycleStartOffsetTStates = 0)
         {
             bool highContended = Is48kContendedMemoryAddress((ushort)(port & 0xFF00));
             bool lowBitClear = (port & 0x0001) == 0;
@@ -667,7 +726,10 @@ namespace Spectrum128kEmulator
             if (!highContended && !lowBitClear)
                 return 0;
 
-            ulong currentTStates = cpu.TStates;
+            // CPU instruction handlers account for their documented duration as a
+            // single total.  Port contention starts at the I/O cycle, not at the
+            // instruction's opcode-fetch boundary.
+            ulong currentTStates = cpu.TStates + (ulong)Math.Max(0, ioCycleStartOffsetTStates);
             ulong totalDelay = 0;
 
             void ApplyContendedSegment(int advanceTStates)
@@ -796,6 +858,7 @@ namespace Spectrum128kEmulator
             focusedTraceStartFrame = startFrame;
             focusedTraceFrameLimit = frameLimit;
             focusedTraceMaxEntries = maxEntries;
+            focusedTraceStopPc = null;
             focusedInstructionTrace.Clear();
             debugEventCaptureEnabled = true;
             cpu.SetInstructionTraceCaptureEnabled(true);
@@ -808,11 +871,20 @@ namespace Spectrum128kEmulator
             focusedTraceStartFrame = 0;
             focusedTraceFrameLimit = 0;
             focusedTraceMaxEntries = 0;
+            focusedTraceStopPc = null;
             focusedInstructionTrace.Clear();
             debugEventCaptureEnabled = false;
             cpu.SetInstructionTraceCaptureEnabled(false);
             recentMemoryEvents.Clear();
             recentPortEvents.Clear();
+        }
+
+        public void SetFocusedInstructionTraceStopProgramCounter(ushort programCounter)
+        {
+            if (!focusedTraceStartPc.HasValue)
+                throw new InvalidOperationException("A focused instruction trace must be enabled before setting its stop PC.");
+
+            focusedTraceStopPc = programCounter;
         }
 
         public void SetInitialInterruptDelay(int tStatesUntilNextInterrupt)
@@ -1153,6 +1225,16 @@ namespace Spectrum128kEmulator
             {
                 z80.InterruptPending = false;
                 interruptPulseEndTStates = null;
+            }
+
+            if (focusedTraceStopPc.HasValue && z80.Regs.PC == focusedTraceStopPc.Value)
+            {
+                // Preserve the lead-in to a known branch without allowing its
+                // tight loop to evict the diagnostic history.
+                focusedTraceStartPc = null;
+                focusedTraceEndPc = null;
+                focusedTraceStopPc = null;
+                cpu.SetInstructionTraceCaptureEnabled(false);
             }
 
             if (focusedTraceStartPc.HasValue &&
@@ -1538,6 +1620,8 @@ namespace Spectrum128kEmulator
             }
 
             ramBanks[bank][addr & 0x3FFF] = value;
+            if (debugMemoryWatchAddresses.Count != 0 && debugMemoryWatchAddresses.Contains(addr))
+                RecordWatchedMemoryEvent($"F={FrameCount,6} T={cpu.TStates,10} W {addr:X4}={value:X2} bank={bank} PC={cpu.Regs.PC:X4} SP={cpu.Regs.SP:X4}");
             if (debugEventCaptureEnabled)
                 RecordMemoryEvent($"T={cpu.TStates,10} W {addr:X4}={value:X2} bank={bank} PC={cpu.Regs.PC:X4} SP={cpu.Regs.SP:X4}");
         }
@@ -1547,33 +1631,44 @@ namespace Spectrum128kEmulator
             if (rzxPlayback != null && rzxPlayback.TryReadPortValue(out byte replayValue))
                 return replayValue;
 
+            byte value;
             if ((port & 0x0001) == 0)
-                return ReadKeyboardEarPort(port, cpu.TStates);
+                value = ReadKeyboardEarPort(port, cpu.TStates);
+            else if (frameTStates == FrameTStates48)
+                value = ReadFloatingBus48(cpu.TStates);
+            else
+                value = 0xFF;
 
-            if (frameTStates == FrameTStates48)
-                return ReadFloatingBus48(cpu.TStates);
+            if (debugEventCaptureEnabled)
+                RecordPortEvent($"T={cpu.TStates,10} IN  {port:X4}={value:X2} PC={cpu.Regs.PC:X4} SP={cpu.Regs.SP:X4}");
 
-            return 0xFF;
+            return value;
         }
 
         private byte ReadPortTimed(ushort port, int sampleOffsetTStates)
         {
-            ulong contentionDelay = GetIoContentionDelay(port);
+            // The read occurs on the third T-state of the four-T-state I/O cycle.
+            // Apply the full delay to instruction timing, while sampling EAR at
+            // the actual point inside that delayed cycle.
+            const int ioCyclesBeforeSample = 3;
+            ulong contentionDelay = GetIoContentionDelay(port, sampleOffsetTStates - ioCyclesBeforeSample);
+            ulong sampleTStates = cpu.TStates + (ulong)sampleOffsetTStates + contentionDelay;
             if (contentionDelay != 0)
                 cpu.AddTStates(contentionDelay);
 
             if ((port & 0x0001) == 0)
             {
-                long adjustedSampleTStates = (long)cpu.TStates + sampleOffsetTStates;
-                ulong sampleTStates = adjustedSampleTStates > 0 ? (ulong)adjustedSampleTStates : 0UL;
-                return ReadKeyboardEarPort(port, sampleTStates);
+                byte value = ReadKeyboardEarPort(port, sampleTStates);
+                if (debugEventCaptureEnabled)
+                    RecordPortEvent($"T={sampleTStates,10} IN  {port:X4}={value:X2} PC={cpu.Regs.PC:X4} SP={cpu.Regs.SP:X4}");
+                return value;
             }
 
             if (frameTStates == FrameTStates48)
             {
-                long adjustedSampleTStates = (long)cpu.TStates + sampleOffsetTStates + floatingBusSampleAdjustTStates;
-                ulong sampleTStates = adjustedSampleTStates > 0 ? (ulong)adjustedSampleTStates : 0UL;
-                return ReadFloatingBus48(sampleTStates);
+                long adjustedSampleTStates = (long)sampleTStates + floatingBusSampleAdjustTStates;
+                ulong floatingBusSampleTStates = adjustedSampleTStates > 0 ? (ulong)adjustedSampleTStates : 0UL;
+                return ReadFloatingBus48(floatingBusSampleTStates);
             }
 
             return 0xFF;
@@ -1674,6 +1769,7 @@ namespace Spectrum128kEmulator
             ScreenBank = 5;
             CurrentRomBank = 1;
             PagingLocked = false;
+            uses48kMemoryMap = false;
             BorderColor = borderColor & 0x07;
             frameTStates = FrameTStates128;
             FrameCount = 0;

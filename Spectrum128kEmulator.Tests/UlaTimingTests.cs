@@ -111,6 +111,36 @@ namespace Spectrum128kEmulator.Tests
             }
         }
 
+        [Fact]
+        public void ContendedUlaPort_ReadsEarAtTheDelayedThirdIoTState()
+        {
+            string romFolder = CreateTempRoms();
+            try
+            {
+                var machine = new Spectrum128Machine(romFolder);
+                machine.ConfigureFor48kSnapshot(borderColor: 0);
+                machine.SetDebugEventCaptureEnabled(true);
+                machine.PokeMemory(0x8000, 0xED);
+                machine.PokeMemory(0x8001, 0x78); // IN A,(C)
+                machine.Cpu.Regs.PC = 0x8000;
+                machine.Cpu.Regs.BC = 0x00FE;
+                machine.SetSnapshotResumeFramePhase(14335);
+
+                machine.ExecuteTimeSlice(1, out _);
+
+                // This phase has an active-display ULA delay. The event must use
+                // the delayed third I/O T-state, rather than the instruction end.
+                string dump = machine.BuildDebugDump();
+                int eventOffset = dump.IndexOf("IN  00FE", StringComparison.Ordinal);
+                Assert.True(eventOffset >= 0, dump);
+                Assert.Contains("T=     14351 IN  00FE", dump);
+            }
+            finally
+            {
+                Directory.Delete(romFolder, true);
+            }
+        }
+
         [Theory]
         [InlineData(0x00, 12UL)]
         [InlineData(0x01, 24UL)]

@@ -1157,7 +1157,11 @@ namespace Spectrum128kEmulator
 
         private bool IsTurboTapeLoadActive(Spectrum128Machine activeMachine)
         {
-            return activeMachine.MountedTape?.IsActivelyStreamingEarSignal == true;
+            // A protected loader may enter playable code before its trailing
+            // stream has ended. Once the machine generates audio, keep it at
+            // real time so the frame is submitted rather than discarded.
+            return activeMachine.MountedTape?.IsActivelyStreamingEarSignal == true &&
+                   !activeMachine.HasAudibleOutput;
         }
 
         private void UpdateTurboTapeLoadFactor(Spectrum128Machine activeMachine, long tickStartTicks, long tickEndTicks)

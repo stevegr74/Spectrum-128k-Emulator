@@ -112,7 +112,8 @@ namespace Spectrum128kEmulator.Tap
             ushort zeroBitPulseLength,
             ushort oneBitPulseLength,
             byte usedBitsInLastByte,
-            ushort pauseAfterBlockMs)
+            ushort pauseAfterBlockMs,
+            bool canUseRomLoadTrap = true)
         {
             if (streamData == null)
                 throw new ArgumentNullException(nameof(streamData));
@@ -124,8 +125,8 @@ namespace Spectrum128kEmulator.Tap
 
             return new TapeBlock(
                 TapeBlockKind.Data,
-                isLoadableRomBlock: true,
-                canUseRomLoadTrap: true,
+                isLoadableRomBlock: canUseRomLoadTrap,
+                canUseRomLoadTrap: canUseRomLoadTrap,
                 (byte[])streamData.Clone(),
                 payload,
                 streamData[^1],

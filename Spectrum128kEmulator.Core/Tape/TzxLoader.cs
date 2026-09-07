@@ -138,6 +138,31 @@ namespace Spectrum128kEmulator.Tap
             return sawPlaybackBlock;
         }
 
+        private static bool UsesStandardRomTimings(
+            byte[] streamData,
+            ushort pilotPulseLength,
+            ushort pilotPulseCount,
+            ushort syncFirst,
+            ushort syncSecond,
+            ushort zeroBit,
+            ushort oneBit,
+            byte usedBits)
+        {
+            if (streamData.Length < 2 || usedBits != 8)
+                return false;
+
+            ushort expectedPilotCount = streamData[0] == HeaderFlag
+                ? StandardHeaderPilotPulseCount
+                : StandardDataPilotPulseCount;
+
+            return pilotPulseLength == StandardPilotPulseLength &&
+                   pilotPulseCount == expectedPilotCount &&
+                   syncFirst == StandardSyncFirstPulseLength &&
+                   syncSecond == StandardSyncSecondPulseLength &&
+                   zeroBit == StandardZeroBitPulseLength &&
+                   oneBit == StandardOneBitPulseLength;
+        }
+
         private static IReadOnlyList<TapeBlock> NormalizeRomLoadableStandardDataBlocks(IReadOnlyList<TapeBlock> blocks)
         {
             return blocks;
@@ -199,7 +224,16 @@ namespace Spectrum128kEmulator.Tap
                             zeroBit,
                             oneBit,
                             usedBits,
-                            pauseMs)));
+                            pauseMs,
+                            canUseRomLoadTrap: UsesStandardRomTimings(
+                                streamData,
+                                pilotPulseLength,
+                                pilotCount,
+                                syncFirst,
+                                syncSecond,
+                                zeroBit,
+                                oneBit,
+                                usedBits))));
                         break;
                     }
 

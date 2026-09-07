@@ -46,7 +46,10 @@ This project focuses on correctness, clean architecture, and incremental develop
 
 ## Current Status
 
-Milestones 1-5 are complete. Tape compatibility and audio polish remain active work. Core/UI decoupling, clock-driven audio, and ULA/video timing are planned as the next coordinated architecture milestones.
+The established baseline on `master` includes CPU compliance, a headless core,
+clock-driven audio, and the first ULA contention/border model. Tape
+compatibility, live-tape audio handoff polish, and broader video-timing accuracy
+remain active work.
 
 - Emulator boots into 128K menu
 - Menu navigation works
@@ -64,9 +67,10 @@ Milestones 1-5 are complete. Tape compatibility and audio polish remain active w
 - `.tzx` support is implemented and `Exolon.tzx` is verified working
 - `Impossible Mission - Bugfix.tzx` now loads successfully, including its protected loader stage
 - `Batman - Release 1.tzx` now loads through to the game path
+- `Target Renegade (Imagine, OR) 128k.tzx` now loads through to gameplay
 - `.rzx` replay support is implemented and `aufmonty.rzx` plays back successfully
 - emulation and audio submission now run on a background loop while the UI presents frames at a fixed 50Hz cadence
-- muted turbo tape loads skip unnecessary per-frame audio-frame construction
+- loader-only turbo tape phases skip unnecessary per-frame audio-frame construction; live playback returns to real-time audio submission when the machine becomes audible
 - protected non-ROM live tape streams use a lower turbo ceiling than ordinary streaming tape
 - the Spectrum palette now uses standard `0xD7` normal and `0xFF` bright intensity levels
 - AY register model implemented and wired to ports
@@ -94,7 +98,7 @@ CPU Compliance Baseline
 - ZEXALL runs to completion in a headless runner
 - All ZEXDOC/ZEXALL instruction groups pass in the current headless harness
 - DAA implementation fixed and validated
-- Exact flags for block-I/O instructions (`INI`, `IND`, `INIR`, `INDR`, `OUTI`, `OUTD`, `OTIR`, `OTDR`) remain a known gap and are tracked in the current development plan
+- Hardware-derived flags for block-I/O instructions (`INI`, `IND`, `INIR`, `INDR`, `OUTI`, `OUTD`, `OTIR`, `OTDR`) are implemented and covered by targeted regression tests
 
 ZEXDOC and ZEXALL are major CPU regression gates, but they are not treated as proof that every undocumented or I/O-data-dependent behaviour is complete.
 
@@ -124,13 +128,14 @@ Tape Loading Progress (Milestone 6)
   - `Impossible Mission - Bugfix.tzx`
   - `Where Time Stood Still.tap`
   - `Batman - Release 1.tzx`
+  - `Target Renegade (Imagine, OR) 128k.tzx`
   - `aufmonty.rzx`
 - tape execution is selected from parsed tape structure rather than title-specific rules:
   - standard BASIC chains use the fast bootstrap path where their ROM side effects can be reproduced
   - mixed and protected tapes retain mounted signal playback for the live/protected stage
   - the ROM `LD-BYTES` trap remains the shared path for standard header/data loads and VERIFY
 - protected BASIC bootstrap now honours Spectrum `CLEAR -1` semantics, preserving all RAM before a `USR` handoff; this is required by the Impossible Mission loader
-- current generic Batman progress includes:
+- generic hybrid-tape support includes:
   - repeated loads in the same app session now behave consistently
   - raw-standard mixed tapes now use the bootstrap/hybrid mounted path instead of the older ROM-bootstrap-mounted path
   - mounted `IF ... THEN USR(...)` continuation steps directly evaluate safe numeric-variable expressions using BASIC-style default-zero semantics
@@ -146,7 +151,7 @@ Tape Loading Progress (Milestone 6)
 - mounted live-tape playback now uses a generic wall-clock turbo path in the app while the tape is actively driving the EAR line
 - emulated FE/tape pulse timing is kept exact during those live phases; the speed-up happens in the UI scheduler rather than by distorting tape data
 
-Broader `.tzx` compatibility work still remains for additional protected/custom titles. The current active structural goal is expanding the same format, transport, ROM/trap, bootstrap-policy, and regression layers beyond the working Batman / Exolon / Impossible baseline.
+Broader `.tzx` compatibility work still remains for additional protected/custom titles. The current active structural goal is expanding the same format, transport, ROM/trap, bootstrap-policy, and regression layers beyond the working Batman / Exolon / Impossible Mission / Target Renegade baseline.
 
 Audio Progress (Milestone 7)
 - AY register model implemented
@@ -163,114 +168,78 @@ Audio Progress (Milestone 7)
 - Output buffering tuned to reduce low-level crackle
 - `JSWAPRIL.Z80` regression testing restored correct music pitch and sequencing
 - Timing/performance polish still in progress
+- Protected live-tape loads now resume audio when playable code begins before the
+  tape stream ends. The transition is improved but not yet seamless in every
+  title; refine the turbo-to-realtime audio handoff without distorting tape timing.
 - Remaining polish is mostly app-side input responsiveness rather than core audio generation
 
 ## Current Development Plan
 
-The active ULA work is isolated on `feature/ula-contention-border`; `master` remains the accepted tape and runtime baseline.
+The core/UI boundary, clock-driven audio, hardware-derived block-I/O flags, and
+the initial ULA contention/border model are merged on `master`. Current work
+builds on those foundations:
 
-1. **Complete Z80 block-I/O flags before extending video timing.**
-   - Replace the provisional `INI`/`IND`/`OUTI`/`OUTD` flag handling with the hardware-derived formulas for `S`, `Z`, `F5`, `H`, `F3`, `P/V`, `N`, and `C`.
-   - Add table-driven tests across transfer data and register boundary cases.
-   - Rerun ZEXDOC/ZEXALL as a regression gate, while recognising they do not fully validate port-data-dependent behaviour.
+1. **Expand structural tape compatibility.**
+   - Extend format parsing, generic signal transport, ROM/trap behaviour, and bootstrap policy without title-specific branches.
+   - Prioritise protected/custom TZX stages that are not yet represented by the verified examples.
 
-2. **Decouple the emulator core from WinForms before extending timing-sensitive output.**
-   - Extract a headless `net8.0` engine library that owns machine execution, T-state progression, memory, tape, keyboard matrix state, and platform-neutral video/audio output.
-   - Keep WinForms, `System.Drawing`, Windows audio APIs, menus, and frame scheduling in a frontend adapter rather than in the emulation core.
-   - Expose the frame buffer as platform-neutral pixel data and make the existing Windows renderer an adapter, preserving a later cross-platform or WebAssembly frontend path.
-   - Start with `net8.0` rather than forcing `netstandard2.0`; the latter would constrain the current modern runtime and does not itself make a WebAssembly frontend possible.
+2. **Refine live-tape audio handoff.**
+   - Keep tape timing exact while moving from loader-only turbo operation to audible real-time playback.
+   - Remove the remaining non-seamless transitions in protected titles without regressing normal playback.
 
-3. **Make audio production clock-driven from master T-states.**
-   - Timestamp AY and beeper state changes against the machine T-state clock, then generate PCM through a deterministic sample-phase accumulator.
-   - The frontend may queue already-produced PCM, but must not determine emulated audio pitch from wall-clock frame delivery.
-   - Add tests that prove exact sample counts for a T-state interval and stable pitch when frontend scheduling is delayed or catches up.
+3. **Extend video timing accuracy.**
+   - Preserve the tested 48K/128K contention and border baseline while improving scanline/raster accuracy.
+   - Do not accept a timing change that regresses the verified tape or snapshot matrix.
 
-4. **Build ULA contention as a timing model, not a title-specific compatibility tweak.**
-   - Keep separate documented 48K and 128K timing profiles.
-   - Cover contended memory, contended I/O, frame phase, and paged 128K banks with focused tests.
-   - Do not merge a timing change that regresses the verified tape or snapshot matrix.
-
-5. **Add border rendering and timestamped border effects.**
-   - Render the visible Spectrum border around the active `256x192` display.
-   - Record port `FE` colour changes at their emulated T-state and render them on the corresponding raster region.
-   - Validate static borders first, then raster effects and their interaction with contention.
-
-6. **Use the compatibility matrix as the merge gate.**
+4. **Use the compatibility matrix as the merge gate.**
    - `exolon.tap` and `Exolon.tzx`
    - `Where Time Stood Still.tap`
    - `Impossible Mission - Bugfix.tzx`
    - `Batman - Release 1.tzx`
+   - `Target Renegade (Imagine, OR) 128k.tzx`
    - representative `.sna` / `.z80` snapshots, `aufmonty.rzx`, ZEXDOC, and ZEXALL
 
 ---
 
 ## Architecture
 
-The emulator is structured for clarity and testability:
+The solution separates the platform-neutral emulator from the Windows frontend
+and diagnostic tools:
 
-- `Spectrum128kEmulator.Core` (`net8.0`)
-  Headless engine library containing machine execution, CPU, tape, snapshots/RZX, audio synthesis, and the platform-neutral ARGB frame buffer. It has no WinForms, `System.Drawing`, or Windows audio-device dependency.
+```text
+Spectrum128kEmulator/
+|-- Spectrum128kEmulator.Core/             net8.0 platform-neutral emulator
+|   |-- Audio/                             AY/beeper synthesis and sample clock
+|   |-- Tape/                              TAP/TZX parsing, transport, and bootstrap policy
+|   |-- Z80/                               CPU execution, registers, flags, and opcode groups
+|   |-- Spectrum128Machine.cs              machine, memory, paging, ULA timing, and input matrix
+|   |-- SpectrumFrameBuffer.cs             platform-neutral ARGB frame buffer
+|   |-- BorderFrame.cs                     timestamped border events
+|   |-- SnapshotLoader.cs                  SNA snapshot loading
+|   |-- Z80SnapshotLoader.cs               Z80 snapshot loading
+|   |-- RzxLoader.cs                       RZX replay loading
+|   `-- RzxPlaybackSession.cs              RZX playback orchestration
+|
+|-- Audio/                                 Windows frontend audio pipeline and output adapters
+|-- MainForm.cs                            WinForms menus, host input, and presentation scheduling
+|-- SpectrumKeyInputBridge.cs              WinForms-to-Spectrum keyboard bridge
+|-- SpectrumRenderer.cs                    System.Drawing presentation adapter
+|-- Program.cs                             Windows application entry point
+|-- Spectrum128kEmulator.csproj            net10.0-windows frontend project
+|
+|-- Spectrum128kEmulator.Tests/            xUnit unit and regression tests
+|-- Spectrum128kEmulator.ManualHarness/    repeatable diagnostic and capture tool
+|-- Spectrum128kEmulator.Z80Compliance/    net8.0 ZEXDOC/ZEXALL compliance runner
+|-- ROMs/                                  required 128K ROM images
+|-- test-assets/                           checked-in test programs and fixtures
+`-- tmp/                                   ignored local probes, captures, and scratch artifacts
+```
 
-- `Spectrum128kEmulator` (`net10.0-windows`)
-  WinForms frontend that owns host input, menus, presentation scheduling, `Bitmap` blitting, and Windows audio output while consuming the core library.
-
-
-- `Z80/` / `Z80Cpu.cs`  
-  Main CPU execution/orchestration layer, including the execution loop, interrupt handling, dispatch entry points, and core CPU state
-
-- `Z80/` / `Z80Registers.cs`  
-  Z80 register model, including main and shadow registers plus byte/word access helpers
-
-- `Z80/` / `Z80Flags.cs`  
-  Flag definitions and flag-related helpers, including parity and undocumented flag handling
-
-- `Z80/` / `Z80AluHelpers.cs`  
-  8-bit and 16-bit ALU helpers, overflow handling, NEG, and DAA support
-
-- `Z80/` / `Z80BaseOperations.cs`  
-  Non-prefixed opcode table setup and base instruction flow helpers
-
-- `Z80/` / `Z80BitOperations.cs`  
-  CB-prefixed rotate, shift, BIT, SET, and RES operations
-
-- `Z80/` / `Z80ExtendedOperations.cs`  
-  ED-prefixed instructions, including block operations and extended I/O behaviour
-
-- `Z80/` / `Z80IndexedOperations.cs`  
-  DD/FD-prefixed IX/IY operations and indexed opcode handling
-
-- `Z80/` / `Z80CoreHelpers.cs`  
-  Shared CPU helpers such as fetch, stack, register, and other core internal utilities
-
-- `Z80/` / `Z80Disassembler.cs`  
-  Trace/disassembly scaffolding, separated to allow future expansion into a fuller disassembler
-
-- `Spectrum128Machine`  
-  Memory, paging, keyboard, ROM mapping, interrupts, frame timing, machine-level tape integration, and audio state capture
-
-- `SpectrumRenderer`  
-  Current Windows pixel-output adapter; planned to consume a platform-neutral engine frame buffer
-
-- `MainForm` / Windows audio pipeline
-  Current WinForms frontend and platform audio output; planned to remain outside the headless emulator engine
-
-- `SnapshotLoader` / `Z80SnapshotLoader`  
-  Snapshot loading support
-
-- `Tape/TapLoader` / `Tape/TzxLoader` / `Tape/TapeBlock`  
-  `.tap` / `.tzx` parsing, fake loading support, mounted tape state, ROM-driven tape integration, and tape bootstrap handling
-
-- `RzxLoader` / `RzxPlaybackSession`  
-  `.rzx` replay loading and playback orchestration
-
-- `MainForm`  
-  Thin WinForms UI layer
-
-- Test projects  
-  CPU correctness, machine behaviour, rendering, audio behaviour, and regression tests
-
-- `Spectrum128kEmulator.Z80Compliance`  
-  Headless CPU validation using ZEXDOC and ZEXALL
+`Spectrum128kEmulator.Core` has no WinForms, `System.Drawing`, or Windows
+audio-device dependency. The `net10.0-windows` frontend consumes Core for
+emulation state and produces Windows-specific video and audio output. The
+compliance runner depends only on Core, while the test and manual-harness
+projects may reference the frontend when they need to validate its adapters.
 
 ---
 
@@ -357,6 +326,11 @@ dotnet run --project Spectrum128kEmulator.ManualHarness
 
 This runs the emulator without UI and logs state.
 
+Its generic diagnostics accept `frames=`, `quiet=1`, `dumpblocks=1`, `strategy=`,
+scheduled key/register/memory events, memory-write watches, instruction traces, and
+execution breakpoints. It writes a machine dump and frame image only for the run being
+investigated; game-specific probes are deliberately kept out of the harness.
+
 > Intended for debugging, not performance measurement.
 
 ---
@@ -400,7 +374,7 @@ Notes:
 - ZEXALL runs to completion
 - All instruction groups passing
 - Core CPU behaviour validated by compliance tests and targeted regressions
-- Block-I/O flag completion remains active work because those flags are I/O-data-dependent and partly undocumented
+- Hardware-derived block-I/O flags, including data-dependent and undocumented bits, are implemented and covered by targeted regressions
 
 ### Milestone 5 - Snapshots Complete
 - 48K `.sna` loading complete and verified
@@ -415,7 +389,7 @@ Notes:
 - ROM-driven tape loading path implemented
 - VERIFY path implemented
 - deterministic sequencing and rewind implemented
-- Verified protected-loader examples include Exolon, Impossible Mission, and Batman
+- Verified protected-loader examples include Exolon, Impossible Mission, Batman, and Target Renegade
 - Broader protected/custom TZX compatibility remains ongoing
 
 ### Milestone 7 - Audio (In Progress)
@@ -431,18 +405,19 @@ Notes:
 - 48K snapshot audio path improved through regression testing
 - `JSWAPRIL.Z80` music pitch and sequencing restored
 - Timing/performance polish still in progress
+- Protected live-tape loads resume audio when playable code begins before the tape stream ends; the remaining turbo-to-realtime transition needs further refinement in some titles
 - Remaining input responsiveness polish is outside the core audio path
 
-### Milestone 8 - Core/UI Decoupling And Clock-Driven Audio (In Progress On Feature Branch)
+### Milestone 8 - Core/UI Decoupling And Clock-Driven Audio Complete
 - A platform-neutral ARGB frame buffer now sits below the Windows `Bitmap` adapter, with direct pixel regression coverage
 - A headless `net8.0` core library now contains the machine, CPU, tape, snapshot/RZX, audio synthesis, and frame-buffer model; the WinForms frontend and ZEX runner consume it
 - AY and beeper PCM sample counts now use a deterministic master-T-state accumulator; the frontend only queues produced PCM
 - Regression tests prove that split execution slices produce the same sample count as a combined interval and preserve fractional 48K samples across frames
 
-### Milestone 9 - ULA Timing And Border Effects (Ready To Merge From Feature Branch)
+### Milestone 9 - ULA Timing And Border Effects Baseline Complete
 - Static visible borders and timestamped `OUT (FE)` raster border changes are rendered through the platform-neutral frame buffer
 - 48K and 128K ULA contention coverage includes display phase, contended memory, contended I/O, and every paged 128K RAM bank
-- The core/UI boundary and clock-driven audio contract are in place; the focused CPU, renderer, audio, machine, snapshot/RZX, and full tape regression suites are green
+- The core/UI boundary and clock-driven audio contract are merged on `master`; focused CPU, renderer, audio, machine, snapshot/RZX, and tape regression suites cover the baseline
 
 ---
 
@@ -454,7 +429,7 @@ Notes:
 - Extended tape compatibility
 - Remaining menu/input responsiveness polish for games like Jet Set Willy
 - Broader real-game validation
-- Additional platform frontends, including a browser/WebAssembly adapter once the headless engine boundary is established
+- Additional platform frontends, including a browser/WebAssembly adapter using the established headless engine boundary
 
 ---
 

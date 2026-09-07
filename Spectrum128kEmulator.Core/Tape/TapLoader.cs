@@ -136,6 +136,7 @@ namespace Spectrum128kEmulator.Tap
         private const int SyncSecondPulseLengthTStates = 735;
         private const int ZeroBitPulseLengthTStates = 855;
         private const int OneBitPulseLengthTStates = 1710;
+        private const int PauseLevelSettlingTStates = 3500;
         private readonly IReadOnlyList<TapeBlock> blocks;
         private readonly bool skipCustomHeaderForEarPlayback;
         private readonly int initialBlockIndex;
@@ -152,6 +153,7 @@ namespace Spectrum128kEmulator.Tap
         private int earPulseLengthTStates;
         private int earPulseSequenceIndex;
         private int earNextBlockIndexAfterPause;
+        private int earPauseLowTailTStates;
         private int pendingPrePlaybackPauseTStates;
         private int endOfStreamTransitionTStates;
         private int endOfStreamTransitionTailTStates;
@@ -255,6 +257,7 @@ namespace Spectrum128kEmulator.Tap
             earPulseLengthTStates = 0;
             earPulseSequenceIndex = 0;
             earNextBlockIndexAfterPause = 0;
+            earPauseLowTailTStates = 0;
             pendingPrePlaybackPauseTStates = initialPrePlaybackPauseTStates;
             endOfStreamTransitionTStates = 0;
             endOfStreamTransitionTailTStates = 0;
@@ -1217,6 +1220,7 @@ namespace Spectrum128kEmulator.Tap
             {
                 earPlaybackState = EarPlaybackState.Pause;
                 earPulseLengthTStates = pendingPrePlaybackPauseTStates;
+                earPauseLowTailTStates = 0;
                 earNextBlockIndexAfterPause = blockIndex;
                 pendingPrePlaybackPauseTStates = 0;
                 earLevel = false;
@@ -1263,8 +1267,7 @@ namespace Spectrum128kEmulator.Tap
                     return;
 
                 case TapeBlockKind.Pause:
-                    earPlaybackState = EarPlaybackState.Pause;
-                    earPulseLengthTStates = GetPauseLengthTStates(block);
+                    BeginPause(block, blockIndex + 1);
                     return;
 
                 case TapeBlockKind.SetSignalLevel:
@@ -1277,6 +1280,18 @@ namespace Spectrum128kEmulator.Tap
                     earPulseLengthTStates = 0;
                     return;
             }
+        }
+
+        private void BeginPause(TapeBlock block, int nextBlockIndex)
+        {
+            int pauseTStates = GetPauseLengthTStates(block);
+            int settlingTStates = Math.Min(PauseLevelSettlingTStates, pauseTStates);
+
+            // TZX pauses retain the post-data level for 1 ms before driving EAR low.
+            earPlaybackState = EarPlaybackState.Pause;
+            earPulseLengthTStates = settlingTStates;
+            earPauseLowTailTStates = pauseTStates - settlingTStates;
+            earNextBlockIndexAfterPause = nextBlockIndex;
         }
 
         private void AdvanceEarPulse()
@@ -1348,8 +1363,7 @@ namespace Spectrum128kEmulator.Tap
 
                     if (block.PauseAfterBlockMs != 0)
                     {
-                        earPlaybackState = EarPlaybackState.Pause;
-                        earPulseLengthTStates = GetPauseLengthTStates(block);
+                        BeginPause(block, earPlaybackBlockIndex + 1);
                         return;
                     }
 
@@ -1378,8 +1392,7 @@ namespace Spectrum128kEmulator.Tap
                     {
                         if (block.PauseAfterBlockMs != 0)
                         {
-                            earPlaybackState = EarPlaybackState.Pause;
-                            earPulseLengthTStates = GetPauseLengthTStates(block);
+                            BeginPause(block, earPlaybackBlockIndex + 1);
                             return;
                         }
 
@@ -1415,8 +1428,7 @@ namespace Spectrum128kEmulator.Tap
 
                     if (block.PauseAfterBlockMs != 0)
                     {
-                        earPlaybackState = EarPlaybackState.Pause;
-                        earPulseLengthTStates = GetPauseLengthTStates(block);
+                        BeginPause(block, earPlaybackBlockIndex + 1);
                         return;
                     }
 
@@ -1424,6 +1436,14 @@ namespace Spectrum128kEmulator.Tap
                     return;
 
                 case EarPlaybackState.Pause:
+                    if (earPauseLowTailTStates > 0)
+                    {
+                        earLevel = false;
+                        earPulseLengthTStates = earPauseLowTailTStates;
+                        earPauseLowTailTStates = 0;
+                        return;
+                    }
+
                     earLevel = false;
                     AdvanceLogicalPositionAfterLivePlaybackBlockIfNeeded(earPlaybackBlockIndex, block);
 
@@ -1835,6 +1855,7 @@ namespace Spectrum128kEmulator.Tap
                 blocks,
                 initialBlockIndex: playbackStartBlockIndex,
                 skipCustomHeaderForEarPlayback: skipCustomHeaderForEarPlayback,
+                initialPrePlaybackPauseTStates: dataBlock.PauseAfterBlockMs * TStatesPerMillisecond48k,
                 nonRomTimingDivisor: nonRomTimingDivisor,
                 loadableTimingDivisor: loadableTimingDivisor,
                 initialEarLevelHigh: initialEarLevelHigh);
@@ -4053,6 +4074,9 @@ namespace Spectrum128kEmulator.Tap
                 machine.Cpu.Regs.SP -= 2;
                 WriteWord(machine, machine.Cpu.Regs.SP, UsrReturnAddress);
                 machine.Cpu.Regs.BC = entryPoint;
+                // The ROM loads HL with STACK-BC before it pushes the return
+                // address and RETs into the USR target.
+                machine.Cpu.Regs.HL = UsrReturnAddress;
                 machine.Cpu.Regs.H_ = (byte)(EndCalcLiteralAddress >> 8);
                 machine.Cpu.Regs.L_ = (byte)(EndCalcLiteralAddress & 0xFF);
                 machine.Cpu.Regs.PC = entryPoint;

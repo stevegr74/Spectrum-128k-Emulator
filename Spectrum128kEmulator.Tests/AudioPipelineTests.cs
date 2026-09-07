@@ -1,4 +1,5 @@
 using System;
+using System.IO;
 using Spectrum128kEmulator.Audio;
 using Xunit;
 
@@ -57,6 +58,35 @@ namespace Spectrum128kEmulator.Tests
             Assert.NotNull(output.LastSamples);
             Assert.Equal(881, output.LastSamples!.Length);
             Assert.Equal(1761, output.TotalSamplesWritten);
+        }
+
+        [Fact]
+        public void Machine_HasAudibleOutput_RequiresAnEnabledAyChannelWithVolume()
+        {
+            string romFolder = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"));
+            Directory.CreateDirectory(romFolder);
+            File.WriteAllBytes(Path.Combine(romFolder, "128-0.rom"), new byte[16384]);
+            File.WriteAllBytes(Path.Combine(romFolder, "128-1.rom"), new byte[16384]);
+
+            try
+            {
+                var machine = new Spectrum128Machine(romFolder);
+                Assert.False(machine.HasAudibleOutput);
+
+                machine.Ay.SelectRegister(7);
+                machine.Ay.WriteRegister(0b0011_1110);
+                machine.Ay.SelectRegister(8);
+                machine.Ay.WriteRegister(0x0F);
+                Assert.True(machine.HasAudibleOutput);
+
+                machine.Ay.SelectRegister(7);
+                machine.Ay.WriteRegister(0b0011_1111);
+                Assert.False(machine.HasAudibleOutput);
+            }
+            finally
+            {
+                Directory.Delete(romFolder, true);
+            }
         }
 
         private sealed class RecordingAudioOutput : IAudioOutput
