@@ -106,6 +106,36 @@ namespace Spectrum128kEmulator.Tests
         }
 
         [Fact]
+        public void PortReads_Use_UlaSampleTime_Within_Their_Final_IoCycle()
+        {
+            var memory = new byte[65536];
+            var samples = new List<(ushort Port, int Offset)>();
+            var cpu = new Z80Cpu
+            {
+                ReadMemory = address => memory[address],
+                WriteMemory = (address, value) => memory[address] = value,
+                ReadPortTimed = (port, offset) =>
+                {
+                    samples.Add((port, offset));
+                    return 0xFF;
+                }
+            };
+
+            memory[0x0000] = 0xDB; // IN A,(n)
+            memory[0x0001] = 0xFE;
+            memory[0x0002] = 0xED; // IN A,(C)
+            memory[0x0003] = 0x78;
+
+            cpu.Reset();
+            cpu.Regs.A = 0x12;
+            cpu.Step();
+            cpu.Regs.BC = 0x7FFE;
+            cpu.Step();
+
+            Assert.Equal(new[] { ((ushort)0x12FE, 10), ((ushort)0x7FFE, 11) }, samples);
+        }
+
+        [Fact]
         public void AdcHlBc_NoCarryIn_Adds_And_Leaves_N_Clear()
         {
             var memory = new byte[65536];
@@ -404,7 +434,7 @@ namespace Spectrum128kEmulator.Tests
         }
 
         [Fact]
-        public void Interrupt_Acknowledge_Preserves_R_Register()
+        public void Interrupt_Acknowledge_Increments_R_Register_Without_Changing_Bit7()
         {
             var memory = new byte[65536];
             var cpu = new Z80Cpu
@@ -416,14 +446,34 @@ namespace Spectrum128kEmulator.Tests
             memory[0x0000] = 0x00; // NOP
 
             cpu.Reset();
-            cpu.Regs.R = 0x2A;
+            cpu.Regs.R = 0xAA;
             cpu.RestoreInterruptState(iff1: true, iff2: true, interruptMode: 1);
             cpu.InterruptPending = true;
 
             cpu.ExecuteCycles(13);
 
-            Assert.Equal((byte)0x2A, cpu.Regs.R);
+            Assert.Equal((byte)0xAB, cpu.Regs.R);
             Assert.Equal((ushort)0x0038, cpu.Regs.PC);
+        }
+
+        [Fact]
+        public void Halt_Refresh_Cycles_Increment_R_Register()
+        {
+            var memory = new byte[65536];
+            var cpu = new Z80Cpu
+            {
+                ReadMemory = addr => memory[addr],
+                WriteMemory = (addr, value) => memory[addr] = value
+            };
+
+            memory[0x0000] = 0x76; // HALT
+
+            cpu.Reset();
+            cpu.Regs.R = 0xFE;
+            cpu.ExecuteCycles(12);
+
+            // One M1 fetch for HALT, followed by two halted refresh cycles.
+            Assert.Equal((byte)0x81, cpu.Regs.R);
         }
 
         [Fact]

@@ -420,7 +420,9 @@ namespace Spectrum128kEmulator.Z80
             {
                 byte low = FetchByte();
                 ushort port = (ushort)((Regs.A << 8) | low);
-                Regs.A = ReadPortTimed?.Invoke(port, 11) ?? ReadPort(port);
+                // The ULA sees the read during the third T-state of the final
+                // I/O cycle: 4 (M1) + 3 (operand) + 3.
+                Regs.A = ReadPortTimed?.Invoke(port, 10) ?? ReadPort(port);
                 TStates += 11;
             };
 

@@ -17,6 +17,9 @@ namespace Spectrum128kEmulator.Z80
         public Action<ushort, byte> WritePort { get; set; } = (_, _) => { };
         public Action<string>? Trace { get; set; }
         public Func<Z80Cpu, bool>? BeforeInstruction { get; set; }
+        // Diagnostic-only stop hook.  It is unset during normal emulation.
+        public Func<Z80Cpu, bool>? StopBeforeInstruction { get; set; }
+        public bool ExecutionStopped { get; private set; }
 
         private bool halted = false;
         public bool IsHalted => halted;
@@ -153,6 +156,7 @@ namespace Spectrum128kEmulator.Z80
 
             flagsChangedLastInstruction = false;
             lastFlagsBeforeInstruction = 0;
+            ExecutionStopped = false;
         }
 
         public void ResetExecutionStatePreserveTiming()
@@ -194,16 +198,24 @@ namespace Spectrum128kEmulator.Z80
 
             flagsChangedLastInstruction = false;
             lastFlagsBeforeInstruction = 0;
+            ExecutionStopped = false;
         }
 
         public void ExecuteCycles(ulong cycles)
         {
             ulong target = TStates + cycles;
+            ExecutionStopped = false;
 
             while (TStates < target)
             {
                 if (BeforeInstruction != null && BeforeInstruction(this))
                     continue;
+
+                if (StopBeforeInstruction?.Invoke(this) == true)
+                {
+                    ExecutionStopped = true;
+                    break;
+                }
 
                 if (InterruptPending && IFF1)
                 {
@@ -223,6 +235,7 @@ namespace Spectrum128kEmulator.Z80
                     // Preserve IFF2 on maskable interrupt acknowledge.
                     // RETN/RETI restore IFF1 from IFF2.
 
+                    IncrementRefreshRegister();
                     TStates += 7;
                     Push(Regs.PC);
 
@@ -249,6 +262,7 @@ namespace Spectrum128kEmulator.Z80
 
                 if (halted)
                 {
+                    IncrementRefreshRegister();
                     TStates += 4;
                     InstructionFetchCount++;
                     continue;
@@ -261,11 +275,18 @@ namespace Spectrum128kEmulator.Z80
         public void ExecuteInstructionFetches(ulong fetches)
         {
             ulong target = InstructionFetchCount + fetches;
+            ExecutionStopped = false;
 
             while (InstructionFetchCount < target)
             {
                 if (BeforeInstruction != null && BeforeInstruction(this))
                     continue;
+
+                if (StopBeforeInstruction?.Invoke(this) == true)
+                {
+                    ExecutionStopped = true;
+                    break;
+                }
 
                 if (InterruptPending && IFF1)
                 {
@@ -283,6 +304,7 @@ namespace Spectrum128kEmulator.Z80
 
                     IFF1 = false;
 
+                    IncrementRefreshRegister();
                     TStates += 7;
                     Push(Regs.PC);
 
@@ -309,6 +331,7 @@ namespace Spectrum128kEmulator.Z80
 
                 if (halted)
                 {
+                    IncrementRefreshRegister();
                     TStates += 4;
                     InstructionFetchCount++;
                     continue;

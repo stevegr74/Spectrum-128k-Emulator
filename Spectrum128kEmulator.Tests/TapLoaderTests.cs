@@ -188,7 +188,7 @@ namespace Spectrum128kEmulator.Tests
                     "pause-boundary",
                     new TapeBlock[]
                     {
-                        TapeBlock.CreateByteStreamData(new byte[] { 0x80 }, 855, 1710, 1, 1),
+                        TapeBlock.CreateByteStreamData(new byte[] { 0x80 }, 855, 1710, 1, 2),
                         TapeBlock.CreatePureTone(100, 1)
                     },
                     skipCustomHeaderForEarPlayback: false);
@@ -208,7 +208,56 @@ namespace Spectrum128kEmulator.Tests
                     BindingFlags.Instance | BindingFlags.NonPublic)!;
                 advanceEarPulse.Invoke(tape, Array.Empty<object>());
 
+                Assert.Equal("Pause", GetPrivateField(tape, "earPlaybackState").ToString());
+                Assert.False((bool)GetPrivateField(tape, "earLevel"));
+
+                advanceEarPulse.Invoke(tape, Array.Empty<object>());
+
                 Assert.Equal("PureTone", GetPrivateField(tape, "earPlaybackState").ToString());
+                Assert.False((bool)GetPrivateField(tape, "earLevel"));
+            }
+            finally
+            {
+                Directory.Delete(tempFolder, true);
+            }
+        }
+
+        [Fact]
+        public void BootstrapTapeBlocksAndMountRemaining_Preserves_LeadingDataPause_Before_LivePlayback()
+        {
+            string tempFolder = CreateTempRoms();
+
+            try
+            {
+                byte[] basicProgram = BuildBasicProgram(
+                    BuildBasicLine(10, Token(249), Ascii(" "), Token(192), Ascii("32768"), NumberMarker(32768)));
+                var blocks = new[]
+                {
+                    TapeBlock.CreateData(BuildHeaderBlock(0, "BOOT", (ushort)basicProgram.Length, 10, (ushort)basicProgram.Length),
+                        2168, 8063, 667, 735, 855, 1710, 8, 0),
+                    TapeBlock.CreateData(BuildDataBlock(basicProgram),
+                        2168, 3223, 667, 735, 855, 1710, 8, 2000),
+                    TapeBlock.CreatePureTone(100, 1)
+                };
+                var machine = new Spectrum128Machine(tempFolder);
+
+                MethodInfo bootstrap = typeof(TapLoader).GetMethod(
+                    "BootstrapTapeBlocksAndMountRemaining",
+                    BindingFlags.Static | BindingFlags.NonPublic)!;
+                bootstrap.Invoke(null, new object[]
+                {
+                    machine,
+                    "bootstrap-pause",
+                    blocks,
+                    false,
+                    1,
+                    1,
+                    true
+                });
+
+                MountedTape tape = Assert.IsType<MountedTape>(machine.MountedTape);
+                Assert.Equal("Pause", GetPrivateField(tape, "earPlaybackState").ToString());
+                Assert.Equal(2000 * 3500, (int)GetPrivateField(tape, "earPulseLengthTStates"));
                 Assert.False((bool)GetPrivateField(tape, "earLevel"));
             }
             finally

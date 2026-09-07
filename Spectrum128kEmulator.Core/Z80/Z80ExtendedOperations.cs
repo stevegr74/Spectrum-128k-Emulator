@@ -19,14 +19,14 @@ namespace Spectrum128kEmulator.Z80
             // =========================
             // IN r,(C)
             // =========================
-            edOpcodeTable[0x40] = () => { byte v = ReadPortTimed?.Invoke(Regs.BC, 12) ?? ReadPort(Regs.BC); Regs.B = v; SetInFlags(v); TStates += 12; };
-            edOpcodeTable[0x48] = () => { byte v = ReadPortTimed?.Invoke(Regs.BC, 12) ?? ReadPort(Regs.BC); Regs.C = v; SetInFlags(v); TStates += 12; };
-            edOpcodeTable[0x50] = () => { byte v = ReadPortTimed?.Invoke(Regs.BC, 12) ?? ReadPort(Regs.BC); Regs.D = v; SetInFlags(v); TStates += 12; };
-            edOpcodeTable[0x58] = () => { byte v = ReadPortTimed?.Invoke(Regs.BC, 12) ?? ReadPort(Regs.BC); Regs.E = v; SetInFlags(v); TStates += 12; };
-            edOpcodeTable[0x60] = () => { byte v = ReadPortTimed?.Invoke(Regs.BC, 12) ?? ReadPort(Regs.BC); Regs.H = v; SetInFlags(v); TStates += 12; };
-            edOpcodeTable[0x68] = () => { byte v = ReadPortTimed?.Invoke(Regs.BC, 12) ?? ReadPort(Regs.BC); Regs.L = v; SetInFlags(v); TStates += 12; };
-            edOpcodeTable[0x70] = () => { byte v = ReadPortTimed?.Invoke(Regs.BC, 12) ?? ReadPort(Regs.BC); SetInFlags(v); TStates += 12; };
-            edOpcodeTable[0x78] = () => { byte v = ReadPortTimed?.Invoke(Regs.BC, 12) ?? ReadPort(Regs.BC); Regs.A = v; SetInFlags(v); TStates += 12; };
+            edOpcodeTable[0x40] = () => { byte v = ReadPortTimed?.Invoke(Regs.BC, 11) ?? ReadPort(Regs.BC); Regs.B = v; SetInFlags(v); TStates += 12; };
+            edOpcodeTable[0x48] = () => { byte v = ReadPortTimed?.Invoke(Regs.BC, 11) ?? ReadPort(Regs.BC); Regs.C = v; SetInFlags(v); TStates += 12; };
+            edOpcodeTable[0x50] = () => { byte v = ReadPortTimed?.Invoke(Regs.BC, 11) ?? ReadPort(Regs.BC); Regs.D = v; SetInFlags(v); TStates += 12; };
+            edOpcodeTable[0x58] = () => { byte v = ReadPortTimed?.Invoke(Regs.BC, 11) ?? ReadPort(Regs.BC); Regs.E = v; SetInFlags(v); TStates += 12; };
+            edOpcodeTable[0x60] = () => { byte v = ReadPortTimed?.Invoke(Regs.BC, 11) ?? ReadPort(Regs.BC); Regs.H = v; SetInFlags(v); TStates += 12; };
+            edOpcodeTable[0x68] = () => { byte v = ReadPortTimed?.Invoke(Regs.BC, 11) ?? ReadPort(Regs.BC); Regs.L = v; SetInFlags(v); TStates += 12; };
+            edOpcodeTable[0x70] = () => { byte v = ReadPortTimed?.Invoke(Regs.BC, 11) ?? ReadPort(Regs.BC); SetInFlags(v); TStates += 12; };
+            edOpcodeTable[0x78] = () => { byte v = ReadPortTimed?.Invoke(Regs.BC, 11) ?? ReadPort(Regs.BC); Regs.A = v; SetInFlags(v); TStates += 12; };
 
             // =========================
             // OUT (C),r
@@ -308,7 +308,9 @@ namespace Spectrum128kEmulator.Z80
 
         private void BlockIn(bool increment, bool repeat)
         {
-            byte value = ReadPortTimed?.Invoke(Regs.BC, 12) ?? ReadPort(Regs.BC);
+            // INI/IND use two opcode M1 cycles followed by the four-T-state
+            // I/O read. The ULA samples on the third I/O T-state.
+            byte value = ReadPortTimed?.Invoke(Regs.BC, 11) ?? ReadPort(Regs.BC);
             WriteMemory(Regs.HL, value);
 
             Regs.HL = increment ? (ushort)(Regs.HL + 1) : (ushort)(Regs.HL - 1);

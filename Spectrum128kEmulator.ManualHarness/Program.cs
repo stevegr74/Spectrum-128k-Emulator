@@ -20,16 +20,19 @@ if (args.Length > 0)
     int floatingBusDisplayStartAdjust = 0;
     int floatingBusSampleAdjust = 0;
     bool enableDebugCapture = false;
+    bool quiet = false;
+    List<ushort> watchedMemoryWriteAddresses = new();
+    List<(ushort Address, int Length)> memoryDumpRequests = new();
     bool dumpTapeBlocks = false;
-    bool dumpBatmanBasic = false;
     bool enableMachineTrace = false;
     TapeLoadStrategy? forcedTapeStrategy = null;
     (ushort Start, ushort End)? focusedTraceRange = null;
     int focusedTraceStartFrame = 0;
     int focusedTraceFrameLimit = 0;
     int focusedTraceMaxEntries = 2048;
+    ushort? focusedTraceStopPc = null;
+    ushort? breakProgramCounter = null;
     string executionMode = "frame";
-    string? batmanForceContinuationMode = null;
     List<ScheduledKeyEvent> scheduledKeyEvents = new();
     List<ScheduledPcEvent> scheduledPcEvents = new();
     List<ScheduledRegisterEvent> scheduledRegisterEvents = new();
@@ -80,13 +83,21 @@ if (args.Length > 0)
         {
             enableDebugCapture = true;
         }
+        else if (arg.Equals("quiet=1", StringComparison.OrdinalIgnoreCase))
+        {
+            quiet = true;
+        }
+        else if (arg.StartsWith("watchwrite=", StringComparison.OrdinalIgnoreCase))
+        {
+            watchedMemoryWriteAddresses = ParseAddressList(arg["watchwrite=".Length..]);
+        }
+        else if (arg.StartsWith("dumpmem=", StringComparison.OrdinalIgnoreCase))
+        {
+            memoryDumpRequests.Add(ParseMemoryDumpRequest(arg["dumpmem=".Length..]));
+        }
         else if (arg.Equals("dumpblocks=1", StringComparison.OrdinalIgnoreCase))
         {
             dumpTapeBlocks = true;
-        }
-        else if (arg.Equals("dumpbatmanbasic=1", StringComparison.OrdinalIgnoreCase))
-        {
-            dumpBatmanBasic = true;
         }
         else if (arg.Equals("machinetrace=1", StringComparison.OrdinalIgnoreCase))
         {
@@ -112,6 +123,14 @@ if (args.Length > 0)
         {
             focusedTraceRange = ParseTraceRange(arg["tracepc=".Length..]);
         }
+        else if (arg.StartsWith("breakpc=", StringComparison.OrdinalIgnoreCase))
+        {
+            breakProgramCounter = ParseAddress(arg["breakpc=".Length..]);
+        }
+        else if (arg.StartsWith("tracestoppc=", StringComparison.OrdinalIgnoreCase))
+        {
+            focusedTraceStopPc = ParseAddress(arg["tracestoppc=".Length..]);
+        }
         else if (arg.StartsWith("framet=", StringComparison.OrdinalIgnoreCase))
         {
             scheduledFrameTimingEvents.Add(ParseFrameTimingEvent(arg["framet=".Length..]));
@@ -132,10 +151,6 @@ if (args.Length > 0)
         {
             executionMode = arg["exec=".Length..].Trim().ToLowerInvariant();
         }
-        else if (arg.StartsWith("batforce=", StringComparison.OrdinalIgnoreCase))
-        {
-            batmanForceContinuationMode = arg["batforce=".Length..].Trim().ToLowerInvariant();
-        }
         else
         {
             scheduledKeyEvents = ParseKeyScript(arg);
@@ -153,12 +168,6 @@ if (args.Length > 0)
     if (dumpTapeBlocks)
     {
         DumpTapeBlocks(snapshotPath, machine.FrameTStates == Spectrum128Machine.FrameTStates48);
-        return;
-    }
-
-    if (dumpBatmanBasic)
-    {
-        DumpBatmanBasic(snapshotPath);
         return;
     }
 
@@ -226,6 +235,12 @@ if (args.Length > 0)
         Console.WriteLine("Debug event capture enabled.");
     }
 
+    if (watchedMemoryWriteAddresses.Count > 0)
+    {
+        machine.SetDebugMemoryWriteWatch(watchedMemoryWriteAddresses);
+        Console.WriteLine($"Watching memory writes: {string.Join(',', watchedMemoryWriteAddresses.Select(address => "0x" + address.ToString("X4")))}");
+    }
+
     if (focusedTraceRange.HasValue)
     {
         int effectiveFocusedTraceFrameLimit = focusedTraceFrameLimit > 0 ? focusedTraceFrameLimit : frameLimit;
@@ -238,6 +253,19 @@ if (args.Length > 0)
         Console.WriteLine(
             $"Focused trace: pc=0x{focusedTraceRange.Value.Start:X4}-0x{focusedTraceRange.Value.End:X4} " +
             $"startFrame={focusedTraceStartFrame} frames={effectiveFocusedTraceFrameLimit} maxEntries={focusedTraceMaxEntries}");
+
+        if (focusedTraceStopPc.HasValue)
+        {
+            machine.SetFocusedInstructionTraceStopProgramCounter(focusedTraceStopPc.Value);
+            Console.WriteLine($"Focused trace stop: pc=0x{focusedTraceStopPc.Value:X4}");
+        }
+    }
+
+    if (breakProgramCounter.HasValue)
+    {
+        ushort breakpoint = breakProgramCounter.Value;
+        machine.Cpu.StopBeforeInstruction = cpu => cpu.Regs.PC == breakpoint;
+        Console.WriteLine($"Execution breakpoint: pc=0x{breakpoint:X4}");
     }
 
     if (scheduledKeyEvents.Count > 0)
@@ -329,6 +357,17 @@ if (args.Length > 0)
 
         ExecuteHarnessStep(machine, executionMode);
 
+        if (machine.Cpu.ExecutionStopped)
+        {
+            string breakpointDump = machine.BuildDebugDump(
+                $"Manual harness execution breakpoint at PC=0x{machine.Cpu.Regs.PC:X4}.");
+            foreach ((ushort address, int length) in memoryDumpRequests)
+                breakpointDump += BuildMemoryDump(machine, address, length);
+            WriteHarnessArtifacts(machine, breakpointDump, "breakpoint");
+            Console.WriteLine($"Execution stopped at PC=0x{machine.Cpu.Regs.PC:X4} frame={machine.FrameCount}.");
+            return;
+        }
+
         if (machine.TryConsumeAutoDebugDump(out string reason, out string dump))
         {
             WriteHarnessArtifacts(machine, dump, "auto");
@@ -343,85 +382,25 @@ if (args.Length > 0)
             Console.WriteLine(
                 $"PENDING frame={machine.FrameCount} pending={machine.HasPendingMountedLoadUsrContinuation} " +
                 $"pc=0x{machine.Cpu.Regs.PC:X4} tape={machine.GetMountedTapeDebugState()}");
-            Console.WriteLine(BuildBatmanSysVarDebug(machine));
+            Console.WriteLine(BuildBasicSystemVariableDebug(machine));
         }
 
-        if (machine.FrameCount != lastReportedFrame && machine.FrameCount % 10 == 0)
+        if (!quiet && machine.FrameCount != lastReportedFrame && machine.FrameCount % 10 == 0)
         {
             lastReportedFrame = machine.FrameCount;
             Console.WriteLine(
                 $"Frame {machine.FrameCount}: PC=0x{machine.Cpu.Regs.PC:X4} SP=0x{machine.Cpu.Regs.SP:X4} " +
                 $"IFF1={machine.Cpu.IFF1} IFF2={machine.Cpu.IFF2} INTP={machine.Cpu.InterruptPending} " +
-                $"Tape={machine.GetMountedTapeDebugState()}");
-            if (machine.FrameCount >= 14110 && machine.FrameCount <= 14180)
-                Console.WriteLine(BuildBatmanSysVarDebug(machine));
-        }
-
-        if (!string.IsNullOrEmpty(batmanForceContinuationMode) &&
-            machine.FrameCount == 13820 &&
-            machine.HasPendingMountedLoadUsrContinuation)
-        {
-            FieldInfo? pendingField = typeof(Spectrum128Machine).GetField(
-                "pendingMountedLoadUsrContinuationResolver",
-                BindingFlags.Instance | BindingFlags.NonPublic);
-            if (pendingField?.GetValue(machine) is Func<Spectrum128Machine, ushort?> pendingResolver)
-            {
-                Console.WriteLine("PREVIEW " + BuildBatmanSysVarDebug(machine));
-                Console.WriteLine(BuildPendingMountedLoadDebug(machine));
-                if (!string.IsNullOrEmpty(batmanForceContinuationMode))
-                {
-                    if (batmanForceContinuationMode == "curchl")
-                    {
-                        ushort curChl = (ushort)(machine.PeekMemory(23633) | (machine.PeekMemory(23634) << 8));
-                        machine.SetPendingMountedLoadUsrContinuation(curChl);
-                        Console.WriteLine($"PREVIEW forced=curchl entry=0x{curChl:X4}");
-                    }
-                    else if (batmanForceContinuationMode == "usr0")
-                    {
-                        machine.SetPendingMountedLoadUsrContinuation(0);
-                        Console.WriteLine("PREVIEW forced=usr0 entry=0x0000");
-                    }
-                    else if (batmanForceContinuationMode == "natural")
-                    {
-                        ushort? preview = pendingResolver(machine);
-                        Console.WriteLine($"PREVIEW resolver={(preview.HasValue ? $"0x{preview.Value:X4}" : "null")} pc=0x{machine.Cpu.Regs.PC:X4}");
-                        return;
-                    }
-                    else if (batmanForceContinuationMode == "clear")
-                    {
-                        machine.ClearPendingMountedLoadUsrContinuation();
-                        Console.WriteLine("PREVIEW forced=clearpending");
-                    }
-                }
-                else
-                {
-                    ushort? preview = pendingResolver(machine);
-                    Console.WriteLine($"PREVIEW resolver={(preview.HasValue ? $"0x{preview.Value:X4}" : "null")} pc=0x{machine.Cpu.Regs.PC:X4}");
-                    return;
-                }
-            }
+                $"Audio={(machine.HasAudibleOutput ? 1 : 0)} Tape={machine.GetMountedTapeDebugState()}");
         }
 
         iteration++;
     }
 
     string finalDump = machine.BuildDebugDump($"ManualHarness end-of-run dump after {machine.FrameCount} frames.");
-    finalDump += BuildPendingMountedLoadDebug(machine);
-    finalDump += BuildBasicProgramMemoryDebug(machine);
+    foreach ((ushort address, int length) in memoryDumpRequests)
+        finalDump += BuildMemoryDump(machine, address, length);
     WriteHarnessArtifacts(machine, finalDump, "end");
-    if (machine.HasPendingMountedLoadUsrContinuation)
-    {
-        MethodInfo? resumeMethod = typeof(Spectrum128Machine).GetMethod(
-            "TryResumePendingMountedLoadUsrContinuation",
-            BindingFlags.Instance | BindingFlags.NonPublic);
-        if (resumeMethod != null)
-        {
-            bool forcedResume = (bool)resumeMethod.Invoke(machine, new object[] { machine.Cpu })!;
-            Console.WriteLine(
-                $"FORCED-RESUME frame={machine.FrameCount} resumed={forcedResume} pc=0x{machine.Cpu.Regs.PC:X4} " +
-                $"bc=0x{machine.Cpu.Regs.BC:X4} tape={machine.GetMountedTapeDebugState()}");
-        }
-    }
     Console.WriteLine("No auto debug dump was triggered.");
     return;
 }
@@ -492,200 +471,6 @@ static void DumpTapeBlocks(string tapePath, bool stopTapeIf48k)
     DumpBlockList(parsedBlocks);
     Console.WriteLine("=== EXECUTION BLOCKS ===");
     DumpBlockList(executionBlocks);
-}
-
-static void DumpBatmanBasic(string tapePath)
-{
-    Type tapLoaderType = typeof(TapLoader);
-    MethodInfo parseHeaderInfoMethod = tapLoaderType.GetMethod("ParseHeaderInfo", BindingFlags.NonPublic | BindingFlags.Static)!;
-    MethodInfo initMachineMethod = tapLoaderType.GetMethod("InitializeMachineForFakeTapeLoad", BindingFlags.NonPublic | BindingFlags.Static)!;
-    MethodInfo loadBasicProgramMethod = tapLoaderType
-        .GetMethods(BindingFlags.NonPublic | BindingFlags.Static)
-        .Single(method =>
-        {
-            if (method.Name != "LoadBasicProgram")
-                return false;
-            ParameterInfo[] parameters = method.GetParameters();
-            return parameters.Length == 3 &&
-                   parameters[0].ParameterType == typeof(Spectrum128Machine) &&
-                   parameters[2].ParameterType == typeof(byte[]);
-        });
-    Type executorType = tapLoaderType.GetNestedType("BasicBootstrapExecutor", BindingFlags.NonPublic)!;
-    MethodInfo parseLinesMethod = executorType.GetMethod("ParseLines", BindingFlags.NonPublic | BindingFlags.Static)!;
-    MethodInfo createResolverMethod = executorType
-        .GetMethods(BindingFlags.Public | BindingFlags.Static)
-        .Single(method => method.Name == "CreateMountedLoadUsrContinuationResolver" && method.GetParameters().Length == 4);
-    MethodInfo tryGetSnapshotMethod = typeof(Spectrum128Machine).GetMethod(
-        "TryGetPendingMountedLoadBasicVariableSnapshot",
-        BindingFlags.Instance | BindingFlags.NonPublic)!;
-    FieldInfo pendingResolverField = typeof(Spectrum128Machine).GetField(
-        "pendingMountedLoadUsrContinuationResolver",
-        BindingFlags.Instance | BindingFlags.NonPublic)!;
-    FieldInfo pendingVariableAreaField = typeof(Spectrum128Machine).GetField(
-        "pendingMountedLoadBasicVariableArea",
-        BindingFlags.Instance | BindingFlags.NonPublic)!;
-
-    var blocks = TzxLoader.ParseBlocks(File.ReadAllBytes(tapePath));
-    Console.WriteLine($"BATMAN blocks={blocks.Count}");
-    for (int i = 0; i < blocks.Count; i++)
-    {
-        TapeBlock block = blocks[i];
-        Console.WriteLine(
-            $"BATMAN block[{i}] kind={block.Kind} flag=0x{block.Flag:X2} loadable={block.IsLoadableRomBlock} trap={block.CanUseRomLoadTrap} " +
-            $"pause={block.PauseAfterBlockMs} payload={(block.Payload?.Length ?? -1)} stream={(block.StreamData?.Length ?? -1)}");
-    }
-
-    object batmanHeader = parseHeaderInfoMethod.Invoke(null, new object[] { blocks[0] })!;
-    Type batmanHeaderType = batmanHeader.GetType();
-    ushort programLength = (ushort)batmanHeaderType.GetProperty("ProgramLength")!.GetValue(batmanHeader)!;
-    ushort autoStartLine = (ushort)batmanHeaderType.GetProperty("AutoStartLine")!.GetValue(batmanHeader)!;
-    Console.WriteLine($"BATMAN header len={programLength} auto={autoStartLine}");
-
-    string romFolder = Path.Combine(AppContext.BaseDirectory, "ROMs");
-    var machine = new Spectrum128Machine(romFolder);
-    initMachineMethod.Invoke(null, new object[] { machine, false });
-    loadBasicProgramMethod.Invoke(null, new object[] { machine, batmanHeader, blocks[1].Payload! });
-
-    object lines = parseLinesMethod.Invoke(null, new object[] { machine, (ushort)23755, programLength })!;
-    int lineCounter = 0;
-    foreach (object line in (System.Collections.IEnumerable)lines)
-    {
-        Type lineType = line.GetType();
-        ushort number = (ushort)lineType.GetProperty("Number")!.GetValue(line)!;
-        var statements = (System.Collections.IEnumerable)lineType.GetProperty("Statements")!.GetValue(line)!;
-        var renderedStatements = new List<string>();
-        foreach (object stmtObj in statements)
-        {
-            var stmtTokens = new List<string>();
-            foreach (object? token in (System.Collections.IEnumerable)stmtObj)
-                stmtTokens.Add(token?.ToString() ?? string.Empty);
-            renderedStatements.Add(string.Join(" ", stmtTokens));
-        }
-
-        Console.WriteLine($"BATMAN line[{lineCounter++}] {number}: {string.Join(" : ", renderedStatements)}");
-    }
-
-    object? resolver = createResolverMethod.Invoke(null, new object[] { machine, (ushort)23755, programLength, autoStartLine });
-    Console.WriteLine($"BATMAN resolverCreated={(resolver != null ? 1 : 0)}");
-
-    TapeExecutionResult result = TzxLoader.LoadWithPolicy(machine, tapePath);
-    Console.WriteLine($"BATMAN strategy={result.Strategy} consumed={result.ConsumedBlockCount}/{result.TotalBlockCount}");
-    DumpBatmanSnapshot(machine, tryGetSnapshotMethod, "BATMAN snapshot after LoadWithPolicy");
-
-    for (int frame = 0; frame < 15000; frame++)
-    {
-        machine.ExecuteFrame();
-        if (machine.FrameCount is 1 or 10 or 100 or 1000)
-            DumpBatmanSnapshot(machine, tryGetSnapshotMethod, $"BATMAN snapshot frame={machine.FrameCount}");
-        if (machine.FrameCount == 14110)
-        {
-            Console.WriteLine($"BATMAN preview frame={machine.FrameCount} pc=0x{machine.Cpu.Regs.PC:X4} tape={machine.GetMountedTapeDebugState()}");
-            Console.WriteLine(
-                $"BATMAN sysvars CHANS=0x{ReadWord(machine, 23631):X4} CURCHL=0x{ReadWord(machine, 23633):X4} " +
-                $"PROG=0x{ReadWord(machine, 23635):X4} VARS=0x{ReadWord(machine, 23627):X4} ELINE=0x{ReadWord(machine, 23641):X4}");
-
-            DumpBatmanSnapshot(machine, tryGetSnapshotMethod, "BATMAN snapshot preview");
-
-            if (pendingResolverField.GetValue(machine) is Func<Spectrum128Machine, ushort?> previewResolver)
-            {
-                Console.WriteLine($"BATMAN resolver preview=0x{previewResolver(machine):X4}");
-                object? preservedVariableArea = pendingVariableAreaField.GetValue(machine);
-                pendingVariableAreaField.SetValue(machine, null);
-                Console.WriteLine($"BATMAN resolver without snapshot=0x{previewResolver(machine):X4}");
-                pendingVariableAreaField.SetValue(machine, preservedVariableArea);
-            }
-
-            break;
-        }
-    }
-}
-
-static void DumpBatmanSnapshot(Spectrum128Machine machine, MethodInfo tryGetSnapshotMethod, string label)
-{
-    object[] snapshotArgs = { (ushort)0, Array.Empty<byte>() };
-    if (!(bool)tryGetSnapshotMethod.Invoke(machine, snapshotArgs)!)
-    {
-        Console.WriteLine($"{label}: none");
-        return;
-    }
-
-    ushort vars = (ushort)snapshotArgs[0];
-    byte[] data = (byte[])snapshotArgs[1];
-    Console.WriteLine($"{label}: vars=0x{vars:X4} bytes={data.Length}");
-    Console.Write($"{label} data:");
-    for (int i = 0; i < data.Length; i++)
-        Console.Write($" {data[i]:X2}");
-    Console.WriteLine();
-    DumpNumericVariable(data, 'a');
-}
-
-static ushort ReadWord(Spectrum128Machine machine, ushort address)
-{
-    return (ushort)(machine.PeekMemory(address) | (machine.PeekMemory((ushort)(address + 1)) << 8));
-}
-
-static void DumpNumericVariable(byte[] data, char variableName)
-{
-    byte targetHeader = (byte)(0x60 | (char.ToLowerInvariant(variableName) - 'a'));
-    int index = 0;
-    while (index < data.Length)
-    {
-        byte header = data[index];
-        if (header == 0x80)
-        {
-            Console.WriteLine($"BATMAN variable {variableName} not found before end marker");
-            return;
-        }
-
-        int entryLength = GetVariableEntryLength(data, index, header);
-        if (entryLength <= 0 || index + entryLength > data.Length)
-        {
-            Console.WriteLine($"BATMAN variable decode failed at index {index} header=0x{header:X2}");
-            return;
-        }
-
-        if ((header & 0xE0) == 0x60 && header == targetHeader)
-        {
-            Console.WriteLine(
-                $"BATMAN variable {variableName} bytes={data[index + 1]:X2} {data[index + 2]:X2} {data[index + 3]:X2} {data[index + 4]:X2} {data[index + 5]:X2}");
-            return;
-        }
-
-        index += entryLength;
-    }
-
-    Console.WriteLine($"BATMAN variable {variableName} not found");
-}
-
-static int GetVariableEntryLength(byte[] data, int index, byte header)
-{
-    if ((header & 0xE0) == 0x60)
-        return 6;
-
-    if ((header & 0xE0) == 0x40 || (header & 0xE0) == 0xA0 || (header & 0xE0) == 0xC0)
-    {
-        if (index + 2 >= data.Length)
-            return -1;
-        ushort totalLength = (ushort)(data[index + 1] | (data[index + 2] << 8));
-        return 3 + totalLength;
-    }
-
-    if ((header & 0xE0) == 0x20)
-    {
-        int current = index + 1;
-        while (current < data.Length)
-        {
-            byte nameByte = data[current++];
-            if ((nameByte & 0x80) != 0)
-            {
-                if (current + 5 > data.Length)
-                    return -1;
-                return (current - index) + 5;
-            }
-        }
-    }
-
-    return -1;
 }
 
 static void DumpBlockList(IReadOnlyList<TapeBlock> blocks)
@@ -875,6 +660,43 @@ static (ushort Start, ushort End) ParseTraceRange(string script)
     return (ParseAddress(parts[0]), ParseAddress(parts[1]));
 }
 
+static List<ushort> ParseAddressList(string script)
+{
+    List<ushort> addresses = new();
+    foreach (string value in script.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+        addresses.Add(ParseAddress(value));
+
+    if (addresses.Count == 0)
+        throw new InvalidOperationException("Expected at least one hexadecimal address.");
+
+    return addresses;
+}
+
+static (ushort Address, int Length) ParseMemoryDumpRequest(string script)
+{
+    string[] parts = script.Split(':', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+    if (parts.Length != 2 || !int.TryParse(parts[1], out int length) || length <= 0 || length > 4096)
+        throw new InvalidOperationException($"Invalid memory dump '{script}'. Expected address:length with length 1-4096.");
+
+    return (ParseAddress(parts[0]), length);
+}
+
+static string BuildMemoryDump(Spectrum128Machine machine, ushort address, int length)
+{
+    var builder = new System.Text.StringBuilder();
+    builder.AppendLine($"=== MEMORY {address:X4} ({length} bytes) ===");
+    for (int offset = 0; offset < length; offset += 16)
+    {
+        ushort current = (ushort)(address + offset);
+        builder.Append($"{current:X4}: ");
+        for (int column = 0; column < 16 && offset + column < length; column++)
+            builder.Append($"{machine.PeekMemory((ushort)(current + column)):X2} ");
+        builder.AppendLine();
+    }
+    builder.AppendLine();
+    return builder.ToString();
+}
+
 static ushort ParseAddress(string value)
 {
     if (value.StartsWith("0x", StringComparison.OrdinalIgnoreCase))
@@ -987,76 +809,7 @@ static void WriteHarnessArtifacts(Spectrum128Machine machine, string dump, strin
     Console.WriteLine($"Harness frame image: {imagePath}");
 }
 
-static string BuildPendingMountedLoadDebug(Spectrum128Machine machine)
-{
-    FieldInfo? pendingResolverField = typeof(Spectrum128Machine).GetField(
-        "pendingMountedLoadUsrContinuationResolver",
-        BindingFlags.Instance | BindingFlags.NonPublic);
-    FieldInfo? pendingResumeLineField = typeof(Spectrum128Machine).GetField(
-        "pendingMountedLoadBasicResumeLine",
-        BindingFlags.Instance | BindingFlags.NonPublic);
-    FieldInfo? pendingResumeStatementField = typeof(Spectrum128Machine).GetField(
-        "pendingMountedLoadBasicResumeStatement",
-        BindingFlags.Instance | BindingFlags.NonPublic);
-    FieldInfo? pendingVariableAreaField = typeof(Spectrum128Machine).GetField(
-        "pendingMountedLoadBasicVariableArea",
-        BindingFlags.Instance | BindingFlags.NonPublic);
-
-    object? resolver = pendingResolverField?.GetValue(machine);
-    object? resumeLine = pendingResumeLineField?.GetValue(machine);
-    object? resumeStatement = pendingResumeStatementField?.GetValue(machine);
-    object? pendingVariableArea = pendingVariableAreaField?.GetValue(machine);
-    string variableDebug = BuildMountedVariableDebug(machine);
-    string variableAreaDebug = pendingVariableArea?.ToString() ?? "(null)";
-    string variableBytesDebug = BuildMountedVariableBytesDebug(machine);
-
-    return Environment.NewLine +
-           "=== PENDING MOUNTED LOAD ===" + Environment.NewLine +
-           $"HasPendingResolver={(resolver != null ? 1 : 0)}" + Environment.NewLine +
-           $"PendingResumeLine={(resumeLine ?? "(null)")}" + Environment.NewLine +
-           $"PendingResumeStatement={(resumeStatement ?? "(null)")}" + Environment.NewLine +
-           $"PendingVariableArea={variableAreaDebug}" + Environment.NewLine +
-           $"{variableBytesDebug}" + Environment.NewLine +
-           $"{variableDebug}" + Environment.NewLine;
-}
-
-static string BuildMountedVariableDebug(Spectrum128Machine machine)
-{
-    MethodInfo? variableReader = typeof(TapLoader).GetMethod(
-        "TryReadMountedContinuationNumericVariable",
-        BindingFlags.Static | BindingFlags.NonPublic);
-    if (variableReader == null)
-        return "MountedVar[a]=(unavailable)";
-
-    object[] args = new object[] { machine, "a", 0 };
-    bool success = (bool)variableReader.Invoke(null, args)!;
-    return success
-        ? $"MountedVar[a]={args[2]}"
-        : "MountedVar[a]=(missing)";
-}
-
-static string BuildMountedVariableBytesDebug(Spectrum128Machine machine)
-{
-    MethodInfo? snapshotMethod = typeof(Spectrum128Machine).GetMethod(
-        "TryGetPendingMountedLoadBasicVariableSnapshot",
-        BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public);
-    if (snapshotMethod == null)
-        return "MountedVarBytes=(unavailable)";
-
-    object[] args = new object[] { (ushort)0, Array.Empty<byte>() };
-    bool success = (bool)snapshotMethod.Invoke(machine, args)!;
-    if (!success || args[1] is not byte[] data || data.Length == 0)
-        return "MountedVarBytes=(missing)";
-
-    int count = Math.Min(24, data.Length);
-    string[] bytes = new string[count];
-    for (int i = 0; i < count; i++)
-        bytes[i] = data[i].ToString("X2");
-
-    return $"MountedVarBytes={string.Join(' ', bytes)}";
-}
-
-static string BuildBatmanSysVarDebug(Spectrum128Machine machine)
+static string BuildBasicSystemVariableDebug(Spectrum128Machine machine)
 {
     static ushort ReadWord(Spectrum128Machine machine, ushort address) =>
         (ushort)(machine.PeekMemory(address) | (machine.PeekMemory((ushort)(address + 1)) << 8));
@@ -1072,39 +825,6 @@ static string BuildBatmanSysVarDebug(Spectrum128Machine machine)
         $"WORKSP=0x{ReadWord(machine, 23649):X4} STKBOT=0x{ReadWord(machine, 23651):X4} STKEND=0x{ReadWord(machine, 23653):X4} " +
         $"NEWPPC=0x{ReadWord(machine, 23618):X4} NSPPC={machine.PeekMemory(23620)} " +
         $"PPC=0x{ReadWord(machine, 23621):X4} SUBPPC={machine.PeekMemory(23623)}";
-}
-
-static string BuildBasicProgramMemoryDebug(Spectrum128Machine machine)
-{
-    static ushort ReadWord(Spectrum128Machine machine, ushort address) =>
-        (ushort)(machine.PeekMemory(address) | (machine.PeekMemory((ushort)(address + 1)) << 8));
-
-    static string DumpMemory(Spectrum128Machine machine, ushort address, int length)
-    {
-        var builder = new System.Text.StringBuilder();
-        for (int offset = 0; offset < length; offset += 16)
-        {
-            builder.Append($"{(ushort)(address + offset):X4}: ");
-            int rowLength = Math.Min(16, length - offset);
-            for (int i = 0; i < rowLength; i++)
-                builder.Append($"{machine.PeekMemory((ushort)(address + offset + i)):X2} ");
-            builder.AppendLine();
-        }
-
-        return builder.ToString();
-    }
-
-    ushort prog = ReadWord(machine, 23635);
-    ushort vars = ReadWord(machine, 23627);
-    ushort eLine = ReadWord(machine, 23641);
-    if (prog == 0 || vars <= prog)
-        return string.Empty;
-
-    int dumpLength = Math.Min(128, vars - prog);
-    return Environment.NewLine +
-           "=== BASIC PROGRAM MEMORY ===" + Environment.NewLine +
-           $"PROG=0x{prog:X4} VARS=0x{vars:X4} LEN={vars - prog}" + Environment.NewLine +
-           DumpMemory(machine, prog, dumpLength);
 }
 
 readonly record struct ScheduledKeyEvent(int Frame, string KeyName, bool Pressed);

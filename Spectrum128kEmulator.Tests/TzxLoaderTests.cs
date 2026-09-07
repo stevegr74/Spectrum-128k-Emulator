@@ -48,6 +48,20 @@ namespace Spectrum128kEmulator.Tests
         }
 
         [Fact]
+        public void ParseBlocks_TurboData_OnlyEnablesRomTrap_ForExactRomTimings()
+        {
+            byte[] stream = new byte[] { 0xFF, 0x42, 0xBD };
+            var blocks = Tap.TzxLoader.ParseBlocks(BuildTzx(
+                BuildTurboDataBlock(stream, 2168, 3223, 855, 1710, 8),
+                BuildTurboDataBlock(stream, 2121, 3219, 585, 1170, 8)));
+
+            Assert.True(blocks[0].CanUseRomLoadTrap);
+            Assert.True(blocks[0].IsLoadableRomBlock);
+            Assert.False(blocks[1].CanUseRomLoadTrap);
+            Assert.False(blocks[1].IsLoadableRomBlock);
+        }
+
+        [Fact]
         public void ParseBlocks_Parses_DirectRecording_Csw_And_SetSignalLevel()
         {
             byte[] tzx = BuildTzx(
@@ -1250,6 +1264,37 @@ namespace Spectrum128kEmulator.Tests
             ms.WriteByte((byte)((streamData.Length >> 16) & 0xFF));
             ms.Write(streamData, 0, streamData.Length);
             return ms.ToArray();
+        }
+
+        private static byte[] BuildTurboDataBlock(
+            byte[] streamData,
+            ushort pilotLength,
+            ushort pilotCount,
+            ushort zeroLength,
+            ushort oneLength,
+            byte usedBits)
+        {
+            using var ms = new MemoryStream();
+            ms.WriteByte(0x11);
+            WriteWord(ms, pilotLength);
+            WriteWord(ms, 667);
+            WriteWord(ms, 735);
+            WriteWord(ms, zeroLength);
+            WriteWord(ms, oneLength);
+            WriteWord(ms, pilotCount);
+            ms.WriteByte(usedBits);
+            WriteWord(ms, 0);
+            ms.WriteByte((byte)(streamData.Length & 0xFF));
+            ms.WriteByte((byte)((streamData.Length >> 8) & 0xFF));
+            ms.WriteByte((byte)((streamData.Length >> 16) & 0xFF));
+            ms.Write(streamData, 0, streamData.Length);
+            return ms.ToArray();
+        }
+
+        private static void WriteWord(Stream stream, ushort value)
+        {
+            stream.WriteByte((byte)(value & 0xFF));
+            stream.WriteByte((byte)(value >> 8));
         }
 
         private static byte[] BuildSetSignalLevelBlock(bool high)

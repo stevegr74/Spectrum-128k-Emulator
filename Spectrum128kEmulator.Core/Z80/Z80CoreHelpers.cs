@@ -136,9 +136,14 @@ namespace Spectrum128kEmulator.Z80
         {
             byte b = ReadMemory(Regs.PC);
             Regs.PC = (ushort)(Regs.PC + 1);
-            Regs.R = (byte)((Regs.R & 0x80) | ((Regs.R + 1) & 0x7F));
+            IncrementRefreshRegister();
             InstructionFetchCount++;
             return b;
+        }
+
+        private void IncrementRefreshRegister()
+        {
+            Regs.R = (byte)((Regs.R & 0x80) | ((Regs.R + 1) & 0x7F));
         }
 
         private byte FetchByte()
