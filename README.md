@@ -225,6 +225,7 @@ Spectrum128kEmulator/
 |
 |-- Audio/                                 Windows frontend audio pipeline and output adapters
 |-- EmulatorHelpForm.cs                    WinForms shortcut-reference dialog
+|-- EmulationPauseLeaseManager.cs          nested-safe UI pause ownership
 |-- MainForm.cs                            WinForms menus, host input, and presentation scheduling
 |-- SpectrumDisplayMode.cs                 fixed display-mode dimensions and cycling policy
 |-- SpectrumDisplayScaler.cs               deterministic Scale2x/Scale3x pixel-art scaler
@@ -276,6 +277,8 @@ pixel-art scaling; the same modes are available from the display context menu.
 Press `F1` for the in-app control reference. `F2` toggles the FPS and display
 mode overlay, which is hidden by default. `F9`, `F10`, `F11`, and `F12` open
 the 48K SNA loader, Z80/RZX loader, tape loader, and machine-dump action.
+The emulator pauses while Help or a file chooser is open and resumes only when
+the final UI pause owner closes.
 
 ---
 

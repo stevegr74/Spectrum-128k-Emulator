@@ -5,6 +5,7 @@ using System.Runtime.InteropServices;
 using System.Threading;
 using System.Threading.Tasks;
 using Spectrum128kEmulator.Audio;
+using Spectrum128kEmulator.Tape;
 
 namespace Spectrum128kEmulator
 {
@@ -64,6 +65,7 @@ namespace Spectrum128kEmulator
         private readonly Queue<SpectrumHostKeyEvent> pendingSpectrumHostKeyEvents = new();
         private readonly SpectrumKeyInputBridge spectrumKeyInputBridge = new(8, 40, 90);
         private readonly CancellationTokenSource emulationLoopCts = new();
+        private readonly EmulationPauseLeaseManager emulationPauseLeases = new();
         private Task? emulationLoopTask;
         private volatile bool pauseEmulationRequested;
         private volatile bool emulationLoopPaused;
@@ -82,6 +84,7 @@ namespace Spectrum128kEmulator
         private double performanceAudioSubmitMilliseconds;
         private double performanceRenderMilliseconds;
         private double performancePresentMilliseconds;
+        private readonly TapeTurboPlaybackPolicy tapeTurboPlaybackPolicy = new();
         private readonly byte[] latestScreenBankData = new byte[0x4000];
         private int latestBorderColor;
         private BorderFrame? latestBorderFrame;
@@ -92,6 +95,7 @@ namespace Spectrum128kEmulator
         private SpectrumDisplayMode displayMode = SpectrumDisplayMode.Enhanced2x;
         private bool isStatusOverlayVisible;
         private EmulatorHelpForm? helpForm;
+        private IDisposable? helpPauseLease;
 
         public MainForm()
         {
@@ -218,14 +222,26 @@ namespace Spectrum128kEmulator
                 return;
             }
 
-            helpForm = new EmulatorHelpForm();
-            helpForm.FormClosed += (_, _) =>
+            helpPauseLease = AcquireEmulationPauseLease();
+            try
             {
-                helpForm = null;
-                if (!IsDisposed && IsHandleCreated)
-                    BeginInvoke(() => screenBox.Focus());
-            };
-            helpForm.Show(this);
+                helpForm = new EmulatorHelpForm();
+                helpForm.FormClosed += (_, _) =>
+                {
+                    helpForm = null;
+                    helpPauseLease?.Dispose();
+                    helpPauseLease = null;
+                    if (!IsDisposed && IsHandleCreated)
+                        BeginInvoke(() => screenBox.Focus());
+                };
+                helpForm.Show(this);
+            }
+            catch
+            {
+                helpPauseLease?.Dispose();
+                helpPauseLease = null;
+                throw;
+            }
         }
 
         private Spectrum128Machine CreateConfiguredMachine()
@@ -660,6 +676,7 @@ namespace Spectrum128kEmulator
                 CheckFileExists = true,
                 Multiselect = false
             };
+            using IDisposable pauseLease = AcquireEmulationPauseLease();
 
             if (dialog.ShowDialog(this) != DialogResult.OK)
                 return;
@@ -705,6 +722,7 @@ namespace Spectrum128kEmulator
                 CheckFileExists = true,
                 Multiselect = false
             };
+            using IDisposable pauseLease = AcquireEmulationPauseLease();
 
             if (dialog.ShowDialog(this) != DialogResult.OK)
                 return;
@@ -781,6 +799,7 @@ namespace Spectrum128kEmulator
                 CheckFileExists = true,
                 Multiselect = false
             };
+            using IDisposable pauseLease = AcquireEmulationPauseLease();
 
             if (dialog.ShowDialog(this) != DialogResult.OK)
                 return;
@@ -962,17 +981,19 @@ namespace Spectrum128kEmulator
 
                     lastSchedulerTicks = now;
 
+                    int speedMultiplier = GetEmulationSpeedMultiplier(activeMachine);
                     accumulatedEmulationTStates +=
                         (double)elapsedTicks *
                         activeMachine.CurrentCpuClockHz *
-                        GetEmulationSpeedMultiplier(activeMachine) /
+                        speedMultiplier /
                         System.Diagnostics.Stopwatch.Frequency;
 
                     int maxAccumulatedTStates = activeMachine.FrameTStates * MaxCatchUpFramesPerTick;
                     if (accumulatedEmulationTStates > maxAccumulatedTStates)
                         accumulatedEmulationTStates = maxAccumulatedTStates;
 
-                int wholeTStatesBudget = (int)accumulatedEmulationTStates;
+                    int actualExecutedTStates = 0;
+                    int wholeTStatesBudget = (int)accumulatedEmulationTStates;
                     if (wholeTStatesBudget > 0)
                     {
                         int tStatesBudget = wholeTStatesBudget;
@@ -983,7 +1004,6 @@ namespace Spectrum128kEmulator
                         long executeStartTicks = frameClock.ElapsedTicks;
                         try
                         {
-                            int actualExecutedTStates = 0;
                             while (tStatesBudget > 0)
                             {
                                 DrainPendingSpectrumHostKeyEvents();
@@ -1090,24 +1110,33 @@ namespace Spectrum128kEmulator
 
         private void ExecuteWithEmulationPaused(Action action)
         {
-            pauseEmulationRequested = true;
-            frameTimer.Stop();
-            try
-            {
-                SpinWait spinner = new SpinWait();
-                while (!emulationLoopPaused)
-                    spinner.SpinOnce();
+            using IDisposable pauseLease = AcquireEmulationPauseLease();
+            action();
+        }
 
-                action();
-            }
-            finally
-            {
-                long now = frameClock.ElapsedTicks;
-                lastSchedulerTicks = now;
-                lastPresentationTicks = now;
-                pauseEmulationRequested = false;
-                frameTimer.Start();
-            }
+        private IDisposable AcquireEmulationPauseLease()
+        {
+            IDisposable pauseLease = emulationPauseLeases.Acquire(
+                () =>
+                {
+                    pauseEmulationRequested = true;
+                    frameTimer.Stop();
+                },
+                () =>
+                {
+                    long now = frameClock.ElapsedTicks;
+                    lastSchedulerTicks = now;
+                    lastPresentationTicks = now;
+                    pauseEmulationRequested = false;
+                    if (!IsDisposed)
+                        frameTimer.Start();
+                });
+
+            SpinWait spinner = new SpinWait();
+            while (!emulationLoopPaused && !emulationLoopCts.IsCancellationRequested)
+                spinner.SpinOnce();
+
+            return pauseLease;
         }
 
         private void ClearHostAndSpectrumInputState()
@@ -1226,6 +1255,7 @@ namespace Spectrum128kEmulator
                 lastPresentationTicks = now;
                 accumulatedEmulationTStates = 0;
                 currentTurboTapeLoadFactor = TurboTapeLoadFactor;
+                tapeTurboPlaybackPolicy.Reset();
                 inputBridgeTick = 0;
             }
             PublishPresentationState();
@@ -1305,11 +1335,9 @@ namespace Spectrum128kEmulator
 
         private bool IsTurboTapeLoadActive(Spectrum128Machine activeMachine)
         {
-            // A protected loader may enter playable code before its trailing
-            // stream has ended. Once the machine generates audio, keep it at
-            // real time so the frame is submitted rather than discarded.
-            return activeMachine.MountedTape?.IsActivelyStreamingEarSignal == true &&
-                   !activeMachine.HasAudibleOutput;
+            return tapeTurboPlaybackPolicy.IsTurboPlaybackAllowed(
+                activeMachine.MountedTape?.IsActivelyStreamingEarSignal == true,
+                activeMachine.HasAudibleOutput);
         }
 
         private void UpdateTurboTapeLoadFactor(Spectrum128Machine activeMachine, long tickStartTicks, long tickEndTicks)
