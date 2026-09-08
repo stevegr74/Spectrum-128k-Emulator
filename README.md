@@ -58,6 +58,9 @@ remain active work.
 - Rendering pipeline stable and optimized
 - FLASH behaviour implemented correctly
 - Frame pacing stable (~50 FPS baseline)
+- Fixed display modes preserve exact Spectrum pixel geometry: 1x native, Scale2x-enhanced, and Scale3x-enhanced
+- The emulator starts in the 2x enhanced mode; the window cannot be manually resized
+- An in-app F1 control reference and F2 status-overlay toggle are available
 - Interrupt cadence implemented
 - 48K `.sna` snapshots load correctly
 - `.z80` snapshots load with v1 and v2/v3 support
@@ -221,7 +224,10 @@ Spectrum128kEmulator/
 |   `-- RzxPlaybackSession.cs              RZX playback orchestration
 |
 |-- Audio/                                 Windows frontend audio pipeline and output adapters
+|-- EmulatorHelpForm.cs                    WinForms shortcut-reference dialog
 |-- MainForm.cs                            WinForms menus, host input, and presentation scheduling
+|-- SpectrumDisplayMode.cs                 fixed display-mode dimensions and cycling policy
+|-- SpectrumDisplayScaler.cs               deterministic Scale2x/Scale3x pixel-art scaler
 |-- SpectrumKeyInputBridge.cs              WinForms-to-Spectrum keyboard bridge
 |-- SpectrumRenderer.cs                    System.Drawing presentation adapter
 |-- Program.cs                             Windows application entry point
@@ -261,6 +267,15 @@ Expected ROMs:
 
 - `128-0.rom`
 - `128-1.rom`
+
+The emulator starts in `2x Enhanced` and its window cannot be manually resized.
+Press plain `F4` to cycle `1x Native` (`320x240`), `2x Enhanced` (`640x480`),
+and `3x Enhanced` (`960x720`). Enhanced modes use deterministic Scale2x/Scale3x
+pixel-art scaling; the same modes are available from the display context menu.
+
+Press `F1` for the in-app control reference. `F2` toggles the FPS and display
+mode overlay, which is hidden by default. `F9`, `F10`, `F11`, and `F12` open
+the 48K SNA loader, Z80/RZX loader, tape loader, and machine-dump action.
 
 ---
 
