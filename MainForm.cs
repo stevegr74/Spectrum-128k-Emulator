@@ -37,15 +37,22 @@ namespace Spectrum128kEmulator
         private static readonly long PresentationIntervalTicks =
             System.Diagnostics.Stopwatch.Frequency / PresentationFramesPerSecond;
         private readonly Bitmap screenBitmap = new Bitmap(Spectrum128Machine.ScreenWidth, Spectrum128Machine.ScreenHeight, PixelFormat.Format32bppArgb);
+        private readonly Bitmap enhanced2xBitmap = new Bitmap(Spectrum128Machine.ScreenWidth * 2, Spectrum128Machine.ScreenHeight * 2, PixelFormat.Format32bppArgb);
+        private readonly Bitmap enhanced3xBitmap = new Bitmap(Spectrum128Machine.ScreenWidth * 3, Spectrum128Machine.ScreenHeight * 3, PixelFormat.Format32bppArgb);
         private readonly SpectrumFrameBuffer presentationFrameBuffer = new SpectrumFrameBuffer();
         private readonly System.Windows.Forms.Timer frameTimer = new System.Windows.Forms.Timer { Interval = 1 };
         private readonly PictureBox screenBox = new PictureBox
         {
             Dock = DockStyle.Fill,
-            SizeMode = PictureBoxSizeMode.StretchImage,
+            BackColor = Color.Black,
+            SizeMode = PictureBoxSizeMode.CenterImage,
             TabStop = true
         };
         private readonly Label fpsLabel = new Label();
+        private readonly ContextMenuStrip displayContextMenu = new ContextMenuStrip();
+        private readonly ToolStripMenuItem nativeDisplayMenuItem = new ToolStripMenuItem("1x Native");
+        private readonly ToolStripMenuItem enhanced2xDisplayMenuItem = new ToolStripMenuItem("2x Enhanced");
+        private readonly ToolStripMenuItem enhanced3xDisplayMenuItem = new ToolStripMenuItem("3x Enhanced");
 
         private readonly string romFolder;
         private Spectrum128Machine machine;
@@ -82,11 +89,16 @@ namespace Spectrum128kEmulator
         private int totalPresentedFrameCount;
         private bool hasPresentationState;
         private long suppressSpectrumHostInputUntilTicks;
+        private SpectrumDisplayMode displayMode = SpectrumDisplayMode.Enhanced2x;
+        private bool isStatusOverlayVisible;
+        private EmulatorHelpForm? helpForm;
 
         public MainForm()
         {
             Text = "Spectrum 128K Emulator";
-            ClientSize = new Size(512, 384);
+            AutoScaleMode = AutoScaleMode.None;
+            FormBorderStyle = FormBorderStyle.FixedSingle;
+            MaximizeBox = false;
             Controls.Add(screenBox);
 
             fpsLabel.Text = "FPS=0 Frame=0";
@@ -94,9 +106,13 @@ namespace Spectrum128kEmulator
             fpsLabel.ForeColor = Color.White;
             fpsLabel.BackColor = Color.Black;
             fpsLabel.Location = new Point(5, 5);
+            fpsLabel.Visible = false;
 
             Controls.Add(fpsLabel);
             fpsLabel.BringToFront();
+
+            InitializeDisplayModeSelector();
+            ApplyDisplayMode(SpectrumDisplayMode.Enhanced2x);
 
             romFolder = Path.Combine(AppContext.BaseDirectory, "ROMs");
             machine = CreateConfiguredMachine();
@@ -127,6 +143,89 @@ namespace Spectrum128kEmulator
             {
                 return new AudioPipeline(new NullAudioOutput(44100));
             }
+        }
+
+        private void InitializeDisplayModeSelector()
+        {
+            var displaySizeMenuItem = new ToolStripMenuItem("Display Size");
+            nativeDisplayMenuItem.Click += (_, _) => SelectDisplayMode(SpectrumDisplayMode.Native);
+            enhanced2xDisplayMenuItem.Click += (_, _) => SelectDisplayMode(SpectrumDisplayMode.Enhanced2x);
+            enhanced3xDisplayMenuItem.Click += (_, _) => SelectDisplayMode(SpectrumDisplayMode.Enhanced3x);
+
+            displaySizeMenuItem.DropDownItems.AddRange(new ToolStripItem[]
+            {
+                nativeDisplayMenuItem,
+                enhanced2xDisplayMenuItem,
+                enhanced3xDisplayMenuItem
+            });
+            displayContextMenu.Items.Add(displaySizeMenuItem);
+            screenBox.ContextMenuStrip = displayContextMenu;
+        }
+
+        private void SelectDisplayMode(SpectrumDisplayMode mode)
+        {
+            if (displayMode == mode)
+            {
+                screenBox.Focus();
+                return;
+            }
+
+            ApplyDisplayMode(mode);
+            PresentCurrentMachineFrame(frameClock.ElapsedTicks + PresentationIntervalTicks);
+            screenBox.Focus();
+        }
+
+        private void ApplyDisplayMode(SpectrumDisplayMode mode)
+        {
+            displayMode = mode;
+            SpectrumDisplayLayout layout = SpectrumDisplayModes.GetLayout(mode);
+            ClientSize = new Size(layout.ClientWidth, layout.ClientHeight);
+            fpsLabel.Location = new Point(layout.ViewportX + 5, layout.ViewportY + 5);
+            nativeDisplayMenuItem.Checked = mode == SpectrumDisplayMode.Native;
+            enhanced2xDisplayMenuItem.Checked = mode == SpectrumDisplayMode.Enhanced2x;
+            enhanced3xDisplayMenuItem.Checked = mode == SpectrumDisplayMode.Enhanced3x;
+            screenBox.Image = GetPresentationBitmap(mode);
+            UpdateStatsLabel();
+        }
+
+        private Bitmap GetPresentationBitmap(SpectrumDisplayMode mode)
+        {
+            return mode switch
+            {
+                SpectrumDisplayMode.Native => screenBitmap,
+                SpectrumDisplayMode.Enhanced2x => enhanced2xBitmap,
+                SpectrumDisplayMode.Enhanced3x => enhanced3xBitmap,
+                _ => throw new ArgumentOutOfRangeException(nameof(mode))
+            };
+        }
+
+        private static bool IsPlainShortcut(KeyEventArgs e, Keys key) =>
+            e.KeyCode == key && !e.Alt && !e.Control && !e.Shift;
+
+        private void ToggleStatusOverlay()
+        {
+            isStatusOverlayVisible = !isStatusOverlayVisible;
+            UpdateStatsLabel();
+            fpsLabel.Visible = isStatusOverlayVisible;
+            screenBox.Focus();
+        }
+
+        private void ToggleHelpWindow()
+        {
+            if (helpForm is { IsDisposed: false })
+            {
+                helpForm.Close();
+                return;
+            }
+
+            helpForm = new EmulatorHelpForm();
+            helpForm.FormClosed += (_, _) =>
+            {
+                helpForm = null;
+                if (!IsDisposed && IsHandleCreated)
+                    BeginInvoke(() => screenBox.Focus());
+            };
+            helpForm.Show(this);
         }
 
         private Spectrum128Machine CreateConfiguredMachine()
@@ -174,6 +273,33 @@ namespace Spectrum128kEmulator
 
         private void MainForm_KeyDown(object? sender, KeyEventArgs e)
         {
+            if (e.KeyCode == Keys.F4 && e.Alt)
+                return;
+
+            if (IsPlainShortcut(e, Keys.F1))
+            {
+                ToggleHelpWindow();
+                e.Handled = true;
+                e.SuppressKeyPress = true;
+                return;
+            }
+
+            if (IsPlainShortcut(e, Keys.F2))
+            {
+                ToggleStatusOverlay();
+                e.Handled = true;
+                e.SuppressKeyPress = true;
+                return;
+            }
+
+            if (e.KeyCode == Keys.F4 && !e.Alt && !e.Control && !e.Shift)
+            {
+                SelectDisplayMode(SpectrumDisplayModes.Next(displayMode));
+                e.Handled = true;
+                e.SuppressKeyPress = true;
+                return;
+            }
+
             if (IsSpectrumMappedKey(e.KeyCode))
             {
                 LogInputDiagnostic("keydown", e.KeyCode, "mapped event");
@@ -190,6 +316,23 @@ namespace Spectrum128kEmulator
 
         private void MainForm_KeyUp(object? sender, KeyEventArgs e)
         {
+            if (e.KeyCode == Keys.F4 && e.Alt)
+                return;
+
+            if (IsPlainShortcut(e, Keys.F1) || IsPlainShortcut(e, Keys.F2))
+            {
+                e.Handled = true;
+                e.SuppressKeyPress = true;
+                return;
+            }
+
+            if (e.KeyCode == Keys.F4 && !e.Alt && !e.Control && !e.Shift)
+            {
+                e.Handled = true;
+                e.SuppressKeyPress = true;
+                return;
+            }
+
             if (IsSpectrumMappedKey(e.KeyCode))
             {
                 LogInputDiagnostic("keyup", e.KeyCode, "mapped event");
@@ -1021,10 +1164,15 @@ namespace Spectrum128kEmulator
                 presentationFrameBuffer.Render(screenBankCopy, borderColor, flashPhase);
             else
                 presentationFrameBuffer.Render(screenBankCopy, borderFrame, flashPhase);
-            SpectrumRenderer.RenderToBitmap(screenBitmap, presentationFrameBuffer);
+            SpectrumDisplayLayout layout = SpectrumDisplayModes.GetLayout(displayMode);
+            Bitmap presentationBitmap = GetPresentationBitmap(displayMode);
+            if (layout.Scale == 1)
+                SpectrumRenderer.RenderToBitmap(presentationBitmap, presentationFrameBuffer);
+            else
+                SpectrumRenderer.RenderScaledToBitmap(presentationBitmap, presentationFrameBuffer, layout.Scale);
             long renderEndTicks = frameClock.ElapsedTicks;
 
-            screenBox.Image = screenBitmap;
+            screenBox.Image = presentationBitmap;
             framesRenderedThisSecond++;
             totalPresentedFrameCount++;
 
@@ -1132,7 +1280,7 @@ namespace Spectrum128kEmulator
 
         private void UpdateStatsLabel()
         {
-            fpsLabel.Text = $"FPS={displayedFps} Frame={displayedFrameCount}";
+            fpsLabel.Text = $"FPS={displayedFps} Frame={displayedFrameCount} Display={SpectrumDisplayModes.GetLayout(displayMode).Label}";
         }
 
         private int GetEmulationSpeedMultiplier(Spectrum128Machine activeMachine)
@@ -1212,6 +1360,9 @@ namespace Spectrum128kEmulator
                 lock (audioPipelineLock)
                     audioPipeline.Dispose();
                 screenBitmap.Dispose();
+                enhanced2xBitmap.Dispose();
+                enhanced3xBitmap.Dispose();
+                displayContextMenu.Dispose();
                 frameTimer.Dispose();
                 emulationLoopCts.Dispose();
             }
