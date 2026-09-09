@@ -391,6 +391,43 @@ namespace Spectrum128kEmulator.Tests
         }
 
         [Fact]
+        public void MountedTape_CompletedProtectedEndOfStream_AutoEjectsAfterFinalTransition()
+        {
+            string tempFolder = CreateTempRoms();
+
+            try
+            {
+                var machine = new Spectrum128Machine(tempFolder);
+                var tape = new MountedTape(
+                    "completed-protected-stream",
+                    new TapeBlock[]
+                    {
+                        TapeBlock.CreateByteStreamData(new byte[] { 0xA5 }, 1, 1, 8, 0)
+                    },
+                    initialBlockIndex: 0,
+                    skipCustomHeaderForEarPlayback: false);
+                machine.MountTape(tape);
+
+                for (int i = 0; i < 32 && !tape.HasCompletedPlayback; i++)
+                {
+                    machine.Cpu.AddTStates(5000);
+                    _ = machine.DebugReadPort(0x00FE);
+                }
+
+                Assert.True(tape.HasCompletedPlayback);
+                Assert.True(machine.HasMountedTape);
+
+                machine.ExecuteTimeSlice(1);
+
+                Assert.False(machine.HasMountedTape);
+            }
+            finally
+            {
+                Directory.Delete(tempFolder, true);
+            }
+        }
+
+        [Fact]
         public void MountedTape_NaturalByteStreamCompletion_RetainsProtectedByteStreamWhenLogicalLoadStateIsActive()
         {
             string tempFolder = CreateTempRoms();

@@ -164,6 +164,7 @@ namespace Spectrum128kEmulator.Tap
         private bool earLevel;
         private bool earPlaybackStarted;
         private bool retainedByteStreamTrapAvailable;
+        private bool playbackCompleted;
         private EarPlaybackState earPlaybackState;
         private TapeState state;
         private int? expectedDataLength;
@@ -233,6 +234,7 @@ namespace Spectrum128kEmulator.Tap
             $"EarLevel={(earLevel ? 1 : 0)} Started={(earPlaybackStarted ? 1 : 0)} Retained={(retainedByteStreamTrapAvailable ? 1 : 0)} " +
             $"RomTrapBlock={romStreamTrapBlockIndex} RomTrapByte={romStreamTrapByteIndex}";
         public bool IsActivelyDrivingEarLine => earPlaybackState != EarPlaybackState.Idle;
+        public bool HasCompletedPlayback => playbackCompleted;
         public bool IsActivelyStreamingEarSignal =>
             earPlaybackState is not EarPlaybackState.Idle
             and not EarPlaybackState.Pause
@@ -268,6 +270,7 @@ namespace Spectrum128kEmulator.Tap
             earLevel = initialEarLevelHigh;
             earPlaybackStarted = false;
             retainedByteStreamTrapAvailable = false;
+            playbackCompleted = false;
             earPlaybackState = EarPlaybackState.Idle;
             expectedDataLength = null;
             pendingHeaderName = null;
@@ -1479,6 +1482,7 @@ namespace Spectrum128kEmulator.Tap
                     earPlaybackState = EarPlaybackState.Idle;
                     earPulseLengthTStates = 0;
                     earPlaybackStarted = false;
+                    playbackCompleted = true;
                     return;
 
                 default:
@@ -1577,6 +1581,7 @@ namespace Spectrum128kEmulator.Tap
                     earLevel = true;
                     earPlaybackStarted = false;
                 }
+                playbackCompleted = true;
                 return;
             }
 
