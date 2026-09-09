@@ -155,9 +155,6 @@ namespace Spectrum128kEmulator.Tap
         private int earNextBlockIndexAfterPause;
         private int earPauseLowTailTStates;
         private int pendingPrePlaybackPauseTStates;
-        private int endOfStreamTransitionTStates;
-        private int endOfStreamTransitionTailTStates;
-        private int endOfStreamTransitionPhase;
         private int romStreamTrapBlockIndex;
         private int romStreamTrapByteIndex;
         private ulong lastEarSampleTStates;
@@ -189,7 +186,6 @@ namespace Spectrum128kEmulator.Tap
             Pause,
             PulseSequence,
             PureTone,
-            EndOfStreamTransition
         }
 
         public MountedTape(
@@ -237,8 +233,7 @@ namespace Spectrum128kEmulator.Tap
         public bool HasCompletedPlayback => playbackCompleted;
         public bool IsActivelyStreamingEarSignal =>
             earPlaybackState is not EarPlaybackState.Idle
-            and not EarPlaybackState.Pause
-            and not EarPlaybackState.EndOfStreamTransition;
+            and not EarPlaybackState.Pause;
         public bool IsStreamingProtectedByteStream =>
             TryGetActivePlaybackBlock(out TapeBlock? block) && block != null &&
             (block.Kind == TapeBlockKind.DirectRecording ||
@@ -261,9 +256,6 @@ namespace Spectrum128kEmulator.Tap
             earNextBlockIndexAfterPause = 0;
             earPauseLowTailTStates = 0;
             pendingPrePlaybackPauseTStates = initialPrePlaybackPauseTStates;
-            endOfStreamTransitionTStates = 0;
-            endOfStreamTransitionTailTStates = 0;
-            endOfStreamTransitionPhase = 0;
             romStreamTrapBlockIndex = -1;
             romStreamTrapByteIndex = 0;
             lastEarSampleTStates = 0;
@@ -1461,30 +1453,6 @@ namespace Spectrum128kEmulator.Tap
                     StartEarPlaybackBlock(earNextBlockIndexAfterPause, preserveSignalPhase: true);
                     return;
 
-                case EarPlaybackState.EndOfStreamTransition:
-                    if (endOfStreamTransitionPhase == 0)
-                    {
-                        endOfStreamTransitionPhase = 1;
-                        earLevel = true;
-                        earPulseLengthTStates = Math.Max(1, endOfStreamTransitionTailTStates);
-                        return;
-                    }
-
-                    if (endOfStreamTransitionPhase == 1)
-                    {
-                        endOfStreamTransitionPhase = 2;
-                        earLevel = false;
-                        earPulseLengthTStates = Math.Max(1, endOfStreamTransitionTailTStates);
-                        return;
-                    }
-
-                    earLevel = true;
-                    earPlaybackState = EarPlaybackState.Idle;
-                    earPulseLengthTStates = 0;
-                    earPlaybackStarted = false;
-                    playbackCompleted = true;
-                    return;
-
                 default:
                     earPlaybackState = EarPlaybackState.Idle;
                     earPulseLengthTStates = 0;
@@ -1553,9 +1521,6 @@ namespace Spectrum128kEmulator.Tap
         private void BeginEndOfStreamIdleTransition(bool preserveSignalPhase)
         {
             retainedByteStreamTrapAvailable = false;
-            endOfStreamTransitionTStates = 0;
-            endOfStreamTransitionTailTStates = 0;
-            endOfStreamTransitionPhase = 0;
 
             if (earPlaybackBlockIndex < 0 || earPlaybackBlockIndex >= blocks.Count)
             {
@@ -1566,37 +1531,16 @@ namespace Spectrum128kEmulator.Tap
                 return;
             }
 
-            TapeBlock lastBlock = blocks[earPlaybackBlockIndex];
-            bool endedOnProtectedByteStream =
-                lastBlock.Kind == TapeBlockKind.Data &&
-                !lastBlock.IsLoadableRomBlock &&
-                lastBlock.StreamData != null;
-
-            if (!endedOnProtectedByteStream)
+            // A TZX stream with no following block has no implicit tail pulses.
+            // Preserve its final EAR level so protected loaders observe tape silence.
+            earPlaybackState = EarPlaybackState.Idle;
+            earPulseLengthTStates = 0;
+            if (!preserveSignalPhase)
             {
-                earPlaybackState = EarPlaybackState.Idle;
-                earPulseLengthTStates = 0;
-                if (!preserveSignalPhase)
-                {
-                    earLevel = true;
-                    earPlaybackStarted = false;
-                }
-                playbackCompleted = true;
-                return;
+                earLevel = true;
+                earPlaybackStarted = false;
             }
-
-            earPlaybackState = EarPlaybackState.EndOfStreamTransition;
-            int protectedEdgePulseTStates = ScaleBlockTiming(
-                Math.Min(lastBlock.ZeroBitPulseLength, lastBlock.OneBitPulseLength),
-                lastBlock);
-            int protectedEndPauseTStates = GetPauseLengthTStates(lastBlock);
-            endOfStreamTransitionTStates = Math.Max(
-                protectedEdgePulseTStates,
-                Math.Max(2048, protectedEndPauseTStates));
-            endOfStreamTransitionTailTStates = Math.Max(1, protectedEdgePulseTStates);
-            earPulseLengthTStates = Math.Max(1, endOfStreamTransitionTStates);
-            earLevel = false;
-            earPlaybackStarted = false;
+            playbackCompleted = true;
         }
 
         private static ushort PeekWord(Spectrum128Machine machine, ushort address)
