@@ -432,7 +432,10 @@ namespace Spectrum128kEmulator
                 cpu.ExecuteCycles((ulong)executionChunk);
                 int actualExecutedTStates = (int)Math.Min((ulong)int.MaxValue, cpu.TStates - tStatesBefore);
                 executedTStates += actualExecutedTStates;
-                mountedTape?.AdvanceToTime(cpu.TStates);
+                MountedTape? activeTape = mountedTape;
+                activeTape?.AdvanceToTime(cpu.TStates);
+                if (activeTape?.HasCompletedPlayback == true && ReferenceEquals(mountedTape, activeTape))
+                    mountedTape = null;
 
                 // A diagnostic client may stop the CPU before the next instruction.
                 // Do not spin the scheduler with an unchanged T-state count in that case.

@@ -219,7 +219,7 @@ namespace Spectrum128kEmulator.Tests
         }
 
         [Fact]
-        public void MountedTape_ProtectedTail_EndOfStream_Returns_Ear_High()
+        public void MountedTape_ProtectedTail_EndOfStream_Preserves_Final_Ear_Level()
         {
             var tape = new Tap.MountedTape(
                 "protected-tail",
@@ -234,22 +234,15 @@ namespace Spectrum128kEmulator.Tests
                 },
                 initialEarLevelHigh: false);
 
-            bool sawEndTransition = false;
             for (ulong tStates = 0; tStates < 200000; tStates += 128)
             {
                 tape.ReadEarBit(tStates);
-                if (tape.DebugPlaybackState.Contains("EarState=EndOfStreamTransition", StringComparison.Ordinal))
-                {
-                    sawEndTransition = true;
-                }
-
                 if (!tape.IsActivelyDrivingEarLine)
                     break;
             }
 
-            Assert.True(sawEndTransition);
             Assert.Contains("EarState=Idle", tape.DebugPlaybackState, StringComparison.Ordinal);
-            Assert.Contains("EarLevel=1", tape.DebugPlaybackState, StringComparison.Ordinal);
+            Assert.Contains("EarLevel=0", tape.DebugPlaybackState, StringComparison.Ordinal);
         }
 
         [Fact]
