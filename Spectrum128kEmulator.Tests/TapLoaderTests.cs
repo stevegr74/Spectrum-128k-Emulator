@@ -357,6 +357,42 @@ namespace Spectrum128kEmulator.Tests
         }
 
         [Fact]
+        public void Requires128kTapeLoadMode_Selects128kForGenericBasicHandoffToProtectedStream()
+        {
+            string tempFolder = CreateTempRoms();
+
+            try
+            {
+                byte[] basicProgram = BuildBasicProgram(
+                    BuildBasicLine(10,
+                        Token(249), Ascii(" "), Token(192), Ascii("32768"), NumberMarker(32768)));
+                var blocks = new TapeBlock[]
+                {
+                    TapeBlock.CreateData(
+                        BuildHeaderBlock(0, "BOOT", (ushort)basicProgram.Length, 10, (ushort)basicProgram.Length),
+                        2168, 8063, 667, 735, 855, 1710, 8, 1000),
+                    TapeBlock.CreateData(
+                        BuildDataBlock(basicProgram),
+                        2168, 3223, 667, 735, 855, 1710, 8, 1000),
+                    TapeBlock.CreateByteStreamData(new byte[] { 0xA5 }, 753, 1506, 8, 0)
+                };
+                MethodInfo requires128k = typeof(TapLoader).GetMethod(
+                    "Requires128kTapeLoadModeForStandardTape",
+                    BindingFlags.NonPublic | BindingFlags.Static)!;
+
+                bool use128kMode = (bool)requires128k.Invoke(
+                    null,
+                    new object[] { new Spectrum128Machine(tempFolder), blocks })!;
+
+                Assert.True(use128kMode);
+            }
+            finally
+            {
+                Directory.Delete(tempFolder, true);
+            }
+        }
+
+        [Fact]
         public void MountedTape_ProtectedByteStreamWithTrailingPause_EndsWithoutSyntheticEofTransition()
         {
             string tempFolder = CreateTempRoms();
@@ -383,6 +419,43 @@ namespace Spectrum128kEmulator.Tests
                 Assert.Equal("Idle", GetPrivateField(tape, "earPlaybackState").ToString());
                 Assert.Equal(1, (int)GetPrivateField(tape, "nextBlockIndex"));
                 Assert.False((bool)GetPrivateField(tape, "retainedByteStreamTrapAvailable"));
+            }
+            finally
+            {
+                Directory.Delete(tempFolder, true);
+            }
+        }
+
+        [Fact]
+        public void MountedTape_CompletedProtectedEndOfStream_AutoEjectsAfterFinalTransition()
+        {
+            string tempFolder = CreateTempRoms();
+
+            try
+            {
+                var machine = new Spectrum128Machine(tempFolder);
+                var tape = new MountedTape(
+                    "completed-protected-stream",
+                    new TapeBlock[]
+                    {
+                        TapeBlock.CreateByteStreamData(new byte[] { 0xA5 }, 1, 1, 8, 0)
+                    },
+                    initialBlockIndex: 0,
+                    skipCustomHeaderForEarPlayback: false);
+                machine.MountTape(tape);
+
+                for (int i = 0; i < 32 && !tape.HasCompletedPlayback; i++)
+                {
+                    machine.Cpu.AddTStates(5000);
+                    _ = machine.DebugReadPort(0x00FE);
+                }
+
+                Assert.True(tape.HasCompletedPlayback);
+                Assert.True(machine.HasMountedTape);
+
+                machine.ExecuteTimeSlice(1);
+
+                Assert.False(machine.HasMountedTape);
             }
             finally
             {

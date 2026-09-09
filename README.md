@@ -70,7 +70,7 @@ remain active work.
 - `.tzx` support is implemented and `Exolon.tzx` is verified working
 - `Impossible Mission - Bugfix.tzx` now loads successfully, including its protected loader stage
 - `Batman - Release 1.tzx` now loads through to the game path
-- `Target Renegade (Imagine, OR) 128k.tzx` now loads through to gameplay
+- `Target Renegade (Imagine, OR) 128k.tzx` completes its protected 128K multi-load, stops/ejects the tape cleanly, and reaches the game menu
 - `.rzx` replay support is implemented and `aufmonty.rzx` plays back successfully
 - emulation and audio submission now run on a background loop while the UI presents frames at a fixed 50Hz cadence
 - loader-only turbo tape phases skip unnecessary per-frame audio-frame construction; live playback returns to real-time audio submission when the machine becomes audible
@@ -131,7 +131,7 @@ Tape Loading Progress (Milestone 6)
   - `Impossible Mission - Bugfix.tzx`
   - `Where Time Stood Still.tap`
   - `Batman - Release 1.tzx`
-  - `Target Renegade (Imagine, OR) 128k.tzx`
+  - `Target Renegade (Imagine, OR) 128k.tzx` (protected 128K continuation and final tape stop)
   - `aufmonty.rzx`
 - tape execution is selected from parsed tape structure rather than title-specific rules:
   - standard BASIC chains use the fast bootstrap path where their ROM side effects can be reproduced
