@@ -153,6 +153,12 @@ Tape Loading Progress (Milestone 6)
   - Batman now completes its mounted standard-data load deterministically and reaches the later game path instead of failing on the old black-screen route
 - mounted live-tape playback now uses a generic wall-clock turbo path in the app while the tape is actively driving the EAR line
 - emulated FE/tape pulse timing is kept exact during those live phases; the speed-up happens in the UI scheduler rather than by distorting tape data
+- Target Renegade's protected 128K continuation now reaches the game menu and auto-ejects without synthetic end-of-stream pulses
+- initial tape loading can select the appropriate 128K setup for protected streams, but explicit user-selectable 48K/128K machine modes and resumable tape transport are not implemented yet
+
+Disassembly Progress
+- `Z80Disassembler.cs` currently provides diagnostic trace scaffolding only
+- a user-facing, side-effect-free instruction decoder and disassembly window are planned next
 
 Broader `.tzx` compatibility work still remains for additional protected/custom titles. The current active structural goal is expanding the same format, transport, ROM/trap, bootstrap-policy, and regression layers beyond the working Batman / Exolon / Impossible Mission / Target Renegade baseline.
 
@@ -179,22 +185,40 @@ Audio Progress (Milestone 7)
 ## Current Development Plan
 
 The core/UI boundary, clock-driven audio, hardware-derived block-I/O flags, and
-the initial ULA contention/border model are merged on `master`. Current work
-builds on those foundations:
+the initial ULA contention/border model are merged on `master`. Each milestone
+will be developed on its own `codex/...` branch. Current work builds on those
+foundations:
 
-1. **Expand structural tape compatibility.**
-   - Extend format parsing, generic signal transport, ROM/trap behaviour, and bootstrap policy without title-specific branches.
-   - Prioritise protected/custom TZX stages that are not yet represented by the verified examples.
+1. **Build a reusable disassembler foundation.**
+   - Add a side-effect-free Z80 instruction decoder that returns instruction address, bytes, length, mnemonic, and optional branch target from a supplied memory reader.
+   - Cover base, `CB`, `ED`, `DD`, `FD`, `DD CB`, and `FD CB` encodings, using safe `DB` output for any unsupported form.
+   - Add decoder regression tests for immediates, relative branches, indexed displacements, prefix lengths, and address wraparound.
 
-2. **Refine live-tape audio handoff.**
+2. **Introduce explicit 48K and 128K machine modes.**
+   - Keep 128K as the startup default and make the selected model authoritative over automatic tape heuristics.
+   - Add `F3` and explicit Machine-menu actions to reset cleanly into 48K or 128K, clearing RAM, mounted media, input, audio, and presentation state.
+   - Show the selected model in the status overlay and update the in-app help.
+
+3. **Add resumable tape transport and complete dual-mode TZX support.**
+   - Add `F5` to stop/resume the tape waveform without ejecting it or advancing its pulse position.
+   - Preserve TZX `stop if 48K` markers as resumable transport stops rather than discarding later blocks.
+   - Add a transient translucent top-left transport overlay: `TAPE STOPPED`, `TAPE PLAYING`, or `TAPE ENDED`; marker-triggered stops remain visible until resumed.
+   - Validate Target Renegade's all-at-once 128K route and its level-at-a-time 48K route without title-specific behavior.
+
+4. **Expose a simple, expandable disassembler.**
+   - Add `F6` and a Debug-menu action to open a read-only disassembly window around the current `PC`.
+   - Pause emulation while the window is open, and provide hexadecimal address entry, Go to PC, refresh, copy, model, and paged-bank context.
+   - Keep the result model suitable for later breakpoints, stepping, labels, execution history, and bank-aware views.
+
+5. **Refine live-tape audio handoff.**
    - Keep tape timing exact while moving from loader-only turbo operation to audible real-time playback.
    - Remove the remaining non-seamless transitions in protected titles without regressing normal playback.
 
-3. **Extend video timing accuracy.**
+6. **Extend video timing accuracy.**
    - Preserve the tested 48K/128K contention and border baseline while improving scanline/raster accuracy.
    - Do not accept a timing change that regresses the verified tape or snapshot matrix.
 
-4. **Use the compatibility matrix as the merge gate.**
+7. **Use the compatibility matrix as the merge gate.**
    - `exolon.tap` and `Exolon.tzx`
    - `Where Time Stood Still.tap`
    - `Impossible Mission - Bugfix.tzx`
@@ -279,6 +303,10 @@ mode overlay, which is hidden by default. `F9`, `F10`, `F11`, and `F12` open
 the 48K SNA loader, Z80/RZX loader, tape loader, and machine-dump action.
 The emulator pauses while Help or a file chooser is open and resumes only when
 the final UI pause owner closes.
+
+Planned controls, not yet implemented: `F3` will reset between explicit 48K
+and 128K machine modes; `F5` will stop/resume tape transport with an on-screen
+transport indicator; and `F6` will open the read-only disassembler.
 
 ---
 
