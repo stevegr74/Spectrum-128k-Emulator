@@ -2878,19 +2878,24 @@ namespace Spectrum128kEmulator.Tap
                 {
                     InitializeMachineForFakeTapeLoad(machine, use128kMode: false);
                     LoadBasicProgram(machine, header, blocks[index + 1].Payload!);
-                    return BasicBootstrapExecutor.Requires128kTapeLoadMode(
+                    if (BasicBootstrapExecutor.Requires128kTapeLoadMode(
                         machine,
                         BasicProgramStart,
                         header.ProgramLength,
-                        header.AutoStartLine);
+                        header.AutoStartLine))
+                    {
+                        return true;
+                    }
                 }
                 catch (InvalidOperationException)
                 {
-                    return false;
+                    continue;
                 }
             }
 
-            return false;
+            // Protected streams can contain their own machine-mode probe after a
+            // generic BASIC USR handoff, so keep the native 128K configuration.
+            return ContainsElectricallyDecodedProtectedStream(blocks);
         }
 
         private static void StartRomDrivenMountedBasicAutoStart(
