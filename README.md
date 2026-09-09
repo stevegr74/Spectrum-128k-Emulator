@@ -435,7 +435,9 @@ Notes:
 - ROM-driven tape loading path implemented
 - VERIFY path implemented
 - deterministic sequencing and rewind implemented
-- Verified protected-loader examples include Exolon, Impossible Mission, Batman, and Target Renegade
+- Verified protected-loader examples include Exolon, Impossible Mission, Batman, and Target Renegade's protected 128K multi-load
+- Target Renegade now reaches its game menu after a clean final tape stop/eject
+- Explicit 48K/128K selection and manual/resumable tape transport remain planned work
 - Broader protected/custom TZX compatibility remains ongoing
 
 ### Milestone 7 - Audio (In Progress)
@@ -464,6 +466,27 @@ Notes:
 - Static visible borders and timestamped `OUT (FE)` raster border changes are rendered through the platform-neutral frame buffer
 - 48K and 128K ULA contention coverage includes display phase, contended memory, contended I/O, and every paged 128K RAM bank
 - The core/UI boundary and clock-driven audio contract are merged on `master`; focused CPU, renderer, audio, machine, snapshot/RZX, and tape regression suites cover the baseline
+
+### Milestone 10 - Disassembler Foundation Planned
+- Add a side-effect-free Z80 instruction decoder for base, `CB`, `ED`, `DD`, `FD`, `DD CB`, and `FD CB` forms
+- Return instruction bytes, length, mnemonic, and optional branch target without mutating machine state
+- Cover decoder behavior with focused opcode and prefix regression tests
+
+### Milestone 11 - Explicit 48K/128K Machine Modes Planned
+- Keep 128K as the startup default and make a user-selected model authoritative over tape heuristics
+- Add `F3` and explicit Machine-menu actions that reset cleanly into either model
+- Show selected model state in the status overlay and in-app help
+
+### Milestone 12 - Resumable Tape Transport Planned
+- Add `F5` to stop/resume tape transport without ejecting or advancing the waveform
+- Preserve TZX `stop if 48K` markers as resumable stops
+- Show transient translucent transport feedback: `TAPE STOPPED`, `TAPE PLAYING`, or `TAPE ENDED`
+- Validate Target Renegade's 128K all-at-once and 48K level-at-a-time paths generically
+
+### Milestone 13 - Disassembler Window Planned
+- Add `F6` and a Debug-menu action for a read-only disassembly view around the current `PC`
+- Provide hexadecimal navigation, PC jump, refresh, copy, model, and paged-bank context
+- Keep the UI and result model ready for later breakpoints, stepping, labels, and execution history
 
 ---
 
