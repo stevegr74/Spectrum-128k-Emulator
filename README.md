@@ -299,14 +299,15 @@ and `3x Enhanced` (`960x720`). Enhanced modes use deterministic Scale2x/Scale3x
 pixel-art scaling; the same modes are available from the display context menu.
 
 Press `F1` for the in-app control reference. `F2` toggles the FPS and display
-mode overlay, which is hidden by default. `F9`, `F10`, `F11`, and `F12` open
-the 48K SNA loader, Z80/RZX loader, tape loader, and machine-dump action.
+mode overlay, which is hidden by default. `F3` resets and toggles between
+explicit 128K and 48K machine modes. `F9`, `F10`, `F11`, and `F12` open the
+48K SNA loader, Z80/RZX loader, tape loader, and machine-dump action.
 The emulator pauses while Help or a file chooser is open and resumes only when
 the final UI pause owner closes.
 
-Planned controls, not yet implemented: `F3` will reset between explicit 48K
-and 128K machine modes; `F5` will stop/resume tape transport with an on-screen
-transport indicator; and `F6` will open the read-only disassembler.
+Planned controls, not yet implemented: `F5` will stop/resume tape transport
+with an on-screen transport indicator; and `F6` will open the read-only
+disassembler.
 
 ---
 
@@ -472,10 +473,11 @@ Notes:
 - Return instruction bytes, length, mnemonic, and optional branch target without mutating machine state
 - Cover decoder behavior with focused opcode and prefix regression tests
 
-### Milestone 11 - Explicit 48K/128K Machine Modes Planned
-- Keep 128K as the startup default and make a user-selected model authoritative over tape heuristics
-- Add `F3` and explicit Machine-menu actions that reset cleanly into either model
-- Show selected model state in the status overlay and in-app help
+### Milestone 11 - Explicit 48K/128K Machine Modes Complete
+- 128K remains the startup default and the selected model is authoritative over tape heuristics
+- `F3` and right-click Machine Model actions reset cleanly into either model
+- Status overlay and in-app help show the selected model behavior
+- TZX `stop if 48K` blocks are honored by the selected model; resumable marker stops remain Milestone 12 work
 
 ### Milestone 12 - Resumable Tape Transport Planned
 - Add `F5` to stop/resume tape transport without ejecting or advancing the waveform
