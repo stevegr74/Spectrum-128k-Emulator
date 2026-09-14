@@ -301,7 +301,7 @@ pixel-art scaling; the same modes are available from the display context menu.
 Press `F1` for the in-app control reference. `F2` toggles the FPS and display
 mode overlay, which is hidden by default. `F3` resets and toggles between
 explicit 128K and 48K machine modes. `F9`, `F10`, `F11`, and `F12` open the
-48K SNA loader, Z80/RZX loader, tape loader, and machine-dump action.
+48K-format SNA loader, Z80/RZX loader, tape loader, and machine-dump action.
 The emulator pauses while Help or a file chooser is open and resumes only when
 the final UI pause owner closes.
 

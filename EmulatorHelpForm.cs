@@ -71,7 +71,7 @@ namespace Spectrum128kEmulator
             }));
             content.Controls.Add(CreateShortcutSection("Loading and Diagnostics", new[]
             {
-                ("F9", "Load a 48K .sna snapshot"),
+                ("F9", "Load a 48K-format .sna snapshot"),
                 ("F10", "Load a .z80 snapshot or .rzx recording"),
                 ("F11", "Mount a .tap or .tzx tape image"),
                 ("F12", "Write a machine diagnostic dump")

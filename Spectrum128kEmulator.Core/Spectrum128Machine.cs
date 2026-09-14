@@ -53,6 +53,9 @@ namespace Spectrum128kEmulator
                 if (speakerHigh || beeperEvents.Count != 0)
                     return true;
 
+                if (!IsAyHardwareEnabled)
+                    return false;
+
                 byte mixer = ay.ReadRegister(7);
                 for (int channel = 0; channel < 3; channel++)
                 {
@@ -183,9 +186,13 @@ namespace Spectrum128kEmulator
 
         public bool SpeakerHigh => speakerHigh;
         public bool SpeakerEdge { get; private set; }
+        private bool IsAyHardwareEnabled => MachineModel == SpectrumMachineModel.Spectrum128K;
 
         private void HandleAyPortWrite(ushort port, byte value)
         {
+            if (!IsAyHardwareEnabled)
+                return;
+
             // 128K AY ports:
             // 0xFFFD selects AY register, 0xBFFD writes the selected register.
             if ((port & 0xC002) == 0xC000)
@@ -231,7 +238,7 @@ namespace Spectrum128kEmulator
             cpu.Reset();
             frameStartTStates = cpu.TStates;
             frameStartSpeakerHigh = speakerHigh;
-            frameStartAyState = ay.CaptureAudioState();
+            frameStartAyState = CaptureAyAudioState();
             beeperEvents.Clear();
             ayWrites.Clear();
             currentFrameExecutedTStates = 0;
@@ -313,7 +320,7 @@ namespace Spectrum128kEmulator
             frameStartTStates = cpu.TStates;
             frameStartBorderColor = BorderColor;
             frameStartSpeakerHigh = speakerHigh;
-            frameStartAyState = ay.CaptureAudioState();
+            frameStartAyState = CaptureAyAudioState();
             beeperEvents.Clear();
             ayWrites.Clear();
             borderEvents.Clear();
@@ -356,9 +363,9 @@ namespace Spectrum128kEmulator
                 frameStartSpeakerHigh,
                 speakerHigh,
                 beeperEvents,
-                ay.CaptureAudioState(),
+                CaptureAyAudioState(),
                 frameStartAyState,
-                ayWrites));
+                GetAyWritesForAudioFrame()));
             currentFrameExecutedTStates = 0;
             CompleteFrameBorderCapture();
             FrameCount++;
@@ -375,9 +382,9 @@ namespace Spectrum128kEmulator
                 frameStartSpeakerHigh,
                 speakerHigh,
                 beeperEvents,
-                ay.CaptureAudioState(),
+                CaptureAyAudioState(),
                 frameStartAyState,
-                ayWrites);
+                GetAyWritesForAudioFrame());
         }
 
         public bool TryDequeueCompletedAudioFrame(out Audio.AudioFrame frame)
@@ -471,9 +478,9 @@ namespace Spectrum128kEmulator
                         frameStartSpeakerHigh,
                         speakerHigh,
                         beeperEvents,
-                        ay.CaptureAudioState(),
+                        CaptureAyAudioState(),
                         frameStartAyState,
-                        ayWrites));
+                        GetAyWritesForAudioFrame()));
                 }
                 else
                 {
@@ -1515,7 +1522,7 @@ namespace Spectrum128kEmulator
             SpeakerEdge = false;
             frameStartTStates = z80.TStates;
             frameStartSpeakerHigh = speakerHigh;
-            frameStartAyState = ay.CaptureAudioState();
+            frameStartAyState = CaptureAyAudioState();
             beeperEvents.Clear();
             ayWrites.Clear();
             currentFrameExecutedTStates = 0;
@@ -1939,7 +1946,7 @@ namespace Spectrum128kEmulator
             frameStartTStates = cpu.TStates;
             frameStartBorderColor = BorderColor;
             frameStartSpeakerHigh = speakerHigh;
-            frameStartAyState = captureAudioFramesEnabled ? ay.CaptureAudioState() : null;
+            frameStartAyState = captureAudioFramesEnabled ? CaptureAyAudioState() : null;
             beeperEvents.Clear();
             ayWrites.Clear();
             borderEvents.Clear();
@@ -1957,12 +1964,22 @@ namespace Spectrum128kEmulator
 
         private void RecordAyWrite(byte register, byte value)
         {
-            if (!captureAudioFramesEnabled)
+            if (!captureAudioFramesEnabled || !IsAyHardwareEnabled)
                 return;
 
             ulong elapsed = cpu.TStates - frameStartTStates;
             int offset = (int)Math.Min((ulong)int.MaxValue, elapsed);
             ayWrites.Add(new Audio.AyRegisterWrite(offset, register, value));
+        }
+
+        private Audio.AyAudioState? CaptureAyAudioState()
+        {
+            return IsAyHardwareEnabled ? ay.CaptureAudioState() : null;
+        }
+
+        private IReadOnlyList<Audio.AyRegisterWrite> GetAyWritesForAudioFrame()
+        {
+            return IsAyHardwareEnabled ? ayWrites : Array.Empty<Audio.AyRegisterWrite>();
         }
 
         private void RecordBorderEvent(int color)
