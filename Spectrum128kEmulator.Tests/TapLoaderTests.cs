@@ -34,6 +34,7 @@ namespace Spectrum128kEmulator.Tests
                 File.WriteAllBytes(tapePath, tap);
 
                 var machine = new Spectrum128Machine(tempFolder);
+                machine.Reset(SpectrumMachineModel.Spectrum48K);
                 TapLoadResult result = TapLoader.Load(machine, tapePath);
 
                 Assert.Equal(2, result.TotalBlockCount);

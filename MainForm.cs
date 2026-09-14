@@ -54,6 +54,8 @@ namespace Spectrum128kEmulator
         private readonly ToolStripMenuItem nativeDisplayMenuItem = new ToolStripMenuItem("1x Native");
         private readonly ToolStripMenuItem enhanced2xDisplayMenuItem = new ToolStripMenuItem("2x Enhanced");
         private readonly ToolStripMenuItem enhanced3xDisplayMenuItem = new ToolStripMenuItem("3x Enhanced");
+        private readonly ToolStripMenuItem reset128kMenuItem = new ToolStripMenuItem("Reset to 128K");
+        private readonly ToolStripMenuItem reset48kMenuItem = new ToolStripMenuItem("Reset to 48K");
 
         private readonly string romFolder;
         private Spectrum128Machine machine;
@@ -93,6 +95,7 @@ namespace Spectrum128kEmulator
         private bool hasPresentationState;
         private long suppressSpectrumHostInputUntilTicks;
         private SpectrumDisplayMode displayMode = SpectrumDisplayMode.Enhanced2x;
+        private SpectrumMachineModel selectedMachineModel = SpectrumMachineModel.Spectrum128K;
         private bool isStatusOverlayVisible;
         private EmulatorHelpForm? helpForm;
         private IDisposable? helpPauseLease;
@@ -163,6 +166,16 @@ namespace Spectrum128kEmulator
                 enhanced3xDisplayMenuItem
             });
             displayContextMenu.Items.Add(displaySizeMenuItem);
+            var machineModelMenuItem = new ToolStripMenuItem("Machine Model");
+            reset128kMenuItem.Click += (_, _) => ResetToMachineModel(SpectrumMachineModel.Spectrum128K);
+            reset48kMenuItem.Click += (_, _) => ResetToMachineModel(SpectrumMachineModel.Spectrum48K);
+            machineModelMenuItem.DropDownItems.AddRange(new ToolStripItem[]
+            {
+                reset128kMenuItem,
+                reset48kMenuItem
+            });
+            displayContextMenu.Items.Add(machineModelMenuItem);
+            UpdateMachineModelMenuItems();
             screenBox.ContextMenuStrip = displayContextMenu;
         }
 
@@ -190,6 +203,17 @@ namespace Spectrum128kEmulator
             enhanced3xDisplayMenuItem.Checked = mode == SpectrumDisplayMode.Enhanced3x;
             screenBox.Image = GetPresentationBitmap(mode);
             UpdateStatsLabel();
+        }
+
+        private void UpdateMachineModelMenuItems()
+        {
+            reset128kMenuItem.Checked = selectedMachineModel == SpectrumMachineModel.Spectrum128K;
+            reset48kMenuItem.Checked = selectedMachineModel == SpectrumMachineModel.Spectrum48K;
+        }
+
+        private static string FormatMachineModel(SpectrumMachineModel model)
+        {
+            return model == SpectrumMachineModel.Spectrum48K ? "48K" : "128K";
         }
 
         private Bitmap GetPresentationBitmap(SpectrumDisplayMode mode)
@@ -247,6 +271,8 @@ namespace Spectrum128kEmulator
         private Spectrum128Machine CreateConfiguredMachine()
         {
             var configuredMachine = new Spectrum128Machine(romFolder);
+            if (selectedMachineModel != SpectrumMachineModel.Spectrum128K)
+                configuredMachine.Reset(selectedMachineModel);
             configuredMachine.SetScreenWriteDiagnosticsEnabled(LogFrameDiagnostics);
             if (LogUnimplementedOpcodes || LogPagingWrites)
             {
@@ -261,6 +287,36 @@ namespace Spectrum128kEmulator
                 };
             }
             return configuredMachine;
+        }
+
+        private void ToggleMachineModel()
+        {
+            SpectrumMachineModel targetModel = selectedMachineModel == SpectrumMachineModel.Spectrum128K
+                ? SpectrumMachineModel.Spectrum48K
+                : SpectrumMachineModel.Spectrum128K;
+            ResetToMachineModel(targetModel);
+        }
+
+        private void ResetToMachineModel(SpectrumMachineModel model)
+        {
+            ExecuteWithEmulationPaused(() =>
+            {
+                selectedMachineModel = model;
+                ClearHostAndSpectrumInputState();
+                lock (machineLock)
+                {
+                    machine = CreateConfiguredMachine();
+                    machine.ClearDebugHistory();
+                }
+                ResetFrameScheduler();
+                RecreateAudioPipeline();
+            });
+
+            UpdateMachineModelMenuItems();
+            fpsLabel.Text = $"Reset: {FormatMachineModel(model)}";
+            SuppressSpectrumHostInputForMilliseconds(PostLoadInputSuppressionMilliseconds);
+            PresentCurrentMachineFrame(frameClock.ElapsedTicks + PresentationIntervalTicks);
+            screenBox.Focus();
         }
 
         private void InitializeKeyboard()
@@ -308,6 +364,14 @@ namespace Spectrum128kEmulator
                 return;
             }
 
+            if (IsPlainShortcut(e, Keys.F3))
+            {
+                ToggleMachineModel();
+                e.Handled = true;
+                e.SuppressKeyPress = true;
+                return;
+            }
+
             if (e.KeyCode == Keys.F4 && !e.Alt && !e.Control && !e.Shift)
             {
                 SelectDisplayMode(SpectrumDisplayModes.Next(displayMode));
@@ -335,7 +399,7 @@ namespace Spectrum128kEmulator
             if (e.KeyCode == Keys.F4 && e.Alt)
                 return;
 
-            if (IsPlainShortcut(e, Keys.F1) || IsPlainShortcut(e, Keys.F2))
+            if (IsPlainShortcut(e, Keys.F1) || IsPlainShortcut(e, Keys.F2) || IsPlainShortcut(e, Keys.F3))
             {
                 e.Handled = true;
                 e.SuppressKeyPress = true;
@@ -1251,6 +1315,7 @@ namespace Spectrum128kEmulator
             long now = frameClock.ElapsedTicks;
             lock (machineLock)
             {
+                selectedMachineModel = machine.MachineModel;
                 lastSchedulerTicks = now;
                 lastPresentationTicks = now;
                 accumulatedEmulationTStates = 0;
@@ -1264,6 +1329,7 @@ namespace Spectrum128kEmulator
             displayedFps = 0;
             displayedFrameCount = 0;
             totalPresentedFrameCount = 0;
+            UpdateMachineModelMenuItems();
             UpdateStatsLabel();
         }
 
@@ -1310,7 +1376,7 @@ namespace Spectrum128kEmulator
 
         private void UpdateStatsLabel()
         {
-            fpsLabel.Text = $"FPS={displayedFps} Frame={displayedFrameCount} Display={SpectrumDisplayModes.GetLayout(displayMode).Label}";
+            fpsLabel.Text = $"FPS={displayedFps} Frame={displayedFrameCount} Model={FormatMachineModel(selectedMachineModel)} Display={SpectrumDisplayModes.GetLayout(displayMode).Label}";
         }
 
         private int GetEmulationSpeedMultiplier(Spectrum128Machine activeMachine)

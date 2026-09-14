@@ -502,7 +502,7 @@ namespace Spectrum128kEmulator.Tests
         }
 
         [Fact]
-        public void LoadWithPolicy_DoesNotDependOnCurrentMachineMode_For_StopIf48k_Blocks()
+        public void LoadWithPolicy_UsesSelectedMachineMode_For_StopIf48k_Blocks()
         {
             string romFolder = CreateTempRoms();
             string tapePath = Path.Combine(romFolder, "stop-if-48k.tzx");
@@ -526,18 +526,17 @@ namespace Spectrum128kEmulator.Tests
                             pauseMs: 1000),
                         BuildStandardSpeedDataBlock(BuildSpectrumDataBlock(new byte[] { 0xAA }), pauseMs: 1000)));
 
-                var freshMachine = new Spectrum128Machine(romFolder);
-                Tap.TapeExecutionResult freshResult = Tap.TzxLoader.LoadWithPolicy(freshMachine, tapePath);
+                var machine128k = new Spectrum128Machine(romFolder);
+                Tap.TapeExecutionResult result128k = Tap.TzxLoader.LoadWithPolicy(machine128k, tapePath);
 
-                var stale48kMachine = new Spectrum128Machine(romFolder);
-                stale48kMachine.Reset();
-                stale48kMachine.ConfigureFor48kTapeLoad(borderColor: 0);
-                Tap.TapeExecutionResult staleResult = Tap.TzxLoader.LoadWithPolicy(stale48kMachine, tapePath);
+                var machine48k = new Spectrum128Machine(romFolder);
+                machine48k.Reset(SpectrumMachineModel.Spectrum48K);
+                Tap.TapeExecutionResult result48k = Tap.TzxLoader.LoadWithPolicy(machine48k, tapePath);
 
-                Assert.Equal(freshResult.Strategy, staleResult.Strategy);
-                Assert.Equal(freshResult.TotalBlockCount, staleResult.TotalBlockCount);
-                Assert.Equal(freshResult.ConsumedBlockCount, staleResult.ConsumedBlockCount);
-                Assert.True(freshMachine.HasMountedTape == stale48kMachine.HasMountedTape);
+                Assert.Equal(SpectrumMachineModel.Spectrum128K, machine128k.MachineModel);
+                Assert.Equal(SpectrumMachineModel.Spectrum48K, machine48k.MachineModel);
+                Assert.Equal(4, result128k.TotalBlockCount);
+                Assert.Equal(2, result48k.TotalBlockCount);
             }
             finally
             {

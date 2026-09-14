@@ -257,6 +257,7 @@ namespace Spectrum128kEmulator
         public int FrameCount { get; private set; }
         public int FrameTStates => frameTStates;
         public int CurrentCpuClockHz => frameTStates == FrameTStates48 ? CpuClockHz48 : CpuClockHz128;
+        public SpectrumMachineModel MachineModel { get; private set; } = SpectrumMachineModel.Spectrum128K;
         public bool FlashPhase => ((FrameCount / 16) & 1) != 0;
         public BorderFrame LastCompletedBorderFrame => lastCompletedBorderFrame;
 
@@ -272,15 +273,21 @@ namespace Spectrum128kEmulator
 
         public void Reset()
         {
+            Reset(SpectrumMachineModel.Spectrum128K);
+        }
+
+        public void Reset(SpectrumMachineModel model)
+        {
+            MachineModel = model;
             PagedRamBank = 0;
-            CurrentRomBank = 0;
-            PagingLocked = false;
-            uses48kMemoryMap = false;
+            CurrentRomBank = model == SpectrumMachineModel.Spectrum48K ? 1 : 0;
+            PagingLocked = model == SpectrumMachineModel.Spectrum48K;
+            uses48kMemoryMap = model == SpectrumMachineModel.Spectrum48K;
             ScreenBank = 5;
             BorderColor = 1;
             FrameCount = 0;
             LastAboveWriteFrame = -1;
-            last7ffdValue = 0xFF;
+            last7ffdValue = model == SpectrumMachineModel.Spectrum48K ? (byte)0x10 : (byte)0xFF;
             mountedTape = null;
             rzxPlayback = null;
             pendingMountedLoadUsrContinuationResolver = null;
@@ -292,7 +299,7 @@ namespace Spectrum128kEmulator
             speakerHigh = false;
             micHigh = false;
             SpeakerEdge = false;
-            frameTStates = FrameTStates128;
+            frameTStates = model == SpectrumMachineModel.Spectrum48K ? FrameTStates48 : FrameTStates128;
             floatingBusDisplayStartAdjustTStates = 0;
             floatingBusSampleAdjustTStates = 0;
 
@@ -1484,6 +1491,7 @@ namespace Spectrum128kEmulator
 
         private void EnterUsr0Mode(Z80Cpu z80)
         {
+            MachineModel = SpectrumMachineModel.Spectrum128K;
             pendingMountedLoadBasicResumeLine = null;
             pendingMountedLoadBasicResumeStatement = 0;
             pendingMountedLoadInterpreterContext = null;
@@ -1768,6 +1776,7 @@ namespace Spectrum128kEmulator
 
         public void ConfigureFor128kTapeLoad(int borderColor)
         {
+            MachineModel = SpectrumMachineModel.Spectrum128K;
             PagedRamBank = 0;
             ScreenBank = 5;
             CurrentRomBank = 1;
@@ -1792,6 +1801,7 @@ namespace Spectrum128kEmulator
         private void Configure48kSnapshotCore(int borderColor, int targetFrameTStates)
         {
             // Standard 48K layout inside the current 128K machine model.
+            MachineModel = SpectrumMachineModel.Spectrum48K;
             PagedRamBank = 0;
             ScreenBank = 5;
             CurrentRomBank = 1; // Use the 48 BASIC ROM in your current setup.
@@ -1844,6 +1854,7 @@ namespace Spectrum128kEmulator
 
         public void ConfigureFor128kSnapshot(byte last7ffdValue, int borderColor)
         {
+            MachineModel = SpectrumMachineModel.Spectrum128K;
             PagedRamBank = last7ffdValue & 0x07;
             ScreenBank = ((last7ffdValue & 0x08) != 0) ? 7 : 5;
             CurrentRomBank = ((last7ffdValue & 0x10) != 0) ? 1 : 0;
