@@ -58,6 +58,7 @@ namespace Spectrum128kEmulator.Tests
             Assert.NotNull(output.LastSamples);
             Assert.Equal(881, output.LastSamples!.Length);
             Assert.Equal(1761, output.TotalSamplesWritten);
+            Assert.Contains(output.LastSamples, sample => sample != 0);
         }
 
         [Fact]

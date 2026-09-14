@@ -204,6 +204,41 @@ namespace Spectrum128kEmulator.Tests
         }
 
         [Fact]
+        public void LoadSna48k_CanUse128kHardwareFor48kFormatSnapshot()
+        {
+            string tempFolder = CreateTempRoms();
+
+            try
+            {
+                var machine = new Spectrum128Machine(tempFolder);
+
+                SnapshotLoader.LoadSna48k(
+                    machine,
+                    CreateMinimalSna48(),
+                    SpectrumMachineModel.Spectrum128K);
+
+                machine.DebugWritePort(0xFFFD, 0x07);
+                machine.DebugWritePort(0xBFFD, 0b0011_1110);
+                machine.DebugWritePort(0xFFFD, 0x08);
+                machine.DebugWritePort(0xBFFD, 0x0F);
+
+                machine.ExecuteTimeSlice(machine.FrameTStates);
+
+                Assert.Equal(SpectrumMachineModel.Spectrum128K, machine.MachineModel);
+                Assert.Equal(Spectrum128Machine.FrameTStates128, machine.FrameTStates);
+                Assert.Equal((byte)0b0011_1110, machine.Ay.ReadRegister(7));
+                Assert.True(machine.HasAudibleOutput);
+                Assert.True(machine.TryDequeueCompletedAudioFrame(out var frame));
+                Assert.NotNull(frame.AyState);
+                Assert.NotNull(frame.InitialAyState);
+            }
+            finally
+            {
+                Directory.Delete(tempFolder, true);
+            }
+        }
+
+        [Fact]
         public void LoadSna48k_Rejects_Non48k_File_Size()
         {
             string tempFolder = CreateTempRoms();
@@ -222,6 +257,18 @@ namespace Spectrum128kEmulator.Tests
             {
                 Directory.Delete(tempFolder, true);
             }
+        }
+
+        private static byte[] CreateMinimalSna48()
+        {
+            byte[] data = new byte[27 + 49152];
+            data[19] = 0x04;
+            data[23] = 0x00;
+            data[24] = 0xC0;
+            data[25] = 0x01;
+            data[27 + 0x8000] = 0x34;
+            data[27 + 0x8001] = 0x12;
+            return data;
         }
 
     }

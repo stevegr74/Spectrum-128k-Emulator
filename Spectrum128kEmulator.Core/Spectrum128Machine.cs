@@ -1764,12 +1764,20 @@ namespace Spectrum128kEmulator
 
         public void ConfigureFor48kSnapshot(int borderColor)
         {
-            Configure48kSnapshotCore(borderColor, FrameTStates48);
+            Configure48kSnapshotCore(borderColor, SpectrumMachineModel.Spectrum48K, FrameTStates48);
+        }
+
+        public void ConfigureFor48kSnapshot(int borderColor, SpectrumMachineModel hardwareModel)
+        {
+            int targetFrameTStates = hardwareModel == SpectrumMachineModel.Spectrum128K
+                ? FrameTStates128
+                : FrameTStates48;
+            Configure48kSnapshotCore(borderColor, hardwareModel, targetFrameTStates);
         }
 
         public void ConfigureFor48kZ80Snapshot(int borderColor)
         {
-            Configure48kSnapshotCore(borderColor, FrameTStates128);
+            Configure48kSnapshotCore(borderColor, SpectrumMachineModel.Spectrum48K, FrameTStates128);
         }
 
         public void ConfigureFor48kTapeLoad(int borderColor)
@@ -1805,10 +1813,11 @@ namespace Spectrum128kEmulator
             completedAudioFrames.Clear();
         }
 
-        private void Configure48kSnapshotCore(int borderColor, int targetFrameTStates)
+        private void Configure48kSnapshotCore(int borderColor, SpectrumMachineModel hardwareModel, int targetFrameTStates)
         {
-            // Standard 48K layout inside the current 128K machine model.
-            MachineModel = SpectrumMachineModel.Spectrum48K;
+            // The snapshot file layout can be 48K even when the selected hardware
+            // is 128K, for example 48K-format saves that still use the AY chip.
+            MachineModel = hardwareModel;
             PagedRamBank = 0;
             ScreenBank = 5;
             CurrentRomBank = 1; // Use the 48 BASIC ROM in your current setup.

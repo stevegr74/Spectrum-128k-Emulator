@@ -117,6 +117,64 @@ namespace Spectrum128kEmulator.Tests
         }
 
         [Fact]
+        public void LoadZ80v1_CanUse128kHardwareFor48kFormatSnapshot()
+        {
+            string tempFolder = CreateTempRoms();
+
+            try
+            {
+                byte[] ram = new byte[Ram48Size];
+                byte[] data = BuildV1Snapshot(ram, compressed: false);
+
+                var machine = new Spectrum128Machine(tempFolder);
+                Z80SnapshotLoader.Load(machine, data, SpectrumMachineModel.Spectrum128K);
+
+                machine.DebugWritePort(0xFFFD, 0x07);
+                machine.DebugWritePort(0xBFFD, 0b0011_1110);
+                machine.DebugWritePort(0xFFFD, 0x08);
+                machine.DebugWritePort(0xBFFD, 0x0F);
+
+                machine.ExecuteTimeSlice(machine.FrameTStates);
+
+                Assert.Equal(SpectrumMachineModel.Spectrum128K, machine.MachineModel);
+                Assert.Equal(Spectrum128Machine.FrameTStates128, machine.FrameTStates);
+                Assert.True(machine.HasAudibleOutput);
+                Assert.True(machine.TryDequeueCompletedAudioFrame(out var frame));
+                Assert.NotNull(frame.AyState);
+            }
+            finally
+            {
+                Directory.Delete(tempFolder, true);
+            }
+        }
+
+        [Fact]
+        public void LoadZ80v1_CanUse48kHardwareFor48kFormatSnapshot()
+        {
+            string tempFolder = CreateTempRoms();
+
+            try
+            {
+                byte[] ram = new byte[Ram48Size];
+                byte[] data = BuildV1Snapshot(ram, compressed: false);
+
+                var machine = new Spectrum128Machine(tempFolder);
+                Z80SnapshotLoader.Load(machine, data, SpectrumMachineModel.Spectrum48K);
+
+                machine.DebugWritePort(0xFFFD, 0x07);
+                machine.DebugWritePort(0xBFFD, 0x0F);
+
+                Assert.Equal(SpectrumMachineModel.Spectrum48K, machine.MachineModel);
+                Assert.Equal(Spectrum128Machine.FrameTStates48, machine.FrameTStates);
+                Assert.False(machine.HasAudibleOutput);
+            }
+            finally
+            {
+                Directory.Delete(tempFolder, true);
+            }
+        }
+
+        [Fact]
         public void LoadZ80v2_48k_PageBlocks_Restores_48k_Memory()
         {
             string tempFolder = CreateTempRoms();

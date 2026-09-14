@@ -12,15 +12,25 @@ namespace Spectrum128kEmulator
 
         public static void LoadSna48k(Spectrum128Machine machine, string path)
         {
+            LoadSna48k(machine, path, SpectrumMachineModel.Spectrum48K);
+        }
+
+        public static void LoadSna48k(Spectrum128Machine machine, string path, SpectrumMachineModel hardwareModel)
+        {
             if (machine == null)
                 throw new ArgumentNullException(nameof(machine));
             if (string.IsNullOrWhiteSpace(path))
                 throw new ArgumentException("Snapshot path must be provided.", nameof(path));
 
-            LoadSna48k(machine, File.ReadAllBytes(path));
+            LoadSna48k(machine, File.ReadAllBytes(path), hardwareModel);
         }
 
         public static void LoadSna48k(Spectrum128Machine machine, byte[] data)
+        {
+            LoadSna48k(machine, data, SpectrumMachineModel.Spectrum48K);
+        }
+
+        public static void LoadSna48k(Spectrum128Machine machine, byte[] data, SpectrumMachineModel hardwareModel)
         {
             if (machine == null)
                 throw new ArgumentNullException(nameof(machine));
@@ -31,8 +41,8 @@ namespace Spectrum128kEmulator
                 throw new InvalidOperationException(
                     $"Only 48K .sna snapshots are supported right now. Expected {Sna48FileSize} bytes, got {data.Length}.");
 
-            machine.Reset();
-            machine.ConfigureFor48kSnapshot(borderColor: data[26] & 0x07);
+            machine.Reset(hardwareModel);
+            machine.ConfigureFor48kSnapshot(borderColor: data[26] & 0x07, hardwareModel);
 
             Z80Registers regs = machine.Cpu.Regs;
 
