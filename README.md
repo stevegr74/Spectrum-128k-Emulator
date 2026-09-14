@@ -161,7 +161,8 @@ Tape Loading Progress (Milestone 6)
 - the window title persistently distinguishes playing, manual pause, automatic stop, and ended states
 
 Disassembly Progress
-- the side-effect-free decoder foundation is complete on the retained `disassembler-foundation` branch and awaits deliberate integration
+- the side-effect-free instruction decoder foundation is integrated
+- `Z80TraceDiagnostics.cs` remains separate diagnostic CPU trace scaffolding
 - the user-facing disassembly window remains planned
 
 Broader `.tzx` compatibility work still remains for additional protected/custom titles. The current active structural goal is expanding the same format, transport, ROM/trap, bootstrap-policy, and regression layers beyond the working Batman / Exolon / Impossible Mission / Target Renegade baseline.
