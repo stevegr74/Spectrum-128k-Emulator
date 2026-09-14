@@ -767,7 +767,7 @@ namespace Spectrum128kEmulator
                     lock (machineLock)
                     {
                         Spectrum128Machine newMachine = CreateConfiguredMachine();
-                        SnapshotLoader.LoadSna48k(newMachine, dialog.FileName);
+                        SnapshotLoader.LoadSna48k(newMachine, dialog.FileName, selectedMachineModel);
                         machine = newMachine;
                     }
                     ResetFrameScheduler();
@@ -910,7 +910,7 @@ namespace Spectrum128kEmulator
                         lock (machineLock)
                         {
                             Spectrum128Machine newMachine = CreateConfiguredMachine();
-                            Z80SnapshotLoader.Load(newMachine, dialog.FileName);
+                            Z80SnapshotLoader.Load(newMachine, dialog.FileName, selectedMachineModel);
                             machine = newMachine;
                         }
                         ResetFrameScheduler();

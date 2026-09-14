@@ -14,15 +14,25 @@ namespace Spectrum128kEmulator
 
         public static void Load(Spectrum128Machine machine, string path)
         {
+            Load(machine, path, SpectrumMachineModel.Spectrum128K);
+        }
+
+        public static void Load(Spectrum128Machine machine, string path, SpectrumMachineModel hardwareModel)
+        {
             if (machine == null)
                 throw new ArgumentNullException(nameof(machine));
             if (string.IsNullOrWhiteSpace(path))
                 throw new ArgumentException("Snapshot path must be provided.", nameof(path));
 
-            Load(machine, File.ReadAllBytes(path));
+            Load(machine, File.ReadAllBytes(path), hardwareModel);
         }
 
         public static void Load(Spectrum128Machine machine, byte[] data)
+        {
+            Load(machine, data, SpectrumMachineModel.Spectrum128K);
+        }
+
+        public static void Load(Spectrum128Machine machine, byte[] data, SpectrumMachineModel hardwareModel)
         {
             if (machine == null)
                 throw new ArgumentNullException(nameof(machine));
@@ -34,7 +44,7 @@ namespace Spectrum128kEmulator
             ushort programCounter = ReadWord(data, 6);
             if (programCounter != 0)
             {
-                LoadV1(machine, data, programCounter);
+                LoadV1(machine, data, programCounter, hardwareModel);
                 return;
             }
 
@@ -56,13 +66,13 @@ namespace Spectrum128kEmulator
             if (programCounter == 0)
                 throw new InvalidOperationException("Expected a v1 .z80 snapshot, but found an extended v2/v3 snapshot.");
 
-            LoadV1(machine, data, programCounter);
+            LoadV1(machine, data, programCounter, SpectrumMachineModel.Spectrum128K);
         }
 
-        private static void LoadV1(Spectrum128Machine machine, byte[] data, ushort programCounter)
+        private static void LoadV1(Spectrum128Machine machine, byte[] data, ushort programCounter, SpectrumMachineModel hardwareModel)
         {
-            machine.Reset();
-            machine.ConfigureFor48kZ80Snapshot(borderColor: (NormalizeFlagsByte(data[12]) >> 1) & 0x07);
+            machine.Reset(hardwareModel);
+            machine.ConfigureFor48kSnapshot((NormalizeFlagsByte(data[12]) >> 1) & 0x07, hardwareModel);
 
             RestoreCommonRegisters(machine.Cpu.Regs, data, programCounter);
 
