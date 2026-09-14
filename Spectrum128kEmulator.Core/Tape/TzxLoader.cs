@@ -26,7 +26,7 @@ namespace Spectrum128kEmulator.Tap
             if (string.IsNullOrWhiteSpace(path))
                 throw new ArgumentException("Tape path must be provided.", nameof(path));
 
-            var blocks = ParseBlocksForNewTapeLoad(File.ReadAllBytes(path));
+            var blocks = ParseBlocksForNewTapeLoad(File.ReadAllBytes(path), machine.MachineModel);
             if (blocks.Count == 0)
                 throw new InvalidOperationException("The .tzx file does not contain any supported tape blocks.");
 
@@ -46,7 +46,7 @@ namespace Spectrum128kEmulator.Tap
             if (string.IsNullOrWhiteSpace(path))
                 throw new ArgumentException("Tape path must be provided.", nameof(path));
 
-            var blocks = ParseBlocksForNewTapeLoad(File.ReadAllBytes(path));
+            var blocks = ParseBlocksForNewTapeLoad(File.ReadAllBytes(path), machine.MachineModel);
             string displayName = Path.GetFileName(path);
             TapeLoadPlan plan = TapLoader.CreateExecutionPlan(machine, blocks);
             return TapLoader.ExecutePlan(
@@ -64,7 +64,7 @@ namespace Spectrum128kEmulator.Tap
             if (string.IsNullOrWhiteSpace(path))
                 throw new ArgumentException("Tape path must be provided.", nameof(path));
 
-            var blocks = ParseBlocksForNewTapeLoad(File.ReadAllBytes(path));
+            var blocks = ParseBlocksForNewTapeLoad(File.ReadAllBytes(path), machine.MachineModel);
             return TapLoader.BootstrapTapeBlocksAndMountRemaining(
                 machine,
                 Path.GetFileName(path),
@@ -80,7 +80,7 @@ namespace Spectrum128kEmulator.Tap
             if (string.IsNullOrWhiteSpace(path))
                 throw new ArgumentException("Tape path must be provided.", nameof(path));
 
-            var blocks = ParseBlocksForNewTapeLoad(File.ReadAllBytes(path));
+            var blocks = ParseBlocksForNewTapeLoad(File.ReadAllBytes(path), machine.MachineModel);
             return TapLoader.LoadAllStandardTapeBlocksAndAutoStart(
                 machine,
                 Path.GetFileName(path),
@@ -108,13 +108,10 @@ namespace Spectrum128kEmulator.Tap
             return resolved;
         }
 
-        private static IReadOnlyList<TapeBlock> ParseBlocksForNewTapeLoad(byte[] fileData)
+        private static IReadOnlyList<TapeBlock> ParseBlocksForNewTapeLoad(byte[] fileData, SpectrumMachineModel machineModel)
         {
-            // A newly requested tape load should be evaluated from the tape image itself,
-            // not from whatever 48K/128K mode the previous run happened to leave behind.
-            // Public tape-load entry points therefore ignore "Stop if 48K" during the
-            // initial parse and let the tape policy select the target load mode later.
-            return PrepareBlocksForExecution(ParseBlocks(fileData, stopTapeIf48k: false));
+            bool stopTapeIf48k = machineModel == SpectrumMachineModel.Spectrum48K;
+            return PrepareBlocksForExecution(ParseBlocks(fileData, stopTapeIf48k));
         }
 
         internal static IReadOnlyList<TapeBlock> PrepareBlocksForExecution(IReadOnlyList<TapeBlock> blocks)

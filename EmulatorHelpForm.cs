@@ -65,6 +65,7 @@ namespace Spectrum128kEmulator
             {
                 ("F1", "Show or close this help window"),
                 ("F2", "Show or hide the FPS and display-mode overlay"),
+                ("F3", "Reset and toggle between 128K and 48K machine modes"),
                 ("F4", "Cycle 1x Native, 2x Enhanced, and 3x Enhanced"),
                 ("Right-click", "Select a display mode directly")
             }));

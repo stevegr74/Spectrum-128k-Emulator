@@ -1637,7 +1637,7 @@ namespace Spectrum128kEmulator.Tap
             if (blocks.Count == 0)
                 throw new InvalidOperationException("The .tap file does not contain any blocks.");
 
-            bool use128kMode = Requires128kTapeLoadModeForStandardTape(machine, blocks);
+            bool use128kMode = Use128kTapeLoadMode(machine);
             InitializeMachineForFakeTapeLoad(machine, use128kMode);
 
             TapHeaderInfo? pendingHeader = null;
@@ -1758,7 +1758,7 @@ namespace Spectrum128kEmulator.Tap
             if (blocks.Count < 2)
                 throw new InvalidOperationException("The tape image does not contain enough blocks to bootstrap a BASIC loader.");
 
-            bool use128kMode = Requires128kTapeLoadModeForStandardTape(machine, blocks);
+            bool use128kMode = Use128kTapeLoadMode(machine);
             InitializeMachineForFakeTapeLoad(machine, use128kMode);
             int consumedBlockCount = 0;
             string? autoStartFileName = null;
@@ -1929,7 +1929,7 @@ namespace Spectrum128kEmulator.Tap
 
             if (CanLoadAllStandardTapeBlocks(blocks))
             {
-                bool use128kMode = Requires128kTapeLoadModeForStandardTape(machine, blocks);
+                bool use128kMode = Use128kTapeLoadMode(machine);
                 if (RequiresRomDrivenBootstrapForStandardTape(machine, blocks, use128kMode))
                 {
                     return new TapeLoadPlan(
@@ -2062,7 +2062,7 @@ namespace Spectrum128kEmulator.Tap
 
                 default:
                 {
-                    bool use128kMode = Requires128kTapeLoadModeForStandardTape(machine, blocks);
+                    bool use128kMode = Use128kTapeLoadMode(machine);
                     InitializeMachineForFakeTapeLoad(machine, use128kMode);
                     var tape = new MountedTape(
                         displayName,
@@ -2141,7 +2141,7 @@ namespace Spectrum128kEmulator.Tap
             if (!stopBeforeFirstCustomHeader && !CanLoadAllStandardTapeBlocks(blocks))
                 throw new InvalidOperationException("The tape image contains nonstandard blocks and cannot be fully fake-loaded.");
 
-            bool use128kMode = Requires128kTapeLoadModeForStandardTape(machine, blocks);
+            bool use128kMode = Use128kTapeLoadMode(machine);
             if (RequiresMountedLoadSemanticsForStandardTape(machine, blocks, use128kMode))
             {
                 return BootstrapTapeBlocksAndMountRemaining(
@@ -2391,7 +2391,7 @@ namespace Spectrum128kEmulator.Tap
             if (nextHeader.Type != ProgramType)
                 return false;
 
-            bool use128kMode = Requires128kTapeLoadModeForStandardTape(machine, blocks);
+            bool use128kMode = Use128kTapeLoadMode(machine);
             return !CanBootstrapLoadedBasicProgram(machine, nextHeader, blocks[index + 1].Payload!, use128kMode);
         }
 
@@ -2415,7 +2415,7 @@ namespace Spectrum128kEmulator.Tap
             if (firstHeader.Type != ProgramType || firstHeader.AutoStartLine >= 32768)
                 return false;
 
-            bool use128kMode = Requires128kTapeLoadModeForStandardTape(machine, blocks);
+            bool use128kMode = Use128kTapeLoadMode(machine);
             InitializeMachineForFakeTapeLoad(machine, use128kMode);
             LoadBasicProgram(machine, firstHeader, blocks[index + 1].Payload!);
             bool firstStageBootstrapSafe = CanBootstrapLoadedBasicProgram(
@@ -2520,7 +2520,7 @@ namespace Spectrum128kEmulator.Tap
             if (prefixEndIndex <= 0)
                 throw new InvalidOperationException("The tape does not contain a safe leading standard BASIC chain.");
 
-            bool use128kMode = Requires128kTapeLoadModeForStandardTape(machine, blocks);
+            bool use128kMode = Use128kTapeLoadMode(machine);
             InitializeMachineForFakeTapeLoad(machine, use128kMode);
 
             int consumedBlockCount = 0;
@@ -2719,7 +2719,7 @@ namespace Spectrum128kEmulator.Tap
             if (blocks.Count == 0)
                 throw new InvalidOperationException("The tape image does not contain any blocks.");
 
-            bool use128kMode = Requires128kTapeLoadModeForStandardTape(machine, blocks);
+            bool use128kMode = Use128kTapeLoadMode(machine);
             InitializeMachineForFakeTapeLoad(machine, use128kMode);
 
             int consumedBlockCount = 0;
@@ -2840,6 +2840,14 @@ namespace Spectrum128kEmulator.Tap
             // Protected streams can contain their own machine-mode probe after a
             // generic BASIC USR handoff, so keep the native 128K configuration.
             return ContainsElectricallyDecodedProtectedStream(blocks);
+        }
+
+        private static bool Use128kTapeLoadMode(Spectrum128Machine machine)
+        {
+            if (machine == null)
+                throw new ArgumentNullException(nameof(machine));
+
+            return machine.MachineModel == SpectrumMachineModel.Spectrum128K;
         }
 
         private static void StartRomDrivenMountedBasicAutoStart(
