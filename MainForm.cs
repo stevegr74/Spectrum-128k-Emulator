@@ -56,6 +56,7 @@ namespace Spectrum128kEmulator
         private readonly ToolStripMenuItem enhanced3xDisplayMenuItem = new ToolStripMenuItem("3x Enhanced");
         private readonly ToolStripMenuItem reset128kMenuItem = new ToolStripMenuItem("Reset to 128K");
         private readonly ToolStripMenuItem reset48kMenuItem = new ToolStripMenuItem("Reset to 48K");
+        private readonly ToolStripMenuItem statusOverlayMenuItem = new ToolStripMenuItem("F2 - Status Overlay");
 
         private readonly string romFolder;
         private Spectrum128Machine machine;
@@ -154,7 +155,21 @@ namespace Spectrum128kEmulator
 
         private void InitializeDisplayModeSelector()
         {
-            var displaySizeMenuItem = new ToolStripMenuItem("Display Size");
+            displayContextMenu.Items.Add("F1 - Help", null, (_, _) => ToggleHelpWindow());
+            statusOverlayMenuItem.Click += (_, _) => ToggleStatusOverlay();
+            displayContextMenu.Items.Add(statusOverlayMenuItem);
+
+            var machineModelMenuItem = new ToolStripMenuItem("F3 - Machine Model");
+            reset128kMenuItem.Click += (_, _) => ResetToMachineModel(SpectrumMachineModel.Spectrum128K);
+            reset48kMenuItem.Click += (_, _) => ResetToMachineModel(SpectrumMachineModel.Spectrum48K);
+            machineModelMenuItem.DropDownItems.AddRange(new ToolStripItem[]
+            {
+                reset128kMenuItem,
+                reset48kMenuItem
+            });
+            displayContextMenu.Items.Add(machineModelMenuItem);
+
+            var displaySizeMenuItem = new ToolStripMenuItem("F4 - Display Size");
             nativeDisplayMenuItem.Click += (_, _) => SelectDisplayMode(SpectrumDisplayMode.Native);
             enhanced2xDisplayMenuItem.Click += (_, _) => SelectDisplayMode(SpectrumDisplayMode.Enhanced2x);
             enhanced3xDisplayMenuItem.Click += (_, _) => SelectDisplayMode(SpectrumDisplayMode.Enhanced3x);
@@ -166,15 +181,12 @@ namespace Spectrum128kEmulator
                 enhanced3xDisplayMenuItem
             });
             displayContextMenu.Items.Add(displaySizeMenuItem);
-            var machineModelMenuItem = new ToolStripMenuItem("Machine Model");
-            reset128kMenuItem.Click += (_, _) => ResetToMachineModel(SpectrumMachineModel.Spectrum128K);
-            reset48kMenuItem.Click += (_, _) => ResetToMachineModel(SpectrumMachineModel.Spectrum48K);
-            machineModelMenuItem.DropDownItems.AddRange(new ToolStripItem[]
-            {
-                reset128kMenuItem,
-                reset48kMenuItem
-            });
-            displayContextMenu.Items.Add(machineModelMenuItem);
+
+            displayContextMenu.Items.Add(new ToolStripSeparator());
+            displayContextMenu.Items.Add("F9 - Load 48K .sna Snapshot", null, (_, _) => LoadSnaSnapshotFromDialog());
+            displayContextMenu.Items.Add("F10 - Load .z80 Snapshot or .rzx Recording", null, (_, _) => LoadSnapshotOrRecordingFromDialog());
+            displayContextMenu.Items.Add("F11 - Mount .tap or .tzx Tape Image", null, (_, _) => MountTapFromDialog());
+            displayContextMenu.Items.Add("F12 - Write Machine Diagnostic Dump", null, (_, _) => DumpMachineDebugState());
             UpdateMachineModelMenuItems();
             screenBox.ContextMenuStrip = displayContextMenu;
         }
@@ -201,6 +213,7 @@ namespace Spectrum128kEmulator
             nativeDisplayMenuItem.Checked = mode == SpectrumDisplayMode.Native;
             enhanced2xDisplayMenuItem.Checked = mode == SpectrumDisplayMode.Enhanced2x;
             enhanced3xDisplayMenuItem.Checked = mode == SpectrumDisplayMode.Enhanced3x;
+            statusOverlayMenuItem.Checked = isStatusOverlayVisible;
             screenBox.Image = GetPresentationBitmap(mode);
             UpdateStatsLabel();
         }
@@ -233,6 +246,7 @@ namespace Spectrum128kEmulator
         private void ToggleStatusOverlay()
         {
             isStatusOverlayVisible = !isStatusOverlayVisible;
+            statusOverlayMenuItem.Checked = isStatusOverlayVisible;
             UpdateStatsLabel();
             fpsLabel.Visible = isStatusOverlayVisible;
             screenBox.Focus();
