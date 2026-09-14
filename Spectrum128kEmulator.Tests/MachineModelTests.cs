@@ -33,6 +33,55 @@ namespace Spectrum128kEmulator.Tests
             }
         }
 
+        [Fact]
+        public void Spectrum48kMode_IgnoresAyPortWrites()
+        {
+            string romFolder = CreateTempRoms();
+            try
+            {
+                var machine = new Spectrum128Machine(romFolder);
+                machine.Reset(SpectrumMachineModel.Spectrum48K);
+
+                machine.DebugWritePort(0xFFFD, 0x07);
+                machine.DebugWritePort(0xBFFD, 0xAB);
+
+                Assert.Equal((byte)0x00, machine.Ay.CurrentRegister);
+                Assert.Equal((byte)0x00, machine.Ay.ReadRegister(7));
+                Assert.False(machine.HasAudibleOutput);
+            }
+            finally
+            {
+                Directory.Delete(romFolder, true);
+            }
+        }
+
+        [Fact]
+        public void Spectrum48kMode_EmitsAudioFramesWithoutAyState()
+        {
+            string romFolder = CreateTempRoms();
+            try
+            {
+                var machine = new Spectrum128Machine(romFolder);
+                machine.Reset(SpectrumMachineModel.Spectrum48K);
+                machine.Ay.SelectRegister(7);
+                machine.Ay.WriteRegister(0b0011_1110);
+                machine.Ay.SelectRegister(8);
+                machine.Ay.WriteRegister(0x0F);
+
+                machine.ExecuteTimeSlice(machine.FrameTStates);
+
+                Assert.True(machine.TryDequeueCompletedAudioFrame(out var frame));
+                Assert.Null(frame.AyState);
+                Assert.Null(frame.InitialAyState);
+                Assert.Empty(frame.AyWrites);
+                Assert.False(machine.HasAudibleOutput);
+            }
+            finally
+            {
+                Directory.Delete(romFolder, true);
+            }
+        }
+
         private static string CreateTempRoms()
         {
             string root = Path.Combine(Path.GetTempPath(), "SpectrumMachineModelTests_" + Guid.NewGuid().ToString("N"));
