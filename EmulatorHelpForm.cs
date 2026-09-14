@@ -67,7 +67,7 @@ namespace Spectrum128kEmulator
                 ("F2", "Show or hide the FPS and display-mode overlay"),
                 ("F3", "Reset and toggle between 128K and 48K machine modes"),
                 ("F4", "Cycle 1x Native, 2x Enhanced, and 3x Enhanced"),
-                ("Right-click", "Select a display mode directly")
+                ("Right-click", "Open the quick menu for display, machine, loading, and diagnostics")
             }));
             content.Controls.Add(CreateShortcutSection("Loading and Diagnostics", new[]
             {
