@@ -58,7 +58,27 @@ namespace Spectrum128kEmulator.Tests
             Assert.NotNull(output.LastSamples);
             Assert.Equal(881, output.LastSamples!.Length);
             Assert.Equal(1761, output.TotalSamplesWritten);
-            Assert.Contains(output.LastSamples, sample => sample != 0);
+            Assert.All(output.LastSamples, sample => Assert.Equal((short)0, sample));
+        }
+
+        [Fact]
+        public void SubmitFrame_Renders48kBeeperEdges_WithoutAyState()
+        {
+            var output = new RecordingAudioOutput(44100);
+            using var pipeline = new AudioPipeline(output);
+
+            var frame = new AudioFrame(
+                Spectrum128Machine.FrameTStates48,
+                Spectrum128Machine.CpuClockHz48,
+                false,
+                true,
+                new[] { new BeeperEvent(Spectrum128Machine.FrameTStates48 / 2, true) });
+
+            pipeline.SubmitFrame(frame);
+
+            Assert.NotNull(output.LastSamples);
+            Assert.Contains((short)-6000, output.LastSamples!);
+            Assert.Contains((short)6000, output.LastSamples!);
         }
 
         [Fact]
