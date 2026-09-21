@@ -28,6 +28,9 @@ namespace Spectrum128kEmulator.Audio
 
             int sampleCount = sampleClock.Consume(frame.FrameTStates, frame.CpuClockHz);
             bool beeperSilent = !frame.InitialSpeakerHigh && !frame.FinalSpeakerHigh && frame.BeeperEvents.Count == 0;
+            if (beeperSilent && frame.AyState == null)
+                return new short[sampleCount];
+
             if (beeperSilent && frame.AyState != null)
                 return ayGenerator.GenerateFrameSamples(frame, sampleCount);
 
