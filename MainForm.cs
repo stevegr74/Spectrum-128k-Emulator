@@ -104,8 +104,8 @@ namespace Spectrum128kEmulator
         private TapeTransportState lastObservedTapeTransportState = TapeTransportState.NoTape;
         private bool lastObservedTapeMarkerStop;
         private TapeTransportState tapeTransportOverlayState = TapeTransportState.NoTape;
-        private bool tapeTransportOverlayPersistent;
-        private long tapeTransportOverlayExpiresAtTicks;
+        private bool tapeTransportOverlayMarkerStop;
+        private long tapeTransportOverlayEmphasisExpiresAtTicks;
         private EmulatorHelpForm? helpForm;
         private IDisposable? helpPauseLease;
 
@@ -281,7 +281,7 @@ namespace Spectrum128kEmulator
             lastObservedTapeTransportState = state;
             lastObservedTapeMarkerStop = markerStop;
             if (state is TapeTransportState.Playing or TapeTransportState.Stopped)
-                ShowTapeTransportOverlay(state, persistent: false);
+                ShowTapeTransportOverlay(state, markerStop);
 
             UpdateTapeTransportMenuItem();
             UpdateStatsLabel();
@@ -1467,7 +1467,7 @@ namespace Spectrum128kEmulator
             lastObservedTapeMarkerStop = machine.IsTapeStoppedAtMarker;
             UpdateTapeTransportMenuItem();
             if (state == TapeTransportState.Playing)
-                ShowTapeTransportOverlay(state, persistent: false);
+                ShowTapeTransportOverlay(state, markerStop: false);
         }
 
         private void UpdateTapeTransportFeedback(long nowTicks)
@@ -1476,16 +1476,11 @@ namespace Spectrum128kEmulator
             bool markerStop = machine.IsTapeStoppedAtMarker;
             if (state != lastObservedTapeTransportState || markerStop != lastObservedTapeMarkerStop)
             {
-                TapeTransportState previousState = lastObservedTapeTransportState;
                 lastObservedTapeTransportState = state;
                 lastObservedTapeMarkerStop = markerStop;
 
-                if (state == TapeTransportState.Stopped)
-                    ShowTapeTransportOverlay(state, persistent: markerStop);
-                else if (state == TapeTransportState.Ended)
-                    ShowTapeTransportOverlay(state, persistent: false);
-                else if (state == TapeTransportState.Playing && previousState == TapeTransportState.Stopped)
-                    ShowTapeTransportOverlay(state, persistent: false);
+                if (state is TapeTransportState.Playing or TapeTransportState.Stopped or TapeTransportState.Ended)
+                    ShowTapeTransportOverlay(state, markerStop);
                 else if (state == TapeTransportState.NoTape)
                     ClearTapeTransportOverlay();
 
@@ -1493,42 +1488,38 @@ namespace Spectrum128kEmulator
                 UpdateStatsLabel();
             }
 
-            if (!tapeTransportOverlayPersistent &&
-                tapeTransportOverlayState != TapeTransportState.NoTape &&
-                nowTicks >= tapeTransportOverlayExpiresAtTicks)
-            {
+            if (tapeTransportOverlayState == TapeTransportState.Ended &&
+                nowTicks >= tapeTransportOverlayEmphasisExpiresAtTicks)
                 ClearTapeTransportOverlay();
-            }
         }
 
-        private void ShowTapeTransportOverlay(TapeTransportState state, bool persistent)
+        private void ShowTapeTransportOverlay(TapeTransportState state, bool markerStop)
         {
             tapeTransportOverlayState = state;
-            tapeTransportOverlayPersistent = persistent;
-            tapeTransportOverlayExpiresAtTicks = persistent
-                ? long.MaxValue
-                : frameClock.ElapsedTicks + (long)(TapeTransportOverlaySeconds * System.Diagnostics.Stopwatch.Frequency);
+            tapeTransportOverlayMarkerStop = markerStop;
+            tapeTransportOverlayEmphasisExpiresAtTicks =
+                frameClock.ElapsedTicks + (long)(TapeTransportOverlaySeconds * System.Diagnostics.Stopwatch.Frequency);
         }
 
         private void ClearTapeTransportOverlay()
         {
             tapeTransportOverlayState = TapeTransportState.NoTape;
-            tapeTransportOverlayPersistent = false;
-            tapeTransportOverlayExpiresAtTicks = 0;
+            tapeTransportOverlayMarkerStop = false;
+            tapeTransportOverlayEmphasisExpiresAtTicks = 0;
         }
 
         private void DrawTapeTransportOverlay(Bitmap bitmap, int scale, long nowTicks)
         {
             if (tapeTransportOverlayState == TapeTransportState.NoTape ||
-                (!tapeTransportOverlayPersistent && nowTicks >= tapeTransportOverlayExpiresAtTicks))
-            {
+                (tapeTransportOverlayState == TapeTransportState.Ended &&
+                 nowTicks >= tapeTransportOverlayEmphasisExpiresAtTicks))
                 return;
-            }
 
             string text = tapeTransportOverlayState switch
             {
-                TapeTransportState.Playing => "TAPE PLAYING",
-                TapeTransportState.Stopped => "TAPE STOPPED",
+                TapeTransportState.Playing => "TAPE PLAYING - F5 STOP",
+                TapeTransportState.Stopped when tapeTransportOverlayMarkerStop => "TAPE AUTO-STOPPED - F5 RESUME",
+                TapeTransportState.Stopped => "TAPE PAUSED - F5 RESUME",
                 TapeTransportState.Ended => "TAPE ENDED",
                 _ => string.Empty
             };
@@ -1538,21 +1529,22 @@ namespace Spectrum128kEmulator
                 TapeTransportState.Stopped => Color.FromArgb(255, 190, 55),
                 _ => Color.FromArgb(210, 215, 220)
             };
+            bool emphasized = nowTicks < tapeTransportOverlayEmphasisExpiresAtTicks;
 
             int x = 8 * scale;
             int y = (isStatusOverlayVisible ? 30 : 8) * scale;
-            int width = 142 * scale;
-            int height = 30 * scale;
-            int iconLeft = x + (9 * scale);
-            int iconTop = y + (8 * scale);
-            int iconSize = 14 * scale;
+            int width = (tapeTransportOverlayMarkerStop ? 238 : 190) * scale;
+            int height = (emphasized ? 30 : 24) * scale;
+            int iconLeft = x + (8 * scale);
+            int iconSize = (emphasized ? 14 : 11) * scale;
+            int iconTop = y + ((height - iconSize) / 2);
 
             using Graphics graphics = Graphics.FromImage(bitmap);
             graphics.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
-            using var backgroundBrush = new SolidBrush(Color.FromArgb(178, 8, 12, 14));
+            using var backgroundBrush = new SolidBrush(Color.FromArgb(emphasized ? 210 : 168, 8, 12, 14));
             using var accentBrush = new SolidBrush(accent);
-            using var borderPen = new Pen(Color.FromArgb(210, accent), Math.Max(1, scale));
-            using var font = new Font(FontFamily.GenericSansSerif, 8.5f * scale, FontStyle.Bold, GraphicsUnit.Pixel);
+            using var borderPen = new Pen(Color.FromArgb(emphasized ? 235 : 190, accent), Math.Max(1, scale));
+            using var font = new Font(FontFamily.GenericSansSerif, (emphasized ? 8.5f : 7.5f) * scale, FontStyle.Bold, GraphicsUnit.Pixel);
             graphics.FillRectangle(backgroundBrush, x, y, width, height);
             graphics.DrawRectangle(borderPen, x, y, width - 1, height - 1);
 
@@ -1570,7 +1562,7 @@ namespace Spectrum128kEmulator
                 graphics.FillRectangle(accentBrush, iconLeft, iconTop, iconSize, iconSize);
             }
 
-            graphics.DrawString(text, font, accentBrush, x + (31 * scale), y + (9 * scale));
+            graphics.DrawString(text, font, accentBrush, x + (28 * scale), y + ((emphasized ? 9 : 7) * scale));
         }
 
         private static string FormatTapeTransportState(TapeTransportState state, bool markerStop)
