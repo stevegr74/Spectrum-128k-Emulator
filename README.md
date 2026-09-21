@@ -201,10 +201,10 @@ foundations:
    - Keep 128K as the startup default and the selected model authoritative over automatic tape heuristics.
    - Preserve the tested `F3`, context-menu, status-overlay, snapshot-hardware, and genuine 48K AY-gating behavior.
 
-3. **Validate resumable tape transport and dual-mode TZX support.**
-   - `F5`, exact pulse-position preservation, resumable 48K stop markers, timed translucent feedback, and persistent title status are implemented on `codex/tape-transport`.
+3. **Maintain the completed resumable tape transport and dual-mode TZX support.**
+   - Preserve `F5`, exact pulse-position preservation, resumable 48K stop markers, timed translucent feedback, and persistent title status.
    - Target Renegade's all-at-once 128K route and level-at-a-time 48K route have been manually validated without title-specific behavior.
-   - Manually validate the final three-second text, playing-icon, five-second stopped-icon, and title-status presentation before merge.
+   - The three-second text, persistent playing icon, five-second stopped icon, and title-status presentation have been manually accepted as the working baseline.
 
 4. **Expose a simple, expandable disassembler.**
    - Add `F6` and a Debug-menu action to open a read-only disassembly window around the current `PC`.
@@ -483,13 +483,13 @@ Notes:
 - Status overlay and in-app help show the selected model behavior
 - TZX `stop if 48K` blocks are honored by the selected model and feed the resumable Milestone 12 transport path
 
-### Milestone 12 - Resumable Tape Transport In Validation
+### Milestone 12 - Resumable Tape Transport Complete
 - `F5` stops/resumes tape transport without ejecting or advancing the waveform
 - TZX `stop if 48K` markers remain in the mounted tape as resumable stops with later blocks intact
 - A translucent badge shows full transport text for three seconds, then an icon only; the playing icon persists and paused/stopped icons hide after five seconds
 - The window title persistently distinguishes playing, manual pause, automatic stop, and ended states
 - Core regressions cover exact pulse/EAR preservation, marker resumption, machine transport state, and selected-model parsing
-- Target Renegade's 128K all-at-once and 48K level-at-a-time paths have been manually validated; final transport-presentation validation remains before completion
+- Target Renegade's 128K all-at-once and 48K level-at-a-time paths and the final transport presentation have been manually validated
 
 ### Milestone 13 - Disassembler Window Planned
 - Add `F6` and a Debug-menu action for a read-only disassembly view around the current `PC`
