@@ -157,7 +157,8 @@ Tape Loading Progress (Milestone 6)
 - explicit 48K/128K selection is implemented, and the selected model controls TZX stop-marker behavior
 - `F5` stops and resumes the mounted tape without advancing its pulse position or changing its EAR level
 - 48K TZX stop markers now preserve the remaining blocks as resumable transport stops instead of truncating the tape
-- a compact top-left badge persistently shows `TAPE PLAYING`, `TAPE PAUSED`, or `TAPE AUTO-STOPPED`; transitions are briefly emphasized and `TAPE ENDED` is transient
+- tape transitions show a full top-left status for three seconds; playing then keeps a compact icon, while paused/stopped icons disappear after five seconds
+- the window title persistently distinguishes playing, manual pause, automatic stop, and ended states
 
 Disassembly Progress
 - the side-effect-free decoder foundation is complete on the retained `codex/disassembler-foundation` branch and awaits deliberate integration
@@ -302,9 +303,10 @@ mode overlay, which is hidden by default. `F3` resets and toggles between
 explicit 128K and 48K machine modes. `F9`, `F10`, `F11`, and `F12` open the
 48K-format SNA loader, Z80/RZX loader, tape loader, and machine-dump action.
 `F5` stops or resumes a mounted tape while CPU emulation continues. Manual
-transport state remains visible in a compact top-left badge while a tape is
-mounted. State changes are emphasized for about 1.5 seconds, and TZX 48K
-stop-marker pauses are explicitly labelled `TAPE AUTO-STOPPED` until resumed.
+transport changes show a full top-left status for three seconds. Playing then
+keeps a compact icon; paused and automatically stopped states keep the icon for
+five seconds in total before hiding it. The window title continues to show the
+current tape state, including an explicit `Tape: Auto-stopped` marker status.
 The emulator pauses while Help or a file chooser is open and resumes only when
 the final UI pause owner closes.
 
@@ -483,7 +485,8 @@ Notes:
 ### Milestone 12 - Resumable Tape Transport In Validation
 - `F5` stops/resumes tape transport without ejecting or advancing the waveform
 - TZX `stop if 48K` markers remain in the mounted tape as resumable stops with later blocks intact
-- A translucent badge persistently distinguishes `TAPE PLAYING`, manual `TAPE PAUSED`, and marker-triggered `TAPE AUTO-STOPPED`; transitions are briefly emphasized and `TAPE ENDED` is transient
+- A translucent badge shows full transport text for three seconds, then an icon only; the playing icon persists and paused/stopped icons hide after five seconds
+- The window title persistently distinguishes playing, manual pause, automatic stop, and ended states
 - Core regressions cover exact pulse/EAR preservation, marker resumption, machine transport state, and selected-model parsing
 - Target Renegade's 128K all-at-once and 48K level-at-a-time paths require final manual validation before completion
 
