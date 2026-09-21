@@ -441,8 +441,8 @@ Notes:
 - VERIFY path implemented
 - deterministic sequencing and rewind implemented
 - Verified protected-loader examples include Exolon, Impossible Mission, Batman, and Target Renegade's protected 128K multi-load
-- Target Renegade now reaches its game menu after a clean final tape stop/eject
-- Explicit 48K/128K selection and manual/resumable tape transport are implemented; Target Renegade's dual-mode loading has been manually validated
+- Target Renegade's 128K path now reaches its game menu after a clean final tape stop/eject
+- Milestone 11 supplies explicit 48K/128K selection, and Milestone 12 supplies manual/resumable transport; together they enable the manually validated dual-mode Target Renegade paths
 - Broader protected/custom TZX compatibility remains ongoing
 
 ### Milestone 7 - Audio (In Progress)
