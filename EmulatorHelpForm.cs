@@ -67,7 +67,7 @@ namespace Spectrum128kEmulator
                 ("F2", "Show or hide the FPS and display-mode overlay"),
                 ("F3", "Reset and toggle between 128K and 48K machine modes"),
                 ("F4", "Cycle 1x Native, 2x Enhanced, and 3x Enhanced"),
-                ("F5", "Stop or resume tape transport without pausing emulation"),
+                ("F5", "Stop or resume tape transport; the on-screen badge shows its state"),
                 ("Right-click", "Open the quick menu for display, machine, tape, loading, and diagnostics")
             }));
             content.Controls.Add(CreateShortcutSection("Loading and Diagnostics", new[]

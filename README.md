@@ -157,7 +157,7 @@ Tape Loading Progress (Milestone 6)
 - explicit 48K/128K selection is implemented, and the selected model controls TZX stop-marker behavior
 - `F5` stops and resumes the mounted tape without advancing its pulse position or changing its EAR level
 - 48K TZX stop markers now preserve the remaining blocks as resumable transport stops instead of truncating the tape
-- transient top-left `TAPE PLAYING`, `TAPE STOPPED`, and `TAPE ENDED` feedback is implemented; marker stops remain visible until resumed
+- a compact top-left badge persistently shows `TAPE PLAYING`, `TAPE PAUSED`, or `TAPE AUTO-STOPPED`; transitions are briefly emphasized and `TAPE ENDED` is transient
 
 Disassembly Progress
 - the side-effect-free decoder foundation is complete on the retained `codex/disassembler-foundation` branch and awaits deliberate integration
@@ -302,8 +302,9 @@ mode overlay, which is hidden by default. `F3` resets and toggles between
 explicit 128K and 48K machine modes. `F9`, `F10`, `F11`, and `F12` open the
 48K-format SNA loader, Z80/RZX loader, tape loader, and machine-dump action.
 `F5` stops or resumes a mounted tape while CPU emulation continues. Manual
-transport notifications fade after about 1.5 seconds; a TZX 48K stop-marker
-notification remains visible until the tape is resumed.
+transport state remains visible in a compact top-left badge while a tape is
+mounted. State changes are emphasized for about 1.5 seconds, and TZX 48K
+stop-marker pauses are explicitly labelled `TAPE AUTO-STOPPED` until resumed.
 The emulator pauses while Help or a file chooser is open and resumes only when
 the final UI pause owner closes.
 
@@ -482,7 +483,7 @@ Notes:
 ### Milestone 12 - Resumable Tape Transport In Validation
 - `F5` stops/resumes tape transport without ejecting or advancing the waveform
 - TZX `stop if 48K` markers remain in the mounted tape as resumable stops with later blocks intact
-- Translucent `TAPE STOPPED`, `TAPE PLAYING`, and `TAPE ENDED` feedback is implemented, with marker-triggered stops persistent until resume
+- A translucent badge persistently distinguishes `TAPE PLAYING`, manual `TAPE PAUSED`, and marker-triggered `TAPE AUTO-STOPPED`; transitions are briefly emphasized and `TAPE ENDED` is transient
 - Core regressions cover exact pulse/EAR preservation, marker resumption, machine transport state, and selected-model parsing
 - Target Renegade's 128K all-at-once and 48K level-at-a-time paths require final manual validation before completion
 
