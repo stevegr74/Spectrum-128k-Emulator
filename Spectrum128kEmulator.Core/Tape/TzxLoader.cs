@@ -124,7 +124,7 @@ namespace Spectrum128kEmulator.Tap
             bool sawPlaybackBlock = false;
             foreach (TapeBlock block in blocks)
             {
-                if (block.Kind == TapeBlockKind.Metadata)
+                if (block.Kind is TapeBlockKind.Metadata or TapeBlockKind.StopTape)
                     continue;
 
                 sawPlaybackBlock = true;
@@ -552,7 +552,7 @@ namespace Spectrum128kEmulator.Tap
 
                     case RawTzxBlockKind.StopIf48k:
                         if (stopTapeIf48k)
-                            return resolved;
+                            resolved.Add(TapeBlock.CreateStopTape());
 
                         index++;
                         break;

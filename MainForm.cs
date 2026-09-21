@@ -5,6 +5,7 @@ using System.Runtime.InteropServices;
 using System.Threading;
 using System.Threading.Tasks;
 using Spectrum128kEmulator.Audio;
+using Spectrum128kEmulator.Tap;
 using Spectrum128kEmulator.Tape;
 
 namespace Spectrum128kEmulator
@@ -23,6 +24,8 @@ namespace Spectrum128kEmulator
         private const double TurboTickSlowThresholdMilliseconds = 12.0;
         private const double TurboTickRecoverThresholdMilliseconds = 6.0;
         private const int PostLoadInputSuppressionMilliseconds = 250;
+        private const double TapeTransportFullOverlaySeconds = 3.0;
+        private const double TapeTransportStoppedIconSeconds = 5.0;
 
         private int framesRenderedThisSecond;
         private int displayedFps;
@@ -57,6 +60,7 @@ namespace Spectrum128kEmulator
         private readonly ToolStripMenuItem reset128kMenuItem = new ToolStripMenuItem("Reset to 128K");
         private readonly ToolStripMenuItem reset48kMenuItem = new ToolStripMenuItem("Reset to 48K");
         private readonly ToolStripMenuItem statusOverlayMenuItem = new ToolStripMenuItem("F2 - Status Overlay");
+        private readonly ToolStripMenuItem tapeTransportMenuItem = new ToolStripMenuItem("F5 - Stop / Resume Tape");
 
         private readonly string romFolder;
         private Spectrum128Machine machine;
@@ -98,6 +102,12 @@ namespace Spectrum128kEmulator
         private SpectrumDisplayMode displayMode = SpectrumDisplayMode.Enhanced2x;
         private SpectrumMachineModel selectedMachineModel = SpectrumMachineModel.Spectrum128K;
         private bool isStatusOverlayVisible;
+        private TapeTransportState lastObservedTapeTransportState = TapeTransportState.NoTape;
+        private bool lastObservedTapeMarkerStop;
+        private TapeTransportState tapeTransportOverlayState = TapeTransportState.NoTape;
+        private bool tapeTransportOverlayMarkerStop;
+        private long tapeTransportFullOverlayExpiresAtTicks;
+        private long tapeTransportIconExpiresAtTicks;
         private EmulatorHelpForm? helpForm;
         private IDisposable? helpPauseLease;
 
@@ -119,11 +129,11 @@ namespace Spectrum128kEmulator
             Controls.Add(fpsLabel);
             fpsLabel.BringToFront();
 
+            romFolder = Path.Combine(AppContext.BaseDirectory, "ROMs");
+            machine = CreateConfiguredMachine();
             InitializeDisplayModeSelector();
             ApplyDisplayMode(SpectrumDisplayMode.Enhanced2x);
 
-            romFolder = Path.Combine(AppContext.BaseDirectory, "ROMs");
-            machine = CreateConfiguredMachine();
             audioPipeline = CreateAudioPipeline();
             InitializeKeyboard();
             InitializeInputDiagnostics();
@@ -182,12 +192,17 @@ namespace Spectrum128kEmulator
             });
             displayContextMenu.Items.Add(displaySizeMenuItem);
 
+            tapeTransportMenuItem.Click += (_, _) => ToggleTapeTransport();
+            displayContextMenu.Items.Add(tapeTransportMenuItem);
+
             displayContextMenu.Items.Add(new ToolStripSeparator());
             displayContextMenu.Items.Add("F9 - Load .sna Snapshot (48K)", null, (_, _) => LoadSnaSnapshotFromDialog());
             displayContextMenu.Items.Add("F10 - Load .z80 Snapshot or .rzx Recording", null, (_, _) => LoadSnapshotOrRecordingFromDialog());
             displayContextMenu.Items.Add("F11 - Mount .tap or .tzx Tape Image", null, (_, _) => MountTapFromDialog());
             displayContextMenu.Items.Add("F12 - Write Machine Diagnostic Dump", null, (_, _) => DumpMachineDebugState());
+            displayContextMenu.Opening += (_, _) => UpdateTapeTransportMenuItem();
             UpdateMachineModelMenuItems();
+            UpdateTapeTransportMenuItem();
             screenBox.ContextMenuStrip = displayContextMenu;
         }
 
@@ -250,6 +265,43 @@ namespace Spectrum128kEmulator
             UpdateStatsLabel();
             fpsLabel.Visible = isStatusOverlayVisible;
             screenBox.Focus();
+        }
+
+        private void ToggleTapeTransport()
+        {
+            TapeTransportState state = TapeTransportState.NoTape;
+            bool markerStop = false;
+            ExecuteWithEmulationPaused(() =>
+            {
+                lock (machineLock)
+                {
+                    state = machine.ToggleTapeTransport();
+                    markerStop = machine.IsTapeStoppedAtMarker;
+                }
+            });
+
+            lastObservedTapeTransportState = state;
+            lastObservedTapeMarkerStop = markerStop;
+            if (state is TapeTransportState.Playing or TapeTransportState.Stopped)
+                ShowTapeTransportOverlay(state, markerStop);
+            UpdateTapeTransportTitle(state, markerStop);
+
+            UpdateTapeTransportMenuItem();
+            UpdateStatsLabel();
+            PresentCurrentMachineFrame(frameClock.ElapsedTicks + PresentationIntervalTicks);
+            screenBox.Focus();
+        }
+
+        private void UpdateTapeTransportMenuItem()
+        {
+            TapeTransportState state = machine.TapeTransportState;
+            tapeTransportMenuItem.Enabled = state is TapeTransportState.Playing or TapeTransportState.Stopped;
+            tapeTransportMenuItem.Text = state switch
+            {
+                TapeTransportState.Playing => "F5 - Stop Tape",
+                TapeTransportState.Stopped => "F5 - Resume Tape",
+                _ => "F5 - Stop / Resume Tape"
+            };
         }
 
         private void ToggleHelpWindow()
@@ -386,6 +438,14 @@ namespace Spectrum128kEmulator
                 return;
             }
 
+            if (IsPlainShortcut(e, Keys.F5))
+            {
+                ToggleTapeTransport();
+                e.Handled = true;
+                e.SuppressKeyPress = true;
+                return;
+            }
+
             if (e.KeyCode == Keys.F4 && !e.Alt && !e.Control && !e.Shift)
             {
                 SelectDisplayMode(SpectrumDisplayModes.Next(displayMode));
@@ -413,7 +473,8 @@ namespace Spectrum128kEmulator
             if (e.KeyCode == Keys.F4 && e.Alt)
                 return;
 
-            if (IsPlainShortcut(e, Keys.F1) || IsPlainShortcut(e, Keys.F2) || IsPlainShortcut(e, Keys.F3))
+            if (IsPlainShortcut(e, Keys.F1) || IsPlainShortcut(e, Keys.F2) ||
+                IsPlainShortcut(e, Keys.F3) || IsPlainShortcut(e, Keys.F5))
             {
                 e.Handled = true;
                 e.SuppressKeyPress = true;
@@ -841,6 +902,7 @@ namespace Spectrum128kEmulator
                         machine.ClearDebugHistory();
                 });
                 SuppressSpectrumHostInputForMilliseconds(PostLoadInputSuppressionMilliseconds);
+                ShowMountedTapeTransportFeedback();
                 PresentCurrentMachineFrame(frameClock.ElapsedTicks + PresentationIntervalTicks);
                 screenBox.Focus();
             }
@@ -1004,6 +1066,7 @@ namespace Spectrum128kEmulator
             try
             {
                 long now = frameClock.ElapsedTicks;
+                UpdateTapeTransportFeedback(now);
                 PresentCurrentMachineFrame(now);
                 UpdateStats(now);
 
@@ -1277,6 +1340,7 @@ namespace Spectrum128kEmulator
                 SpectrumRenderer.RenderToBitmap(presentationBitmap, presentationFrameBuffer);
             else
                 SpectrumRenderer.RenderScaledToBitmap(presentationBitmap, presentationFrameBuffer, layout.Scale);
+            DrawTapeTransportOverlay(presentationBitmap, layout.Scale, now);
             long renderEndTicks = frameClock.ElapsedTicks;
 
             screenBox.Image = presentationBitmap;
@@ -1336,7 +1400,11 @@ namespace Spectrum128kEmulator
                 currentTurboTapeLoadFactor = TurboTapeLoadFactor;
                 tapeTurboPlaybackPolicy.Reset();
                 inputBridgeTick = 0;
+                lastObservedTapeTransportState = machine.TapeTransportState;
+                lastObservedTapeMarkerStop = machine.IsTapeStoppedAtMarker;
             }
+            if (lastObservedTapeTransportState == TapeTransportState.NoTape)
+                ClearTapeTransportOverlay();
             PublishPresentationState();
             lastStatsTicks = now;
             framesRenderedThisSecond = 0;
@@ -1344,6 +1412,7 @@ namespace Spectrum128kEmulator
             displayedFrameCount = 0;
             totalPresentedFrameCount = 0;
             UpdateMachineModelMenuItems();
+            UpdateTapeTransportMenuItem();
             UpdateStatsLabel();
         }
 
@@ -1390,7 +1459,151 @@ namespace Spectrum128kEmulator
 
         private void UpdateStatsLabel()
         {
-            fpsLabel.Text = $"FPS={displayedFps} Frame={displayedFrameCount} Model={FormatMachineModel(selectedMachineModel)} Display={SpectrumDisplayModes.GetLayout(displayMode).Label}";
+            string tapeState = FormatTapeTransportState(machine.TapeTransportState, machine.IsTapeStoppedAtMarker);
+            fpsLabel.Text = $"FPS={displayedFps} Frame={displayedFrameCount} Model={FormatMachineModel(selectedMachineModel)} Tape={tapeState} Display={SpectrumDisplayModes.GetLayout(displayMode).Label}";
+        }
+
+        private void ShowMountedTapeTransportFeedback()
+        {
+            TapeTransportState state = machine.TapeTransportState;
+            lastObservedTapeTransportState = state;
+            lastObservedTapeMarkerStop = machine.IsTapeStoppedAtMarker;
+            UpdateTapeTransportMenuItem();
+            if (state == TapeTransportState.Playing)
+                ShowTapeTransportOverlay(state, markerStop: false);
+            UpdateTapeTransportTitle(state, lastObservedTapeMarkerStop);
+        }
+
+        private void UpdateTapeTransportFeedback(long nowTicks)
+        {
+            TapeTransportState state = machine.TapeTransportState;
+            bool markerStop = machine.IsTapeStoppedAtMarker;
+            if (state != lastObservedTapeTransportState || markerStop != lastObservedTapeMarkerStop)
+            {
+                lastObservedTapeTransportState = state;
+                lastObservedTapeMarkerStop = markerStop;
+
+                if (state is TapeTransportState.Playing or TapeTransportState.Stopped or TapeTransportState.Ended)
+                    ShowTapeTransportOverlay(state, markerStop);
+                else if (state == TapeTransportState.NoTape)
+                    ClearTapeTransportOverlay();
+
+                UpdateTapeTransportTitle(state, markerStop);
+                UpdateTapeTransportMenuItem();
+                UpdateStatsLabel();
+            }
+
+            if (tapeTransportOverlayState == TapeTransportState.Ended &&
+                nowTicks >= tapeTransportIconExpiresAtTicks)
+                ClearTapeTransportOverlay();
+        }
+
+        private void ShowTapeTransportOverlay(TapeTransportState state, bool markerStop)
+        {
+            tapeTransportOverlayState = state;
+            tapeTransportOverlayMarkerStop = markerStop;
+            long nowTicks = frameClock.ElapsedTicks;
+            tapeTransportFullOverlayExpiresAtTicks =
+                nowTicks + (long)(TapeTransportFullOverlaySeconds * System.Diagnostics.Stopwatch.Frequency);
+            tapeTransportIconExpiresAtTicks = state switch
+            {
+                TapeTransportState.Playing => long.MaxValue,
+                TapeTransportState.Stopped =>
+                    nowTicks + (long)(TapeTransportStoppedIconSeconds * System.Diagnostics.Stopwatch.Frequency),
+                _ => tapeTransportFullOverlayExpiresAtTicks
+            };
+        }
+
+        private void ClearTapeTransportOverlay()
+        {
+            tapeTransportOverlayState = TapeTransportState.NoTape;
+            tapeTransportOverlayMarkerStop = false;
+            tapeTransportFullOverlayExpiresAtTicks = 0;
+            tapeTransportIconExpiresAtTicks = 0;
+        }
+
+        private void DrawTapeTransportOverlay(Bitmap bitmap, int scale, long nowTicks)
+        {
+            if (tapeTransportOverlayState == TapeTransportState.NoTape ||
+                nowTicks >= tapeTransportIconExpiresAtTicks)
+                return;
+
+            string text = tapeTransportOverlayState switch
+            {
+                TapeTransportState.Playing => "TAPE PLAYING - F5 STOP",
+                TapeTransportState.Stopped when tapeTransportOverlayMarkerStop => "TAPE AUTO-STOPPED - F5 RESUME",
+                TapeTransportState.Stopped => "TAPE PAUSED - F5 RESUME",
+                TapeTransportState.Ended => "TAPE ENDED",
+                _ => string.Empty
+            };
+            Color accent = tapeTransportOverlayState switch
+            {
+                TapeTransportState.Playing => Color.FromArgb(60, 220, 150),
+                TapeTransportState.Stopped => Color.FromArgb(255, 190, 55),
+                _ => Color.FromArgb(210, 215, 220)
+            };
+            bool showFullOverlay = nowTicks < tapeTransportFullOverlayExpiresAtTicks;
+
+            int x = 8 * scale;
+            int y = (isStatusOverlayVisible ? 30 : 8) * scale;
+            int width = (showFullOverlay ? (tapeTransportOverlayMarkerStop ? 238 : 190) : 30) * scale;
+            int height = (showFullOverlay ? 30 : 24) * scale;
+            int iconLeft = x + (8 * scale);
+            int iconSize = (showFullOverlay ? 14 : 11) * scale;
+            int iconTop = y + ((height - iconSize) / 2);
+
+            using Graphics graphics = Graphics.FromImage(bitmap);
+            graphics.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
+            using var backgroundBrush = new SolidBrush(Color.FromArgb(showFullOverlay ? 210 : 168, 8, 12, 14));
+            using var accentBrush = new SolidBrush(accent);
+            using var borderPen = new Pen(Color.FromArgb(showFullOverlay ? 235 : 190, accent), Math.Max(1, scale));
+            using var font = new Font(FontFamily.GenericSansSerif, 8.5f * scale, FontStyle.Bold, GraphicsUnit.Pixel);
+            graphics.FillRectangle(backgroundBrush, x, y, width, height);
+            graphics.DrawRectangle(borderPen, x, y, width - 1, height - 1);
+
+            if (tapeTransportOverlayState == TapeTransportState.Playing)
+            {
+                graphics.FillPolygon(accentBrush, new[]
+                {
+                    new Point(iconLeft, iconTop),
+                    new Point(iconLeft, iconTop + iconSize),
+                    new Point(iconLeft + iconSize, iconTop + (iconSize / 2))
+                });
+            }
+            else
+            {
+                graphics.FillRectangle(accentBrush, iconLeft, iconTop, iconSize, iconSize);
+            }
+
+            if (showFullOverlay)
+                graphics.DrawString(text, font, accentBrush, x + (28 * scale), y + (9 * scale));
+        }
+
+        private void UpdateTapeTransportTitle(TapeTransportState state, bool markerStop)
+        {
+            string? tapeStatus = state switch
+            {
+                TapeTransportState.Playing => "Playing",
+                TapeTransportState.Stopped when markerStop => "Auto-stopped",
+                TapeTransportState.Stopped => "Paused",
+                TapeTransportState.Ended => "Ended",
+                _ => null
+            };
+            Text = tapeStatus is null
+                ? "Spectrum 128K Emulator"
+                : $"Spectrum 128K Emulator - Tape: {tapeStatus}";
+        }
+
+        private static string FormatTapeTransportState(TapeTransportState state, bool markerStop)
+        {
+            return state switch
+            {
+                TapeTransportState.Playing => "Playing",
+                TapeTransportState.Stopped when markerStop => "Stopped(marker)",
+                TapeTransportState.Stopped => "Stopped",
+                TapeTransportState.Ended => "Ended",
+                _ => "None"
+            };
         }
 
         private int GetEmulationSpeedMultiplier(Spectrum128Machine activeMachine)

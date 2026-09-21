@@ -213,6 +213,8 @@ namespace Spectrum128kEmulator
         private MountedTape? mountedTape;
         private RzxPlaybackSession? rzxPlayback;
         public MountedTape? MountedTape => mountedTape;
+        public TapeTransportState TapeTransportState { get; private set; } = TapeTransportState.NoTape;
+        public bool IsTapeStoppedAtMarker => mountedTape?.IsPausedByStopMarker == true;
 
         public Spectrum128Machine(string romFolder)
         {
@@ -296,6 +298,7 @@ namespace Spectrum128kEmulator
             LastAboveWriteFrame = -1;
             last7ffdValue = model == SpectrumMachineModel.Spectrum48K ? (byte)0x10 : (byte)0xFF;
             mountedTape = null;
+            TapeTransportState = TapeTransportState.NoTape;
             rzxPlayback = null;
             pendingMountedLoadUsrContinuationResolver = null;
             pendingMountedLoadUsrContinuationRequiresUsrReturnAddress = false;
@@ -449,7 +452,16 @@ namespace Spectrum128kEmulator
                 MountedTape? activeTape = mountedTape;
                 activeTape?.AdvanceToTime(cpu.TStates);
                 if (activeTape?.HasCompletedPlayback == true && ReferenceEquals(mountedTape, activeTape))
+                {
                     mountedTape = null;
+                    TapeTransportState = TapeTransportState.Ended;
+                }
+                else if (ReferenceEquals(mountedTape, activeTape) && activeTape != null)
+                {
+                    TapeTransportState = activeTape.IsPlaybackPaused
+                        ? TapeTransportState.Stopped
+                        : TapeTransportState.Playing;
+                }
 
                 // A diagnostic client may stop the CPU before the next instruction.
                 // Do not spin the scheduler with an unchanged T-state count in that case.
@@ -575,6 +587,7 @@ namespace Spectrum128kEmulator
             sb.AppendLine("=== MACHINE STATE ===");
             sb.AppendLine($"Frame={FrameCount} Border={BorderColor} PagedRamBank={PagedRamBank} ScreenBank={ScreenBank} RomBank={CurrentRomBank} PagingLocked={PagingLocked}");
             sb.AppendLine($"SpeakerHigh={speakerHigh} SpeakerEdge={SpeakerEdge} FlashPhase={FlashPhase} MountedTape={mountedTape?.DisplayName ?? "(none)"}");
+            sb.AppendLine($"TapeTransport={TapeTransportState} MarkerStop={(IsTapeStoppedAtMarker ? 1 : 0)}");
             if (mountedTape != null)
                 sb.AppendLine($"TapeDebug={mountedTape.DebugPlaybackState}");
             sb.AppendLine();
@@ -1002,6 +1015,32 @@ namespace Spectrum128kEmulator
         {
             mountedTape = tape ?? throw new ArgumentNullException(nameof(tape));
             mountedTape.Reset();
+            TapeTransportState = mountedTape.IsPlaybackPaused
+                ? TapeTransportState.Stopped
+                : TapeTransportState.Playing;
+        }
+
+        public TapeTransportState ToggleTapeTransport()
+        {
+            if (mountedTape == null)
+                return TapeTransportState;
+
+            if (mountedTape.IsPlaybackPaused)
+            {
+                mountedTape.ResumePlayback(cpu.TStates);
+                TapeTransportState = mountedTape.HasCompletedPlayback
+                    ? TapeTransportState.Ended
+                    : mountedTape.IsPlaybackPaused
+                        ? TapeTransportState.Stopped
+                        : TapeTransportState.Playing;
+            }
+            else
+            {
+                mountedTape.PausePlayback(cpu.TStates);
+                TapeTransportState = TapeTransportState.Stopped;
+            }
+
+            return TapeTransportState;
         }
 
         public void AttachRzxPlayback(RzxPlaybackSession playback)
@@ -1017,6 +1056,7 @@ namespace Spectrum128kEmulator
         public void EjectTape()
         {
             mountedTape = null;
+            TapeTransportState = TapeTransportState.NoTape;
         }
 
         public bool TryServiceTapeTrap()
@@ -1507,7 +1547,10 @@ namespace Spectrum128kEmulator
             pendingMountedLoadPreserveLiveInterpreterStateForDirectUsrEntry = false;
             pendingMountedLoadNextStreamingInterpreterRefreshTStates = 0;
             if (mountedTape != null && !mountedTape.HasMoreBlocks)
+            {
                 mountedTape = null;
+                TapeTransportState = TapeTransportState.Ended;
+            }
             z80.ResetExecutionStatePreserveTiming();
             CurrentRomBank = 1;
             PagingLocked = false;

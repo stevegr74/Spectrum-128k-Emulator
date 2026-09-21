@@ -48,14 +48,14 @@ namespace Spectrum128kEmulator.Tap
         public string? AutoStartFileName { get; }
     }
 
-        public enum TapeLoadStrategy
-        {
-            FullFakeLoad,
-            LeadingStandardChainFakeLoad,
-            RomBootstrapMounted,
-            BootstrapHybrid,
-            MountedRealtime
-        }
+    public enum TapeLoadStrategy
+    {
+        FullFakeLoad,
+        LeadingStandardChainFakeLoad,
+        RomBootstrapMounted,
+        BootstrapHybrid,
+        MountedRealtime
+    }
 
     public sealed class TapeLoadPlan
     {
@@ -67,6 +67,14 @@ namespace Spectrum128kEmulator.Tap
 
         public TapeLoadStrategy Strategy { get; }
         public string Reason { get; }
+    }
+
+    public enum TapeTransportState
+    {
+        NoTape,
+        Playing,
+        Stopped,
+        Ended
     }
 
     public sealed class TapeExecutionResult
@@ -162,6 +170,10 @@ namespace Spectrum128kEmulator.Tap
         private bool earPlaybackStarted;
         private bool retainedByteStreamTrapAvailable;
         private bool playbackCompleted;
+        private bool playbackPaused;
+        private bool pausedByStopMarker;
+        private ulong pausedPulseElapsedTStates;
+        private int stopMarkerResumeBlockIndex;
         private EarPlaybackState earPlaybackState;
         private TapeState state;
         private int? expectedDataLength;
@@ -216,6 +228,7 @@ namespace Spectrum128kEmulator.Tap
         public bool HasRemainingBlocks => nextBlockIndex < blocks.Count;
         public bool HasMoreBlocks => HasRemainingBlocks;
         public bool IsAtMountedLoadUsrContinuationBoundary =>
+            !playbackPaused &&
             !retainedByteStreamTrapAvailable &&
             pendingPrePlaybackPauseTStates <= 0 &&
             !IsActivelyStreamingEarSignal &&
@@ -228,10 +241,14 @@ namespace Spectrum128kEmulator.Tap
             $"State={state} EarState={earPlaybackState} Byte={earStreamByteIndex} Bit={earBitIndex} " +
             $"Pilot={earPilotPulsesRemaining} PulseLen={earPulseLengthTStates} PulseSeq={earPulseSequenceIndex} " +
             $"EarLevel={(earLevel ? 1 : 0)} Started={(earPlaybackStarted ? 1 : 0)} Retained={(retainedByteStreamTrapAvailable ? 1 : 0)} " +
+            $"Paused={(playbackPaused ? 1 : 0)} Marker={(pausedByStopMarker ? 1 : 0)} " +
             $"RomTrapBlock={romStreamTrapBlockIndex} RomTrapByte={romStreamTrapByteIndex}";
-        public bool IsActivelyDrivingEarLine => earPlaybackState != EarPlaybackState.Idle;
+        public bool IsActivelyDrivingEarLine => !playbackPaused && earPlaybackState != EarPlaybackState.Idle;
         public bool HasCompletedPlayback => playbackCompleted;
+        public bool IsPlaybackPaused => playbackPaused;
+        public bool IsPausedByStopMarker => pausedByStopMarker;
         public bool IsActivelyStreamingEarSignal =>
+            !playbackPaused &&
             earPlaybackState is not EarPlaybackState.Idle
             and not EarPlaybackState.Pause;
         public bool IsStreamingProtectedByteStream =>
@@ -263,6 +280,10 @@ namespace Spectrum128kEmulator.Tap
             earPlaybackStarted = false;
             retainedByteStreamTrapAvailable = false;
             playbackCompleted = false;
+            playbackPaused = false;
+            pausedByStopMarker = false;
+            pausedPulseElapsedTStates = 0;
+            stopMarkerResumeBlockIndex = -1;
             earPlaybackState = EarPlaybackState.Idle;
             expectedDataLength = null;
             pendingHeaderName = null;
@@ -284,6 +305,9 @@ namespace Spectrum128kEmulator.Tap
 
         public bool ReadEarBit(ulong currentTStates)
         {
+            if (playbackPaused)
+                return earLevel;
+
             if (earPlaybackState == EarPlaybackState.Idle)
                 return earLevel;
 
@@ -319,6 +343,56 @@ namespace Spectrum128kEmulator.Tap
         internal void AdvanceToTime(ulong currentTStates)
         {
             ReadEarBit(currentTStates);
+        }
+
+        public bool PausePlayback(ulong currentTStates)
+        {
+            if (playbackPaused || playbackCompleted)
+                return false;
+
+            ReadEarBit(currentTStates);
+            pausedPulseElapsedTStates = earPlaybackStarted && currentTStates >= lastEarSampleTStates
+                ? currentTStates - lastEarSampleTStates
+                : 0;
+            playbackPaused = true;
+            pausedByStopMarker = false;
+            stopMarkerResumeBlockIndex = -1;
+            return true;
+        }
+
+        public bool ResumePlayback(ulong currentTStates)
+        {
+            if (!playbackPaused || playbackCompleted)
+                return false;
+
+            bool resumeAfterMarker = pausedByStopMarker;
+            int resumeBlockIndex = stopMarkerResumeBlockIndex;
+            playbackPaused = false;
+            pausedByStopMarker = false;
+            stopMarkerResumeBlockIndex = -1;
+
+            if (resumeAfterMarker)
+            {
+                pausedPulseElapsedTStates = 0;
+                StartEarPlaybackBlock(resumeBlockIndex, preserveSignalPhase: true);
+                if (!playbackPaused && earPlaybackState != EarPlaybackState.Idle)
+                {
+                    earPlaybackStarted = true;
+                    lastEarSampleTStates = currentTStates;
+                }
+
+                return true;
+            }
+
+            if (earPlaybackStarted)
+            {
+                lastEarSampleTStates = currentTStates >= pausedPulseElapsedTStates
+                    ? currentTStates - pausedPulseElapsedTStates
+                    : currentTStates;
+            }
+
+            pausedPulseElapsedTStates = 0;
+            return true;
         }
 
         private bool TryGetActivePlaybackBlock(out TapeBlock? block)
@@ -380,6 +454,9 @@ namespace Spectrum128kEmulator.Tap
                 throw new ArgumentNullException(nameof(machine));
             if (cpu == null)
                 throw new ArgumentNullException(nameof(cpu));
+            if (playbackPaused)
+                return false;
+
             bool isSyncLoopTrap = cpu.Regs.PC == RomLoadBytesSyncLoopAddress;
             if (cpu.Regs.PC != RomLoadBytesTrapAddress && !isSyncLoopTrap)
                 return false;
@@ -677,9 +754,13 @@ namespace Spectrum128kEmulator.Tap
         {
             if (machine == null)
                 throw new ArgumentNullException(nameof(machine));
+            if (playbackPaused)
+                return BootstrapTapeLoadResult.None;
 
             ulong consumedTStates = 0;
-            while (nextBlockIndex < blocks.Count && !blocks[nextBlockIndex].IsLoadableRomBlock)
+            while (nextBlockIndex < blocks.Count &&
+                   !blocks[nextBlockIndex].IsLoadableRomBlock &&
+                   blocks[nextBlockIndex].Kind != TapeBlockKind.StopTape)
             {
                 consumedTStates += TapLoader.EstimateTapeBlockDurationTStates(blocks[nextBlockIndex]);
                 AdvanceBlockState(blocks[nextBlockIndex]);
@@ -696,7 +777,9 @@ namespace Spectrum128kEmulator.Tap
                 AdvanceBlockState(blocks[nextBlockIndex]);
                 SyncEarPlaybackToNextBlock(blocks[nextBlockIndex - 1].PauseAfterBlockMs);
 
-                while (nextBlockIndex < blocks.Count && !blocks[nextBlockIndex].IsLoadableRomBlock)
+                while (nextBlockIndex < blocks.Count &&
+                       !blocks[nextBlockIndex].IsLoadableRomBlock &&
+                       blocks[nextBlockIndex].Kind != TapeBlockKind.StopTape)
                 {
                     consumedTStates += TapLoader.EstimateTapeBlockDurationTStates(blocks[nextBlockIndex]);
                     AdvanceBlockState(blocks[nextBlockIndex]);
@@ -707,6 +790,9 @@ namespace Spectrum128kEmulator.Tap
                 return BootstrapTapeLoadResult.None;
 
             TapeBlock dataBlock = blocks[nextBlockIndex];
+            if (dataBlock.Kind == TapeBlockKind.StopTape)
+                return BootstrapTapeLoadResult.None;
+
             EnsureDataBlock(dataBlock);
 
             if (header != null)
@@ -1265,6 +1351,11 @@ namespace Spectrum128kEmulator.Tap
                     BeginPause(block, blockIndex + 1);
                     return;
 
+                case TapeBlockKind.StopTape:
+                    nextBlockIndex = Math.Max(nextBlockIndex, blockIndex + 1);
+                    PauseAtStopMarker(blockIndex + 1);
+                    return;
+
                 case TapeBlockKind.SetSignalLevel:
                     earLevel = block.SignalLevel ?? true;
                     StartEarPlaybackBlock(blockIndex + 1, preserveSignalPhase: true);
@@ -1287,6 +1378,16 @@ namespace Spectrum128kEmulator.Tap
             earPulseLengthTStates = settlingTStates;
             earPauseLowTailTStates = pauseTStates - settlingTStates;
             earNextBlockIndexAfterPause = nextBlockIndex;
+        }
+
+        private void PauseAtStopMarker(int resumeBlockIndex)
+        {
+            playbackPaused = true;
+            pausedByStopMarker = true;
+            pausedPulseElapsedTStates = 0;
+            stopMarkerResumeBlockIndex = resumeBlockIndex;
+            earPlaybackState = EarPlaybackState.Idle;
+            earPulseLengthTStates = 0;
         }
 
         private void AdvanceEarPulse()
