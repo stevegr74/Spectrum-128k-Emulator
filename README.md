@@ -154,11 +154,15 @@ Tape Loading Progress (Milestone 6)
 - mounted live-tape playback now uses a generic wall-clock turbo path in the app while the tape is actively driving the EAR line
 - emulated FE/tape pulse timing is kept exact during those live phases; the speed-up happens in the UI scheduler rather than by distorting tape data
 - Target Renegade's protected 128K continuation now reaches the game menu and auto-ejects without synthetic end-of-stream pulses
-- initial tape loading can select the appropriate 128K setup for protected streams, but explicit user-selectable 48K/128K machine modes and resumable tape transport are not implemented yet
+- explicit 48K/128K selection is implemented, and the selected model controls TZX stop-marker behavior
+- `F5` stops and resumes the mounted tape without advancing its pulse position or changing its EAR level
+- 48K TZX stop markers now preserve the remaining blocks as resumable transport stops instead of truncating the tape
+- tape transitions show a full top-left status for three seconds; playing then keeps a compact icon, while paused/stopped icons disappear after five seconds
+- the window title persistently distinguishes playing, manual pause, automatic stop, and ended states
 
 Disassembly Progress
-- `Z80Disassembler.cs` currently provides diagnostic trace scaffolding only
-- a user-facing, side-effect-free instruction decoder and disassembly window are planned next
+- the side-effect-free decoder foundation is complete on the retained `codex/disassembler-foundation` branch and awaits deliberate integration
+- the user-facing disassembly window remains planned
 
 Broader `.tzx` compatibility work still remains for additional protected/custom titles. The current active structural goal is expanding the same format, transport, ROM/trap, bootstrap-policy, and regression layers beyond the working Batman / Exolon / Impossible Mission / Target Renegade baseline.
 
@@ -189,21 +193,18 @@ the initial ULA contention/border model are merged on `master`. Each milestone
 will be developed on its own `codex/...` branch. Current work builds on those
 foundations:
 
-1. **Build a reusable disassembler foundation.**
-   - Add a side-effect-free Z80 instruction decoder that returns instruction address, bytes, length, mnemonic, and optional branch target from a supplied memory reader.
-   - Cover base, `CB`, `ED`, `DD`, `FD`, `DD CB`, and `FD CB` encodings, using safe `DB` output for any unsupported form.
-   - Add decoder regression tests for immediates, relative branches, indexed displacements, prefix lengths, and address wraparound.
+1. **Integrate the completed reusable disassembler foundation.**
+   - Keep the completed decoder work isolated on `codex/disassembler-foundation` until it is deliberately rebased or merged onto the current master baseline.
+   - Preserve its base, `CB`, `ED`, `DD`, `FD`, `DD CB`, and `FD CB` coverage and focused regression suite during integration.
 
-2. **Introduce explicit 48K and 128K machine modes.**
-   - Keep 128K as the startup default and make the selected model authoritative over automatic tape heuristics.
-   - Add `F3` and explicit Machine-menu actions to reset cleanly into 48K or 128K, clearing RAM, mounted media, input, audio, and presentation state.
-   - Show the selected model in the status overlay and update the in-app help.
+2. **Maintain the completed explicit 48K and 128K machine modes.**
+   - Keep 128K as the startup default and the selected model authoritative over automatic tape heuristics.
+   - Preserve the tested `F3`, context-menu, status-overlay, snapshot-hardware, and genuine 48K AY-gating behavior.
 
-3. **Add resumable tape transport and complete dual-mode TZX support.**
-   - Add `F5` to stop/resume the tape waveform without ejecting it or advancing its pulse position.
-   - Preserve TZX `stop if 48K` markers as resumable transport stops rather than discarding later blocks.
-   - Add a transient translucent top-left transport overlay: `TAPE STOPPED`, `TAPE PLAYING`, or `TAPE ENDED`; marker-triggered stops remain visible until resumed.
-   - Validate Target Renegade's all-at-once 128K route and its level-at-a-time 48K route without title-specific behavior.
+3. **Maintain the completed resumable tape transport and dual-mode TZX support.**
+   - Preserve `F5`, exact pulse-position preservation, resumable 48K stop markers, timed translucent feedback, and persistent title status.
+   - Target Renegade's all-at-once 128K route and level-at-a-time 48K route have been manually validated without title-specific behavior.
+   - The three-second text, persistent playing icon, five-second stopped icon, and title-status presentation have been manually accepted as the working baseline.
 
 4. **Expose a simple, expandable disassembler.**
    - Add `F6` and a Debug-menu action to open a read-only disassembly window around the current `PC`.
@@ -302,12 +303,15 @@ Press `F1` for the in-app control reference. `F2` toggles the FPS and display
 mode overlay, which is hidden by default. `F3` resets and toggles between
 explicit 128K and 48K machine modes. `F9`, `F10`, `F11`, and `F12` open the
 48K-format SNA loader, Z80/RZX loader, tape loader, and machine-dump action.
+`F5` stops or resumes a mounted tape while CPU emulation continues. Manual
+transport changes show a full top-left status for three seconds. Playing then
+keeps a compact icon; paused and automatically stopped states keep the icon for
+five seconds in total before hiding it. The window title continues to show the
+current tape state, including an explicit `Tape: Auto-stopped` marker status.
 The emulator pauses while Help or a file chooser is open and resumes only when
 the final UI pause owner closes.
 
-Planned controls, not yet implemented: `F5` will stop/resume tape transport
-with an on-screen transport indicator; and `F6` will open the read-only
-disassembler.
+Planned control not yet implemented: `F6` will open the read-only disassembler.
 
 ---
 
@@ -437,8 +441,8 @@ Notes:
 - VERIFY path implemented
 - deterministic sequencing and rewind implemented
 - Verified protected-loader examples include Exolon, Impossible Mission, Batman, and Target Renegade's protected 128K multi-load
-- Target Renegade now reaches its game menu after a clean final tape stop/eject
-- Explicit 48K/128K selection and manual/resumable tape transport remain planned work
+- Target Renegade's 128K path now reaches its game menu after a clean final tape stop/eject
+- Milestone 11 supplies explicit 48K/128K selection, and Milestone 12 supplies manual/resumable transport; together they enable the manually validated dual-mode Target Renegade paths
 - Broader protected/custom TZX compatibility remains ongoing
 
 ### Milestone 7 - Audio (In Progress)
@@ -468,22 +472,24 @@ Notes:
 - 48K and 128K ULA contention coverage includes display phase, contended memory, contended I/O, and every paged 128K RAM bank
 - The core/UI boundary and clock-driven audio contract are merged on `master`; focused CPU, renderer, audio, machine, snapshot/RZX, and tape regression suites cover the baseline
 
-### Milestone 10 - Disassembler Foundation Planned
-- Add a side-effect-free Z80 instruction decoder for base, `CB`, `ED`, `DD`, `FD`, `DD CB`, and `FD CB` forms
-- Return instruction bytes, length, mnemonic, and optional branch target without mutating machine state
-- Cover decoder behavior with focused opcode and prefix regression tests
+### Milestone 10 - Disassembler Foundation Complete On Separate Branch
+- Side-effect-free Z80 instruction decoder is complete on `codex/disassembler-foundation`
+- Base, `CB`, `ED`, `DD`, `FD`, `DD CB`, and `FD CB` forms return bytes, length, mnemonic, and optional branch target without mutating machine state
+- Focused opcode and prefix regression coverage is retained with the branch; integration remains intentionally deferred
 
 ### Milestone 11 - Explicit 48K/128K Machine Modes Complete
 - 128K remains the startup default and the selected model is authoritative over tape heuristics
 - `F3` and right-click Machine Model actions reset cleanly into either model
 - Status overlay and in-app help show the selected model behavior
-- TZX `stop if 48K` blocks are honored by the selected model; resumable marker stops remain Milestone 12 work
+- TZX `stop if 48K` blocks are honored by the selected model and feed the resumable Milestone 12 transport path
 
-### Milestone 12 - Resumable Tape Transport Planned
-- Add `F5` to stop/resume tape transport without ejecting or advancing the waveform
-- Preserve TZX `stop if 48K` markers as resumable stops
-- Show transient translucent transport feedback: `TAPE STOPPED`, `TAPE PLAYING`, or `TAPE ENDED`
-- Validate Target Renegade's 128K all-at-once and 48K level-at-a-time paths generically
+### Milestone 12 - Resumable Tape Transport Complete
+- `F5` stops/resumes tape transport without ejecting or advancing the waveform
+- TZX `stop if 48K` markers remain in the mounted tape as resumable stops with later blocks intact
+- A translucent badge shows full transport text for three seconds, then an icon only; the playing icon persists and paused/stopped icons hide after five seconds
+- The window title persistently distinguishes playing, manual pause, automatic stop, and ended states
+- Core regressions cover exact pulse/EAR preservation, marker resumption, machine transport state, and selected-model parsing
+- Target Renegade's 128K all-at-once and 48K level-at-a-time paths and the final transport presentation have been manually validated
 
 ### Milestone 13 - Disassembler Window Planned
 - Add `F6` and a Debug-menu action for a read-only disassembly view around the current `PC`

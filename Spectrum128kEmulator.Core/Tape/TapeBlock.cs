@@ -9,6 +9,7 @@ namespace Spectrum128kEmulator.Tap
         PulseSequence,
         DirectRecording,
         Pause,
+        StopTape,
         SetSignalLevel,
         Metadata
     }
@@ -263,6 +264,31 @@ namespace Spectrum128kEmulator.Tap
                 0,
                 pulseLength,
                 pulseCount,
+                null,
+                null,
+                0,
+                null);
+        }
+
+        public static TapeBlock CreateStopTape()
+        {
+            return new TapeBlock(
+                TapeBlockKind.StopTape,
+                isLoadableRomBlock: false,
+                canUseRomLoadTrap: false,
+                null,
+                null,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
                 null,
                 null,
                 0,

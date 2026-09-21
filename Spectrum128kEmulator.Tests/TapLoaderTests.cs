@@ -19,6 +19,104 @@ namespace Spectrum128kEmulator.Tests
         }
 
         [Fact]
+        public void MountedTape_ManualPauseAndResume_PreservesPulsePositionAndEarLevel()
+        {
+            var tape = new MountedTape(
+                "pause.tap",
+                new[] { TapeBlock.CreatePureTone(pulseLength: 100, pulseCount: 4) });
+
+            Assert.True(tape.ReadEarBit(0));
+            Assert.True(tape.ReadEarBit(40));
+            Assert.True(tape.PausePlayback(40));
+            Assert.True(tape.IsPlaybackPaused);
+            Assert.True(tape.ReadEarBit(1040));
+
+            Assert.True(tape.ResumePlayback(1040));
+            Assert.True(tape.ReadEarBit(1099));
+            Assert.False(tape.ReadEarBit(1100));
+        }
+
+        [Fact]
+        public void MountedTape_StopMarker_PausesUntilResumedAndKeepsFollowingBlocks()
+        {
+            var tape = new MountedTape(
+                "marker.tzx",
+                new[]
+                {
+                    TapeBlock.CreatePureTone(pulseLength: 10, pulseCount: 1),
+                    TapeBlock.CreateStopTape(),
+                    TapeBlock.CreatePureTone(pulseLength: 20, pulseCount: 1)
+                });
+
+            Assert.True(tape.ReadEarBit(0));
+            Assert.False(tape.ReadEarBit(10));
+            Assert.True(tape.IsPlaybackPaused);
+            Assert.True(tape.IsPausedByStopMarker);
+            Assert.False(tape.ReadEarBit(1000));
+
+            Assert.True(tape.ResumePlayback(1000));
+            Assert.False(tape.IsPlaybackPaused);
+            Assert.False(tape.ReadEarBit(1019));
+            Assert.True(tape.ReadEarBit(1020));
+            Assert.True(tape.HasCompletedPlayback);
+        }
+
+        [Fact]
+        public void Machine_ToggleTapeTransport_StopsAndResumesMountedTape()
+        {
+            string tempFolder = CreateTempRoms();
+            try
+            {
+                var machine = new Spectrum128Machine(tempFolder);
+                machine.MountTape(new MountedTape(
+                    "transport.tap",
+                    new[] { TapeBlock.CreatePureTone(pulseLength: 100, pulseCount: 4) }));
+
+                Assert.Equal(TapeTransportState.Playing, machine.TapeTransportState);
+                Assert.Equal(TapeTransportState.Stopped, machine.ToggleTapeTransport());
+                Assert.True(machine.MountedTape!.IsPlaybackPaused);
+                Assert.Equal(TapeTransportState.Playing, machine.ToggleTapeTransport());
+                Assert.False(machine.MountedTape!.IsPlaybackPaused);
+            }
+            finally
+            {
+                Directory.Delete(tempFolder, true);
+            }
+        }
+
+        [Fact]
+        public void Machine_ReachingStopMarker_ReportsPersistentStoppedTransport()
+        {
+            string tempFolder = CreateTempRoms();
+            try
+            {
+                var machine = new Spectrum128Machine(tempFolder);
+                machine.MountTape(new MountedTape(
+                    "marker.tzx",
+                    new[]
+                    {
+                        TapeBlock.CreatePureTone(pulseLength: 1, pulseCount: 1),
+                        TapeBlock.CreateStopTape(),
+                        TapeBlock.CreatePureTone(pulseLength: 100, pulseCount: 1)
+                    }));
+
+                machine.ExecuteTimeSlice(32);
+                machine.ExecuteTimeSlice(32);
+
+                Assert.True(machine.HasMountedTape);
+                Assert.Equal(TapeTransportState.Stopped, machine.TapeTransportState);
+                Assert.True(machine.IsTapeStoppedAtMarker);
+
+                Assert.Equal(TapeTransportState.Playing, machine.ToggleTapeTransport());
+                Assert.False(machine.IsTapeStoppedAtMarker);
+            }
+            finally
+            {
+                Directory.Delete(tempFolder, true);
+            }
+        }
+
+        [Fact]
         public void LoadTap_CodeBlock_Writes_Bytes_To_Target_Address()
         {
             string tempFolder = CreateTempRoms();
