@@ -179,7 +179,7 @@ ZEXDOC and ZEXALL are major CPU regression gates, but they are not treated as pr
 
 ### Audio Progress (Milestone 7)
 - AY register model implemented
-- AY register-select and write-port wiring implemented (`0xFFFD` / `0xBFFD`); selected-register input reads are planned in Milestone 18
+- AY register-select and write-port wiring implemented (`0xFFFD` / `0xBFFD`); selected-register input reads are planned in Milestone 16
 - 48K beeper signal implemented via port `0xFE`
 - Shared audio output pipeline implemented
 - PCM audio output implemented using Windows APIs only
@@ -201,23 +201,26 @@ ZEXDOC and ZEXALL are major CPU regression gates, but they are not treated as pr
 
 Completed milestones remain regression baselines rather than being repeated as
 new work. Each planned milestone will be developed on its own feature branch.
-These are parallel work streams; within the remaining debugger stream,
-Milestones 16 and 17 are intentionally ordered dependencies:
+The next core and debugger milestones are intentionally ordered dependencies,
+while tape/audio compatibility remains a parallel work stream:
 
-1. **Expand the debugger in two further stages.**
-   - Milestone 16 adds explicit Run/Pause, stepping, Run to Cursor, breakpoints, and register/stack context through deterministic platform-neutral debugger services.
-   - Milestone 17 adds physical bank selection, bank-qualified addresses, labels, cross-references, code/data marking, and stable exports without treating arbitrary data as code.
+1. **Finish validating the current disassembler milestone.**
+   - Complete Milestone 15 manual usability testing and merge it as the new baseline before starting another feature branch.
 
-2. **Refine live-tape audio handoff.**
+2. **Establish ULA timing accuracy in two stages.**
+   - Milestone 16 centralizes model timing, strengthens contention and border conformance, and adds original 128K/+2 floating-bus and input-port accuracy.
+   - Milestone 17 introduces an event-driven beam-aware video pipeline so active-screen memory and paging changes are represented at their actual raster times.
+   - Preserve the tested tape, snapshot, audio, RZX, and CPU baseline throughout the timing work.
+
+3. **Expand the debugger on the stabilized core.**
+   - Milestone 18 adds explicit Run/Pause, stepping, Run to Cursor, breakpoints, and register/stack context through deterministic platform-neutral debugger services.
+   - Milestone 19 adds physical bank selection, bank-qualified addresses, labels, cross-references, code/data marking, and stable exports without treating arbitrary data as code.
+
+4. **Refine live-tape audio handoff.**
    - Keep tape timing exact while moving from loader-only turbo operation to audible real-time playback.
    - Remove the remaining non-seamless transitions in protected titles without regressing normal playback.
 
-3. **Extend video timing accuracy.**
-   - Preserve the tested 48K/128K contention and border baseline while improving scanline/raster accuracy.
-   - Milestone 18 adds original 128K/+2 floating-bus timing and correct input-port precedence without changing the separate +2A/+3 behavior.
-   - Do not accept a timing change that regresses the verified tape or snapshot matrix.
-
-4. **Use the compatibility matrix as the merge gate.**
+5. **Use the compatibility matrix as the merge gate.**
    - `exolon.tap` and `Exolon.tzx`
    - `Where Time Stood Still.tap`
    - `Impossible Mission - Bugfix.tzx`
@@ -481,7 +484,7 @@ and tools are completed incrementally.
 
 ### Milestone 7 - Audio (In Progress)
 - AY-3-8912 register emulation
-- AY register-select and write-port wiring implemented; selected-register input reads remain planned in Milestone 18
+- AY register-select and write-port wiring implemented; selected-register input reads remain planned in Milestone 16
 - 48K beeper implemented
 - Shared audio output pipeline implemented
 - Basic audio output working
@@ -548,7 +551,24 @@ and tools are completed incrementally.
 - Selected or displayed rows copy with capture metadata, while export produces a complete mapped 64K listing from the chosen start address
 - Deterministic tests cover history branching, search parsing/wrapping, complete export, metadata formatting, and settings recovery; manual UI validation is pending
 
-### Milestone 16 - Debug Execution Controls Planned
+### Milestone 16 - ULA Timing Conformance And Port Accuracy Planned
+- Introduce one model-specific timing profile for frame length, scanline length, contention start, display fetches, visible raster mapping, and the documented timing convention
+- Add table-driven contention coverage across complete 48K and original 128K display phases, line/frame boundaries, contended memory banks, and all four I/O contention cases
+- Timestamp CPU memory and I/O bus accesses at their actual machine-cycle positions where required, rather than relying on instruction-total timing
+- Generalize the existing floating-bus model for the original Spectrum 128K and grey +2, including normal bank 5 and shadow bank 7 screen selection
+- Decode attached input devices before the floating-bus fallback, including `IN (0xFFFD)` reading the selected AY register
+- Correct and test border-latch timestamps and visible pixel/T-state mapping without claiming +2A/+3 behavior
+- Validate with published contention and floating-bus diagnostics plus the existing tape, snapshot, RZX, ZEXDOC, and ZEXALL regression matrix
+
+### Milestone 17 - Beam-Aware Video Pipeline Planned
+- Add an event-driven ULA raster that advances to timed machine events; a literal per-T-state host loop is not required when the observable result is equivalent
+- Latch bitmap and attribute bytes when the ULA fetches them instead of rendering the active display from final end-of-frame RAM
+- Apply border changes and 128K normal/shadow screen switches at their raster positions through the same timing model
+- Preserve FLASH, palette, scaling, and the platform-neutral frame-buffer boundary while replacing only the frame's source data
+- Implement and validate the 48K fetch path first, then original 128K/+2 timing and shadow-screen behavior
+- Add deterministic mid-frame bitmap, attribute, border, and paging tests, followed by representative multicolour and racing-beam demo validation
+
+### Milestone 18 - Debug Execution Controls Planned
 - Keep opening the window paused by default, with an explicit Run/Pause control if live execution is enabled
 - Add Step Into first, then Step Over, Step Out, and Run to Cursor using temporary execution stops where appropriate
 - Add persistent address breakpoints, enable/disable controls, and a compact breakpoint list
@@ -556,21 +576,13 @@ and tools are completed incrementally.
 - Clearly distinguish frozen snapshots from optional throttled live refresh while the machine is running
 - Keep execution control and breakpoint state in platform-neutral core/debugger services, with deterministic instruction-boundary and interrupt tests
 
-### Milestone 17 - Bank-Aware Disassembly And Symbolic Analysis Planned
+### Milestone 19 - Bank-Aware Disassembly And Symbolic Analysis Planned
 - Allow inspection of physical ROM and RAM banks independently of the currently mapped 64K address space
 - Annotate logical addresses with ROM/RAM bank identity and make paging changes visible in refreshed snapshots
 - Add user labels, symbol import/export, and automatic labels for followed branch and call targets
 - Add cross-references for jumps, calls, and data references without treating arbitrary data as executable code
 - Add code/data marking, hexadecimal memory inspection, and navigation from registers, stack entries, and branch targets
 - Export stable bank-qualified listings suitable for diagnostics and comparison between emulator runs
-
-### Milestone 18 - 128K Floating Bus And Port Read Accuracy Planned
-- Generalize the existing 48K ULA floating-bus model for the original Spectrum 128K and grey +2 timing: 70908 T-states per frame, 228 per scanline, and the model-specific display-fetch start
-- Return active pixel and attribute bytes during ULA fetch phases, and `0xFF` during idle phases, for both timed and direct reads from otherwise unattached ports
-- Read from the currently displayed RAM bank so 128K normal and shadow screens use bank 5 and bank 7 respectively
-- Decode attached input devices before the floating-bus fallback, including `IN (0xFFFD)` reading the selected AY register
-- Add deterministic coverage for both machine models, all four fetch phases, idle periods, line/frame boundaries, screen-bank switching, and input-port precedence
-- Validate with a known floating-bus diagnostic and the existing tape, snapshot, RZX, ZEXDOC, and ZEXALL regression matrix
 
 ---
 
