@@ -163,7 +163,8 @@ Tape Loading Progress (Milestone 6)
 Disassembly Progress
 - the side-effect-free instruction decoder foundation is integrated
 - `Z80TraceDiagnostics.cs` remains separate diagnostic CPU trace scaffolding
-- the user-facing disassembly window remains planned
+- `F6` opens a read-only disassembly window over an immutable 64K machine snapshot
+- hexadecimal navigation, Go to PC, Refresh, Copy, branch-target navigation, current-PC highlighting, model, and paged-bank context are implemented
 
 Broader `.tzx` compatibility work still remains for additional protected/custom titles. The current active structural goal is expanding the same format, transport, ROM/trap, bootstrap-policy, and regression layers beyond the working Batman / Exolon / Impossible Mission / Target Renegade baseline.
 
@@ -194,9 +195,9 @@ the initial ULA contention/border model are merged on `master`. Each milestone
 will be developed on its own `...` branch. Current work builds on those
 foundations:
 
-1. **Integrate the completed reusable disassembler foundation.**
-   - Keep the completed decoder work isolated on `disassembler-foundation` until it is deliberately rebased or merged onto the current master baseline.
-   - Preserve its base, `CB`, `ED`, `DD`, `FD`, `DD CB`, and `FD CB` coverage and focused regression suite during integration.
+1. **Maintain the integrated reusable disassembler foundation.**
+   - Preserve base, `CB`, `ED`, `DD`, `FD`, `DD CB`, and `FD CB` coverage and the focused regression suite.
+   - Keep decoding side-effect-free and independent of the Windows frontend.
 
 2. **Maintain the completed explicit 48K and 128K machine modes.**
    - Keep 128K as the startup default and the selected model authoritative over automatic tape heuristics.
@@ -207,10 +208,10 @@ foundations:
    - Target Renegade's all-at-once 128K route and level-at-a-time 48K route have been manually validated without title-specific behavior.
    - The three-second text, persistent playing icon, five-second stopped icon, and title-status presentation have been manually accepted as the working baseline.
 
-4. **Expose a simple, expandable disassembler.**
-   - Add `F6` and a Debug-menu action to open a read-only disassembly window around the current `PC`.
-   - Pause emulation while the window is open, and provide hexadecimal address entry, Go to PC, refresh, copy, model, and paged-bank context.
-   - Keep the result model suitable for later breakpoints, stepping, labels, execution history, and bank-aware views.
+4. **Maintain the simple, expandable disassembler window.**
+   - `F6` and the right-click quick menu open a read-only view from the current `PC` while emulation is paused.
+   - Preserve hexadecimal address entry, Go to PC, Refresh, Copy, branch-target navigation, model, and paged-bank context.
+   - Extend the snapshot-backed result model later with breakpoints, stepping, labels, execution history, and deeper bank-aware views.
 
 5. **Refine live-tape audio handoff.**
    - Keep tape timing exact while moving from loader-only turbo operation to audible real-time playback.
@@ -309,10 +310,11 @@ transport changes show a full top-left status for three seconds. Playing then
 keeps a compact icon; paused and automatically stopped states keep the icon for
 five seconds in total before hiding it. The window title continues to show the
 current tape state, including an explicit `Tape: Auto-stopped` marker status.
+`F6` opens or closes the read-only Z80 disassembler. Opening it pauses emulation
+and captures the visible 64K address space, current `PC`, model, ROM, and paged
+RAM context; closing it resumes emulation when no other pause owner remains.
 The emulator pauses while Help or a file chooser is open and resumes only when
 the final UI pause owner closes.
-
-Planned control not yet implemented: `F6` will open the read-only disassembler.
 
 ---
 
@@ -492,10 +494,11 @@ Notes:
 - Core regressions cover exact pulse/EAR preservation, marker resumption, machine transport state, and selected-model parsing
 - Target Renegade's 128K all-at-once and 48K level-at-a-time paths and the final transport presentation have been manually validated
 
-### Milestone 13 - Disassembler Window Planned
-- Add `F6` and a Debug-menu action for a read-only disassembly view around the current `PC`
-- Provide hexadecimal navigation, PC jump, refresh, copy, model, and paged-bank context
-- Keep the UI and result model ready for later breakpoints, stepping, labels, and execution history
+### Milestone 13 - Disassembler Window Complete
+- `F6` and the right-click quick menu open a read-only disassembly view from the current `PC` while emulation is paused
+- Hexadecimal navigation, Go to PC, Refresh, Copy, branch-target navigation, and current-PC highlighting are implemented
+- The window captures an immutable 64K snapshot and shows machine-model, ROM, paged-RAM, and screen-bank context
+- The snapshot-backed UI and result model remain ready for later breakpoints, stepping, labels, and execution history
 
 ---
 
