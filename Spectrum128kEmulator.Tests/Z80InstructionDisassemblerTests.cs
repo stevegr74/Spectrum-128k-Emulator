@@ -82,6 +82,19 @@ namespace Spectrum128kEmulator.Tests
             Assert.Equal("RL (IX-80H),C", instruction.Mnemonic);
         }
 
+        [Theory]
+        [InlineData(0xDD, "ADD IX,IX")]
+        [InlineData(0xFD, "ADD IY,IY")]
+        public void Disassemble_IndexedSelfAdd_UsesIndexRegisterForBothOperands(byte prefix, string mnemonic)
+        {
+            byte[] memory = CreateMemory(prefix, 0x29);
+
+            Z80Instruction instruction = Z80InstructionDisassembler.Disassemble(0x2000, addr => memory[addr - 0x2000]);
+
+            Assert.Equal(2, instruction.Length);
+            Assert.Equal(mnemonic, instruction.Mnemonic);
+        }
+
         [Fact]
         public void Disassemble_EdUnsupported_ReturnsDbFallback()
         {

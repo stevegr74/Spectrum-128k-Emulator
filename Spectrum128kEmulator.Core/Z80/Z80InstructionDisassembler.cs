@@ -308,7 +308,11 @@ namespace Spectrum128kEmulator.Z80
             }
 
             if ((op & 0xCF) == 0x09)
-                return $"ADD {index},{Rp[(op >> 4) & 0x03]}";
+            {
+                int registerPair = (op >> 4) & 0x03;
+                string source = registerPair == 2 ? index : Rp[registerPair];
+                return $"ADD {index},{source}";
+            }
 
             if (op is 0x21)
                 return $"LD {index},{Word(reader)}";
