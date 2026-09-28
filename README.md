@@ -208,10 +208,12 @@ foundations:
    - Target Renegade's all-at-once 128K route and level-at-a-time 48K route have been manually validated without title-specific behavior.
    - The three-second text, persistent playing icon, five-second stopped icon, and title-status presentation have been manually accepted as the working baseline.
 
-4. **Maintain the simple, expandable disassembler window.**
+4. **Expand the disassembler in controlled stages.**
    - `F6` and the right-click quick menu open a read-only view from the current `PC` while emulation is paused.
    - Preserve hexadecimal address entry, Go to PC, Refresh, Copy, branch-target navigation, model, and paged-bank context.
-   - Extend the snapshot-backed result model later with breakpoints, stepping, labels, execution history, and deeper bank-aware views.
+   - Add navigation and usability improvements before introducing execution control.
+   - Keep paused immutable snapshots as the default, then add explicit run/step controls without weakening pause-lease or timing guarantees.
+   - Build later bank-aware and symbolic analysis on platform-neutral core APIs rather than embedding debugger behavior in WinForms.
 
 5. **Refine live-tape audio handoff.**
    - Keep tape timing exact while moving from loader-only turbo operation to audible real-time playback.
@@ -499,6 +501,30 @@ Notes:
 - Hexadecimal navigation, Go to PC, Refresh, Copy, branch-target navigation, and current-PC highlighting are implemented
 - The window captures an immutable 64K snapshot and shows machine-model, ROM, paged-RAM, and screen-bank context
 - The snapshot-backed UI and result model remain ready for later breakpoints, stepping, labels, and execution history
+
+### Milestone 14 - Disassembler Navigation And Usability Planned
+- Add Back and Forward address history, with keyboard shortcuts for history, Go to PC, and Refresh
+- Add keyboard-first row navigation and Enter-to-follow for branch targets while retaining double-click navigation
+- Add find-by-address, byte sequence, and mnemonic text within the captured snapshot
+- Make snapshot age, captured `PC`, current listing address, and paused state visually unambiguous
+- Remember window size, column widths, and the most recent listing address without changing machine state
+- Improve copy/export formatting for selected rows and complete listings
+
+### Milestone 15 - Debug Execution Controls Planned
+- Keep opening the window paused by default, with an explicit Run/Pause control if live execution is enabled
+- Add Step Into first, then Step Over, Step Out, and Run to Cursor using temporary execution stops where appropriate
+- Add persistent address breakpoints, enable/disable controls, and a compact breakpoint list
+- Show registers, flags, interrupt state, stack context, and the instruction at the current `PC`
+- Clearly distinguish frozen snapshots from optional throttled live refresh while the machine is running
+- Keep execution control and breakpoint state in platform-neutral core/debugger services, with deterministic instruction-boundary and interrupt tests
+
+### Milestone 16 - Bank-Aware Disassembly And Symbolic Analysis Planned
+- Allow inspection of physical ROM and RAM banks independently of the currently mapped 64K address space
+- Annotate logical addresses with ROM/RAM bank identity and make paging changes visible in refreshed snapshots
+- Add user labels, symbol import/export, and automatic labels for followed branch and call targets
+- Add cross-references for jumps, calls, and data references without treating arbitrary data as executable code
+- Add code/data marking, hexadecimal memory inspection, and navigation from registers, stack entries, and branch targets
+- Export stable bank-qualified listings suitable for diagnostics and comparison between emulator runs
 
 ---
 
