@@ -200,8 +200,8 @@ ZEXDOC and ZEXALL are major CPU regression gates, but they are not treated as pr
 ## Current Development Plan
 
 Completed milestones remain regression baselines rather than being repeated as
-new work. Each planned milestone will be developed on its own `...`
-branch. These are parallel work streams; within the remaining debugger stream,
+new work. Each planned milestone will be developed on its own feature branch.
+These are parallel work streams; within the remaining debugger stream,
 Milestones 16 and 17 are intentionally ordered dependencies:
 
 1. **Expand the debugger in two further stages.**
@@ -214,6 +214,7 @@ Milestones 16 and 17 are intentionally ordered dependencies:
 
 3. **Extend video timing accuracy.**
    - Preserve the tested 48K/128K contention and border baseline while improving scanline/raster accuracy.
+   - Milestone 18 adds original 128K/+2 floating-bus timing and correct input-port precedence without changing the separate +2A/+3 behavior.
    - Do not accept a timing change that regresses the verified tape or snapshot matrix.
 
 4. **Use the compatibility matrix as the merge gate.**
@@ -562,6 +563,14 @@ and tools are completed incrementally.
 - Add cross-references for jumps, calls, and data references without treating arbitrary data as executable code
 - Add code/data marking, hexadecimal memory inspection, and navigation from registers, stack entries, and branch targets
 - Export stable bank-qualified listings suitable for diagnostics and comparison between emulator runs
+
+### Milestone 18 - 128K Floating Bus And Port Read Accuracy Planned
+- Generalize the existing 48K ULA floating-bus model for the original Spectrum 128K and grey +2 timing: 70908 T-states per frame, 228 per scanline, and the model-specific display-fetch start
+- Return active pixel and attribute bytes during ULA fetch phases, and `0xFF` during idle phases, for both timed and direct reads from otherwise unattached ports
+- Read from the currently displayed RAM bank so 128K normal and shadow screens use bank 5 and bank 7 respectively
+- Decode attached input devices before the floating-bus fallback, including `IN (0xFFFD)` reading the selected AY register
+- Add deterministic coverage for both machine models, all four fetch phases, idle periods, line/frame boundaries, screen-bank switching, and input-port precedence
+- Validate with a known floating-bus diagnostic and the existing tape, snapshot, RZX, ZEXDOC, and ZEXALL regression matrix
 
 ---
 
