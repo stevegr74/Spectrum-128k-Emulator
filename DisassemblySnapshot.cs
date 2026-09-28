@@ -16,7 +16,7 @@ namespace Spectrum128kEmulator
         {
             ArgumentNullException.ThrowIfNull(memory);
             if (memory.Length != 65536)
-                throw new ArgumentException("A disassembly snapshot must contain the full 64K address space.", nameof(memory));
+                throw new ArgumentException("A disassembly snapshot must contain the full logical 64K address space.", nameof(memory));
 
             this.memory = (byte[])memory.Clone();
             ProgramCounter = programCounter;

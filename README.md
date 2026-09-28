@@ -172,7 +172,7 @@ ZEXDOC and ZEXALL are major CPU regression gates, but they are not treated as pr
 ### Disassembly Progress
 - the side-effect-free instruction decoder foundation is integrated
 - `Z80TraceDiagnostics.cs` remains separate diagnostic CPU trace scaffolding
-- `F6` opens a read-only disassembly window over an immutable 64K machine snapshot
+- `F6` opens a read-only disassembly window over an immutable capture of the currently mapped logical 64K address space
 - hexadecimal navigation, Go to PC, Refresh, Copy, branch-target navigation, current-PC highlighting, model, and paged-bank context are implemented
 
 ### Audio Progress (Milestone 7)
@@ -203,7 +203,7 @@ branch. These are parallel work streams; within the disassembler stream,
 Milestones 14, 15, and 16 are intentionally ordered dependencies:
 
 1. **Expand the disassembler in three stages.**
-   - Milestone 14 adds history, keyboard-first navigation, search, clearer snapshot state, layout persistence, and stronger copy/export behavior while preserving paused immutable inspection.
+   - Milestone 14 adds history, keyboard-first navigation, search, clearer capture state, layout persistence, and stronger copy/export behavior while preserving paused immutable inspection.
    - Milestone 15 adds explicit Run/Pause, stepping, Run to Cursor, breakpoints, and register/stack context through deterministic platform-neutral debugger services.
    - Milestone 16 adds physical bank selection, bank-qualified addresses, labels, cross-references, code/data marking, and stable exports without treating arbitrary data as code.
 
@@ -246,7 +246,7 @@ Spectrum128kEmulator/
 |
 |-- Audio/                                 Windows frontend audio pipeline and output adapters
 |-- DisassemblerForm.cs                    read-only Z80 disassembly window
-|-- DisassemblySnapshot.cs                 immutable 64K inspection snapshot and address parser
+|-- DisassemblySnapshot.cs                 immutable mapped-memory capture and address parser
 |-- EmulatorHelpForm.cs                    WinForms shortcut-reference dialog
 |-- EmulationPauseLeaseManager.cs          nested-safe UI pause ownership
 |-- MainForm.cs                            WinForms menus, host input, and presentation scheduling
@@ -307,8 +307,10 @@ keeps a compact icon; paused and automatically stopped states keep the icon for
 five seconds in total before hiding it. The window title continues to show the
 current tape state, including an explicit `Tape: Auto-stopped` marker status.
 `F6` opens or closes the read-only Z80 disassembler. Opening it pauses emulation
-and captures the visible 64K address space, current `PC`, model, ROM, and paged
-RAM context; closing it resumes emulation when no other pause owner remains.
+and captures the currently mapped logical 64K address space, current `PC`, model,
+ROM, and paged-RAM context. It does not capture every physical 128K RAM/ROM bank
+or the complete machine state; closing it resumes emulation when no other pause
+owner remains.
 `F9` opens the 48K-format `.sna` loader; that file format can run on the selected
 48K or 128K hardware model, but 128K-format `.sna` files are not supported.
 `F10`, `F11`, and `F12` open the Z80/RZX loader, tape loader, and machine-dump
@@ -508,13 +510,13 @@ and tools are completed incrementally.
 ### Milestone 13 - Disassembler Window Complete
 - `F6` and the right-click quick menu open a read-only disassembly view from the current `PC` while emulation is paused
 - Hexadecimal navigation, Go to PC, Refresh, Copy, branch-target navigation, and current-PC highlighting are implemented
-- The window captures an immutable 64K snapshot and shows machine-model, ROM, paged-RAM, and screen-bank context
+- The window captures an immutable copy of the currently mapped logical 64K address space and shows machine-model, ROM, paged-RAM, and screen-bank context
 - The snapshot-backed UI and result model remain ready for later breakpoints, stepping, labels, and execution history
 
 ### Milestone 14 - Disassembler Navigation And Usability Planned
 - Add Back and Forward address history, with keyboard shortcuts for history, Go to PC, and Refresh
 - Add keyboard-first row navigation and Enter-to-follow for branch targets while retaining double-click navigation
-- Add find-by-address, byte sequence, and mnemonic text within the captured snapshot
+- Add find-by-address, byte sequence, and mnemonic text within the captured mapped-memory view
 - Make snapshot age, captured `PC`, current listing address, and paused state visually unambiguous
 - Remember window size, column widths, and the most recent listing address without changing machine state
 - Improve copy/export formatting for selected rows and complete listings
