@@ -6,7 +6,7 @@ namespace Spectrum128kEmulator.Z80
     public partial class Z80Cpu
     {
         // =========================================================
-        // Trace / disassembly scaffolding
+        // Trace diagnostics
         // =========================================================
 
         private void RecordTrace(ushort pcBefore, byte op)

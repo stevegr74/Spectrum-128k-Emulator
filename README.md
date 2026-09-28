@@ -161,7 +161,8 @@ Tape Loading Progress (Milestone 6)
 - the window title persistently distinguishes playing, manual pause, automatic stop, and ended states
 
 Disassembly Progress
-- the side-effect-free decoder foundation is complete on the retained `disassembler-foundation` branch and awaits deliberate integration
+- the side-effect-free instruction decoder foundation is integrated
+- `Z80TraceDiagnostics.cs` remains separate diagnostic CPU trace scaffolding
 - the user-facing disassembly window remains planned
 
 Broader `.tzx` compatibility work still remains for additional protected/custom titles. The current active structural goal is expanding the same format, transport, ROM/trap, bootstrap-policy, and regression layers beyond the working Batman / Exolon / Impossible Mission / Target Renegade baseline.
@@ -472,10 +473,10 @@ Notes:
 - 48K and 128K ULA contention coverage includes display phase, contended memory, contended I/O, and every paged 128K RAM bank
 - The core/UI boundary and clock-driven audio contract are merged on `master`; focused CPU, renderer, audio, machine, snapshot/RZX, and tape regression suites cover the baseline
 
-### Milestone 10 - Disassembler Foundation Complete On Separate Branch
-- Side-effect-free Z80 instruction decoder is complete on `disassembler-foundation`
-- Base, `CB`, `ED`, `DD`, `FD`, `DD CB`, and `FD CB` forms return bytes, length, mnemonic, and optional branch target without mutating machine state
-- Focused opcode and prefix regression coverage is retained with the branch; integration remains intentionally deferred
+### Milestone 10 - Disassembler Foundation Complete
+- Side-effect-free Z80 instruction decoder added for base, `CB`, `ED`, `DD`, `FD`, `DD CB`, and `FD CB` forms
+- Decoder returns instruction bytes, length, mnemonic, and optional branch target without mutating machine state
+- Focused opcode and prefix regression tests cover immediates, relative branches, indexed displacements, prefix lengths, unsupported fallback, and address wraparound
 
 ### Milestone 11 - Explicit 48K/128K Machine Modes Complete
 - 128K remains the startup default and the selected model is authoritative over tape heuristics
