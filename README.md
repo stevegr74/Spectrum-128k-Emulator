@@ -44,7 +44,7 @@ This project focuses on correctness, clean architecture, and incremental develop
 - Renderer separated from emulation
 - Headless Z80 compliance runner (ZEXDOC / ZEXALL)
 - Side-effect-free Z80 instruction decoder
-- Read-only `F6` disassembler with navigation, copy, and paging context
+- Read-only `F6` disassembler with history, capture search, export, and paging context
 - In-memory `F7`/`F8` Quick State save and restore
 
 ---
@@ -175,7 +175,7 @@ ZEXDOC and ZEXALL are major CPU regression gates, but they are not treated as pr
 - the side-effect-free instruction decoder foundation is integrated
 - `Z80TraceDiagnostics.cs` remains separate diagnostic CPU trace scaffolding
 - `F6` opens a read-only disassembly window over an immutable capture of the currently mapped logical 64K address space
-- hexadecimal navigation, Go to PC, Refresh, Copy, branch-target navigation, current-PC highlighting, model, and paged-bank context are implemented
+- address history, keyboard navigation, address/byte/mnemonic search, capture age, persisted layout, metadata-rich copy, complete 64K export, and branch-target navigation are implemented
 
 ### Audio Progress (Milestone 7)
 - AY register model implemented
@@ -201,11 +201,10 @@ ZEXDOC and ZEXALL are major CPU regression gates, but they are not treated as pr
 
 Completed milestones remain regression baselines rather than being repeated as
 new work. Each planned milestone will be developed on its own `...`
-branch. These are parallel work streams; within the disassembler stream,
-Milestones 15, 16, and 17 are intentionally ordered dependencies:
+branch. These are parallel work streams; within the remaining debugger stream,
+Milestones 16 and 17 are intentionally ordered dependencies:
 
-1. **Expand the disassembler in three stages.**
-   - Milestone 15 adds history, keyboard-first navigation, search, clearer capture state, layout persistence, and stronger copy/export behavior while preserving paused immutable inspection.
+1. **Expand the debugger in two further stages.**
    - Milestone 16 adds explicit Run/Pause, stepping, Run to Cursor, breakpoints, and register/stack context through deterministic platform-neutral debugger services.
    - Milestone 17 adds physical bank selection, bank-qualified addresses, labels, cross-references, code/data marking, and stable exports without treating arbitrary data as code.
 
@@ -249,6 +248,10 @@ Spectrum128kEmulator/
 |-- Audio/                                 Windows frontend audio pipeline and output adapters
 |-- DisassemblerForm.cs                    read-only Z80 disassembly window
 |-- DisassemblySnapshot.cs                 immutable mapped-memory capture and address parser
+|-- DisassemblyNavigationHistory.cs        deterministic back/forward address history
+|-- DisassemblySearch.cs                   address, byte-sequence, and mnemonic capture search
+|-- DisassemblyListingFormatter.cs         metadata-rich copy and complete-listing export
+|-- DisassemblerWindowSettings.cs          resilient per-user disassembler layout persistence
 |-- EmulatorHelpForm.cs                    WinForms shortcut-reference dialog
 |-- EmulationPauseLeaseManager.cs          nested-safe UI pause ownership
 |-- MainForm.cs                            WinForms menus, host input, and presentation scheduling
@@ -312,7 +315,12 @@ current tape state, including an explicit `Tape: Auto-stopped` marker status.
 and captures the currently mapped logical 64K address space, current `PC`, model,
 ROM, and paged-RAM context. It does not capture every physical 128K RAM/ROM bank
 or the complete machine state; closing it resumes emulation when no other pause
-owner remains.
+owner remains. Inside the window, Alt+Left/Right navigate address history,
+Ctrl+G focuses address entry, Ctrl+P returns to the captured PC, Ctrl+F and F3
+search addresses, byte sequences, or mnemonics, and Enter follows a selected
+direct branch. F5 refreshes the immutable capture, copy includes capture
+metadata, and export writes a complete mapped 64K listing. Window size, column
+widths, and the latest listing address are remembered per user.
 `F7` atomically saves the complete emulated machine to one temporary Quick State
 slot, and `F8` restores it. This includes CPU, all RAM banks, paging, ULA/audio
 frame state, and tape/RZX positions. Restore is unavailable until a state has
@@ -357,7 +365,7 @@ Test coverage includes:
 - AY register behaviour
 - Audio sample generation
 - Audio pipeline behaviour
-- Z80 instruction decoding and disassembly snapshot behavior
+- Z80 instruction decoding, disassembly navigation/search, listing export, settings, and snapshot behavior
 - Quick State deterministic machine, tape-cursor, and RZX-cursor restoration
 - ZEXDOC and ZEXALL compliance validation via the dedicated runner
 
@@ -530,13 +538,14 @@ and tools are completed incrementally.
 - The slot survives machine resets and media loads within the running app but is intentionally discarded on exit; it is not a replacement for portable `.sna` or `.z80` files
 - Deterministic core regressions cover machine replay plus exact tape and RZX cursor restoration; manual game validation is pending
 
-### Milestone 15 - Disassembler Navigation And Usability Planned
-- Add Back and Forward address history, with keyboard shortcuts for history, Go to PC, and Refresh
-- Add keyboard-first row navigation and Enter-to-follow for branch targets while retaining double-click navigation
-- Add find-by-address, byte sequence, and mnemonic text within the captured mapped-memory view
-- Make snapshot age, captured `PC`, current listing address, and paused state visually unambiguous
-- Remember window size, column widths, and the most recent listing address without changing machine state
-- Improve copy/export formatting for selected rows and complete listings
+### Milestone 15 - Disassembler Navigation And Usability In Validation
+- Back and Forward address history is available through buttons and Alt+Left/Right, with forward history discarded after a new branch
+- Arrow-key row navigation and Enter-to-follow complement retained double-click branch navigation
+- Typed search finds hexadecimal addresses, byte sequences, and mnemonic text throughout the immutable mapped 64K capture; F3 repeats a search
+- The header continuously distinguishes paused immutable inspection and shows capture time/age, captured `PC`, current listing address, model, and paging context
+- Window size, column widths, and the most recent listing address persist under the current user's local application data
+- Selected or displayed rows copy with capture metadata, while export produces a complete mapped 64K listing from the chosen start address
+- Deterministic tests cover history branching, search parsing/wrapping, complete export, metadata formatting, and settings recovery; manual UI validation is pending
 
 ### Milestone 16 - Debug Execution Controls Planned
 - Keep opening the window paused by default, with an explicit Run/Pause control if live execution is enabled

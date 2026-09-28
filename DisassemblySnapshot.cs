@@ -12,7 +12,8 @@ namespace Spectrum128kEmulator
             SpectrumMachineModel machineModel,
             int currentRomBank,
             int pagedRamBank,
-            int screenBank)
+            int screenBank,
+            DateTime? capturedAtUtc = null)
         {
             ArgumentNullException.ThrowIfNull(memory);
             if (memory.Length != 65536)
@@ -24,6 +25,7 @@ namespace Spectrum128kEmulator
             CurrentRomBank = currentRomBank;
             PagedRamBank = pagedRamBank;
             ScreenBank = screenBank;
+            CapturedAtUtc = capturedAtUtc ?? DateTime.UtcNow;
         }
 
         public ushort ProgramCounter { get; }
@@ -31,6 +33,7 @@ namespace Spectrum128kEmulator
         public int CurrentRomBank { get; }
         public int PagedRamBank { get; }
         public int ScreenBank { get; }
+        public DateTime CapturedAtUtc { get; }
 
         public byte ReadMemory(ushort address) => memory[address];
 
