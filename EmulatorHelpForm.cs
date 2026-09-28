@@ -68,6 +68,7 @@ namespace Spectrum128kEmulator
                 ("F3", "Reset and toggle between 128K and 48K machine modes"),
                 ("F4", "Cycle 1x Native, 2x Enhanced, and 3x Enhanced"),
                 ("F5", "Stop or resume tape; its state appears on-screen and in the title"),
+                ("F6", "Open or close the read-only Z80 disassembler"),
                 ("Right-click", "Open the quick menu for display, machine, tape, loading, and diagnostics")
             }));
             content.Controls.Add(CreateShortcutSection("Loading and Diagnostics", new[]

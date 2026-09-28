@@ -61,6 +61,7 @@ namespace Spectrum128kEmulator
         private readonly ToolStripMenuItem reset48kMenuItem = new ToolStripMenuItem("Reset to 48K");
         private readonly ToolStripMenuItem statusOverlayMenuItem = new ToolStripMenuItem("F2 - Status Overlay");
         private readonly ToolStripMenuItem tapeTransportMenuItem = new ToolStripMenuItem("F5 - Stop / Resume Tape");
+        private readonly ToolStripMenuItem disassemblerMenuItem = new ToolStripMenuItem("F6 - Disassembler");
 
         private readonly string romFolder;
         private Spectrum128Machine machine;
@@ -110,6 +111,8 @@ namespace Spectrum128kEmulator
         private long tapeTransportIconExpiresAtTicks;
         private EmulatorHelpForm? helpForm;
         private IDisposable? helpPauseLease;
+        private DisassemblerForm? disassemblerForm;
+        private IDisposable? disassemblerPauseLease;
 
         public MainForm()
         {
@@ -194,6 +197,9 @@ namespace Spectrum128kEmulator
 
             tapeTransportMenuItem.Click += (_, _) => ToggleTapeTransport();
             displayContextMenu.Items.Add(tapeTransportMenuItem);
+
+            disassemblerMenuItem.Click += (_, _) => ToggleDisassemblerWindow();
+            displayContextMenu.Items.Add(disassemblerMenuItem);
 
             displayContextMenu.Items.Add(new ToolStripSeparator());
             displayContextMenu.Items.Add("F9 - Load .sna Snapshot (48K)", null, (_, _) => LoadSnaSnapshotFromDialog());
@@ -334,6 +340,54 @@ namespace Spectrum128kEmulator
             }
         }
 
+        private void ToggleDisassemblerWindow()
+        {
+            if (disassemblerForm is { IsDisposed: false })
+            {
+                disassemblerForm.Close();
+                return;
+            }
+
+            disassemblerPauseLease = AcquireEmulationPauseLease();
+            try
+            {
+                disassemblerForm = new DisassemblerForm(CaptureDisassemblySnapshot);
+                disassemblerForm.FormClosed += (_, _) =>
+                {
+                    disassemblerForm = null;
+                    disassemblerPauseLease?.Dispose();
+                    disassemblerPauseLease = null;
+                    if (!IsDisposed && IsHandleCreated)
+                        BeginInvoke(() => screenBox.Focus());
+                };
+                disassemblerForm.Show(this);
+            }
+            catch
+            {
+                disassemblerPauseLease?.Dispose();
+                disassemblerPauseLease = null;
+                throw;
+            }
+        }
+
+        private DisassemblySnapshot CaptureDisassemblySnapshot()
+        {
+            lock (machineLock)
+            {
+                var memory = new byte[65536];
+                for (int address = 0; address < memory.Length; address++)
+                    memory[address] = machine.PeekMemory((ushort)address);
+
+                return new DisassemblySnapshot(
+                    memory,
+                    machine.Cpu.Regs.PC,
+                    machine.MachineModel,
+                    machine.CurrentRomBank,
+                    machine.PagedRamBank,
+                    machine.ScreenBank);
+            }
+        }
+
         private Spectrum128Machine CreateConfiguredMachine()
         {
             var configuredMachine = new Spectrum128Machine(romFolder);
@@ -446,6 +500,14 @@ namespace Spectrum128kEmulator
                 return;
             }
 
+            if (IsPlainShortcut(e, Keys.F6))
+            {
+                ToggleDisassemblerWindow();
+                e.Handled = true;
+                e.SuppressKeyPress = true;
+                return;
+            }
+
             if (e.KeyCode == Keys.F4 && !e.Alt && !e.Control && !e.Shift)
             {
                 SelectDisplayMode(SpectrumDisplayModes.Next(displayMode));
@@ -474,7 +536,8 @@ namespace Spectrum128kEmulator
                 return;
 
             if (IsPlainShortcut(e, Keys.F1) || IsPlainShortcut(e, Keys.F2) ||
-                IsPlainShortcut(e, Keys.F3) || IsPlainShortcut(e, Keys.F5))
+                IsPlainShortcut(e, Keys.F3) || IsPlainShortcut(e, Keys.F5) ||
+                IsPlainShortcut(e, Keys.F6))
             {
                 e.Handled = true;
                 e.SuppressKeyPress = true;
