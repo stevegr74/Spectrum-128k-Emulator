@@ -7,7 +7,7 @@ using Spectrum128kEmulator.Z80;
 
 namespace Spectrum128kEmulator
 {
-    public sealed class Spectrum128Machine
+    public sealed partial class Spectrum128Machine
     {
         public const int FrameTStates48 = 69888;
         public const int FrameTStates128 = 70908;

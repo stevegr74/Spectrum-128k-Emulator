@@ -128,7 +128,7 @@ namespace Spectrum128kEmulator.Tap
         public ushort LoadedAutoStartLine { get; }
     }
 
-    public sealed class MountedTape
+    public sealed partial class MountedTape
     {
         private const ushort RomTapeReturnAddress = 0x053F;
         private const ushort RomLoadBytesTrapAddress = 0x056B;

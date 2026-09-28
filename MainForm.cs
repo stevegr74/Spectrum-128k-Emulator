@@ -26,6 +26,7 @@ namespace Spectrum128kEmulator
         private const int PostLoadInputSuppressionMilliseconds = 250;
         private const double TapeTransportFullOverlaySeconds = 3.0;
         private const double TapeTransportStoppedIconSeconds = 5.0;
+        private const double QuickStateOverlaySeconds = 2.5;
 
         private int framesRenderedThisSecond;
         private int displayedFps;
@@ -62,6 +63,8 @@ namespace Spectrum128kEmulator
         private readonly ToolStripMenuItem statusOverlayMenuItem = new ToolStripMenuItem("F2 - Status Overlay");
         private readonly ToolStripMenuItem tapeTransportMenuItem = new ToolStripMenuItem("F5 - Stop / Resume Tape");
         private readonly ToolStripMenuItem disassemblerMenuItem = new ToolStripMenuItem("F6 - Disassembler");
+        private readonly ToolStripMenuItem saveQuickStateMenuItem = new ToolStripMenuItem("F7 - Save Quick State");
+        private readonly ToolStripMenuItem restoreQuickStateMenuItem = new ToolStripMenuItem("F8 - Restore Quick State");
 
         private readonly string romFolder;
         private Spectrum128Machine machine;
@@ -109,6 +112,9 @@ namespace Spectrum128kEmulator
         private bool tapeTransportOverlayMarkerStop;
         private long tapeTransportFullOverlayExpiresAtTicks;
         private long tapeTransportIconExpiresAtTicks;
+        private Spectrum128Machine.QuickState? quickState;
+        private string? quickStateOverlayText;
+        private long quickStateOverlayExpiresAtTicks;
         private EmulatorHelpForm? helpForm;
         private IDisposable? helpPauseLease;
         private DisassemblerForm? disassemblerForm;
@@ -201,14 +207,24 @@ namespace Spectrum128kEmulator
             disassemblerMenuItem.Click += (_, _) => ToggleDisassemblerWindow();
             displayContextMenu.Items.Add(disassemblerMenuItem);
 
+            saveQuickStateMenuItem.Click += (_, _) => SaveQuickState();
+            displayContextMenu.Items.Add(saveQuickStateMenuItem);
+            restoreQuickStateMenuItem.Click += (_, _) => RestoreQuickState();
+            displayContextMenu.Items.Add(restoreQuickStateMenuItem);
+
             displayContextMenu.Items.Add(new ToolStripSeparator());
             displayContextMenu.Items.Add("F9 - Load .sna Snapshot (48K)", null, (_, _) => LoadSnaSnapshotFromDialog());
             displayContextMenu.Items.Add("F10 - Load .z80 Snapshot or .rzx Recording", null, (_, _) => LoadSnapshotOrRecordingFromDialog());
             displayContextMenu.Items.Add("F11 - Mount .tap or .tzx Tape Image", null, (_, _) => MountTapFromDialog());
             displayContextMenu.Items.Add("F12 - Write Machine Diagnostic Dump", null, (_, _) => DumpMachineDebugState());
-            displayContextMenu.Opening += (_, _) => UpdateTapeTransportMenuItem();
+            displayContextMenu.Opening += (_, _) =>
+            {
+                UpdateTapeTransportMenuItem();
+                UpdateQuickStateMenuItems();
+            };
             UpdateMachineModelMenuItems();
             UpdateTapeTransportMenuItem();
+            UpdateQuickStateMenuItems();
             screenBox.ContextMenuStrip = displayContextMenu;
         }
 
@@ -308,6 +324,59 @@ namespace Spectrum128kEmulator
                 TapeTransportState.Stopped => "F5 - Resume Tape",
                 _ => "F5 - Stop / Resume Tape"
             };
+        }
+
+        private void SaveQuickState()
+        {
+            ExecuteWithEmulationPaused(() =>
+            {
+                lock (machineLock)
+                    quickState = machine.CaptureQuickState();
+            });
+
+            UpdateQuickStateMenuItems();
+            ShowQuickStateOverlay("QUICK STATE SAVED");
+            fpsLabel.Text = $"Quick state saved: PC={quickState!.ProgramCounter:X4} {FormatMachineModel(quickState.MachineModel)}";
+            PresentCurrentMachineFrame(frameClock.ElapsedTicks + PresentationIntervalTicks);
+            screenBox.Focus();
+        }
+
+        private void RestoreQuickState()
+        {
+            Spectrum128Machine.QuickState? state = quickState;
+            if (state == null)
+            {
+                screenBox.Focus();
+                return;
+            }
+
+            ExecuteWithEmulationPaused(() =>
+            {
+                lock (machineLock)
+                    machine.RestoreQuickState(state);
+                ClearHostAndSpectrumInputState();
+                ResetFrameScheduler();
+                RecreateAudioPipeline();
+            });
+
+            ShowMountedTapeTransportFeedback();
+            ShowQuickStateOverlay("QUICK STATE RESTORED");
+            fpsLabel.Text = $"Quick state restored: PC={state.ProgramCounter:X4} {FormatMachineModel(state.MachineModel)}";
+            SuppressSpectrumHostInputForMilliseconds(PostLoadInputSuppressionMilliseconds);
+            PresentCurrentMachineFrame(frameClock.ElapsedTicks + PresentationIntervalTicks);
+            screenBox.Focus();
+        }
+
+        private void UpdateQuickStateMenuItems()
+        {
+            restoreQuickStateMenuItem.Enabled = quickState != null;
+        }
+
+        private void ShowQuickStateOverlay(string text)
+        {
+            quickStateOverlayText = text;
+            quickStateOverlayExpiresAtTicks = frameClock.ElapsedTicks +
+                (long)(QuickStateOverlaySeconds * System.Diagnostics.Stopwatch.Frequency);
         }
 
         private void ToggleHelpWindow()
@@ -508,6 +577,22 @@ namespace Spectrum128kEmulator
                 return;
             }
 
+            if (IsPlainShortcut(e, Keys.F7))
+            {
+                SaveQuickState();
+                e.Handled = true;
+                e.SuppressKeyPress = true;
+                return;
+            }
+
+            if (IsPlainShortcut(e, Keys.F8))
+            {
+                RestoreQuickState();
+                e.Handled = true;
+                e.SuppressKeyPress = true;
+                return;
+            }
+
             if (e.KeyCode == Keys.F4 && !e.Alt && !e.Control && !e.Shift)
             {
                 SelectDisplayMode(SpectrumDisplayModes.Next(displayMode));
@@ -537,7 +622,8 @@ namespace Spectrum128kEmulator
 
             if (IsPlainShortcut(e, Keys.F1) || IsPlainShortcut(e, Keys.F2) ||
                 IsPlainShortcut(e, Keys.F3) || IsPlainShortcut(e, Keys.F5) ||
-                IsPlainShortcut(e, Keys.F6))
+                IsPlainShortcut(e, Keys.F6) || IsPlainShortcut(e, Keys.F7) ||
+                IsPlainShortcut(e, Keys.F8))
             {
                 e.Handled = true;
                 e.SuppressKeyPress = true;
@@ -1404,6 +1490,7 @@ namespace Spectrum128kEmulator
             else
                 SpectrumRenderer.RenderScaledToBitmap(presentationBitmap, presentationFrameBuffer, layout.Scale);
             DrawTapeTransportOverlay(presentationBitmap, layout.Scale, now);
+            DrawQuickStateOverlay(presentationBitmap, layout.Scale, now);
             long renderEndTicks = frameClock.ElapsedTicks;
 
             screenBox.Image = presentationBitmap;
@@ -1640,6 +1727,30 @@ namespace Spectrum128kEmulator
 
             if (showFullOverlay)
                 graphics.DrawString(text, font, accentBrush, x + (28 * scale), y + (9 * scale));
+        }
+
+        private void DrawQuickStateOverlay(Bitmap bitmap, int scale, long nowTicks)
+        {
+            if (quickStateOverlayText == null || nowTicks >= quickStateOverlayExpiresAtTicks)
+                return;
+
+            Color accent = quickStateOverlayText.EndsWith("RESTORED", StringComparison.Ordinal)
+                ? Color.FromArgb(255, 190, 55)
+                : Color.FromArgb(60, 220, 190);
+            int width = 150 * scale;
+            int height = 30 * scale;
+            int x = bitmap.Width - width - (8 * scale);
+            int y = (isStatusOverlayVisible ? 30 : 8) * scale;
+
+            using Graphics graphics = Graphics.FromImage(bitmap);
+            graphics.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
+            using var backgroundBrush = new SolidBrush(Color.FromArgb(210, 8, 12, 14));
+            using var accentBrush = new SolidBrush(accent);
+            using var borderPen = new Pen(Color.FromArgb(235, accent), Math.Max(1, scale));
+            using var font = new Font(FontFamily.GenericSansSerif, 8.5f * scale, FontStyle.Bold, GraphicsUnit.Pixel);
+            graphics.FillRectangle(backgroundBrush, x, y, width, height);
+            graphics.DrawRectangle(borderPen, x, y, width - 1, height - 1);
+            graphics.DrawString(quickStateOverlayText, font, accentBrush, x + (9 * scale), y + (9 * scale));
         }
 
         private void UpdateTapeTransportTitle(TapeTransportState state, bool markerStop)

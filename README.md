@@ -45,6 +45,7 @@ This project focuses on correctness, clean architecture, and incremental develop
 - Headless Z80 compliance runner (ZEXDOC / ZEXALL)
 - Side-effect-free Z80 instruction decoder
 - Read-only `F6` disassembler with navigation, copy, and paging context
+- In-memory `F7`/`F8` Quick State save and restore
 
 ---
 
@@ -52,9 +53,9 @@ This project focuses on correctness, clean architecture, and incremental develop
 
 The established baseline on `master` includes CPU compliance, a headless core,
 clock-driven audio, the first ULA contention/border model, explicit 48K/128K
-operation, resumable tape transport, and the initial disassembler. Broader tape
-compatibility, live-tape audio handoff polish, disassembler expansion, and
-video-timing accuracy remain active work.
+operation, resumable tape transport, the initial disassembler, and a temporary
+in-memory Quick State slot. Broader tape compatibility, live-tape audio handoff
+polish, disassembler expansion, and video-timing accuracy remain active work.
 
 - Emulator boots into 128K menu
 - Menu navigation works
@@ -66,6 +67,7 @@ video-timing accuracy remain active work.
 - Fixed display modes preserve exact Spectrum pixel geometry: 1x native, Scale2x-enhanced, and Scale3x-enhanced
 - The emulator starts in the 2x enhanced mode; the window cannot be manually resized
 - An in-app F1 control reference and F2 status-overlay toggle are available
+- `F7` saves and `F8` restores one temporary in-memory Quick State, with restore disabled until a state exists
 - Interrupt cadence implemented
 - 48K `.sna` snapshots load correctly
 - `.z80` snapshots load with v1 and v2/v3 support
@@ -200,12 +202,12 @@ ZEXDOC and ZEXALL are major CPU regression gates, but they are not treated as pr
 Completed milestones remain regression baselines rather than being repeated as
 new work. Each planned milestone will be developed on its own `...`
 branch. These are parallel work streams; within the disassembler stream,
-Milestones 14, 15, and 16 are intentionally ordered dependencies:
+Milestones 15, 16, and 17 are intentionally ordered dependencies:
 
 1. **Expand the disassembler in three stages.**
-   - Milestone 14 adds history, keyboard-first navigation, search, clearer capture state, layout persistence, and stronger copy/export behavior while preserving paused immutable inspection.
-   - Milestone 15 adds explicit Run/Pause, stepping, Run to Cursor, breakpoints, and register/stack context through deterministic platform-neutral debugger services.
-   - Milestone 16 adds physical bank selection, bank-qualified addresses, labels, cross-references, code/data marking, and stable exports without treating arbitrary data as code.
+   - Milestone 15 adds history, keyboard-first navigation, search, clearer capture state, layout persistence, and stronger copy/export behavior while preserving paused immutable inspection.
+   - Milestone 16 adds explicit Run/Pause, stepping, Run to Cursor, breakpoints, and register/stack context through deterministic platform-neutral debugger services.
+   - Milestone 17 adds physical bank selection, bank-qualified addresses, labels, cross-references, code/data marking, and stable exports without treating arbitrary data as code.
 
 2. **Refine live-tape audio handoff.**
    - Keep tape timing exact while moving from loader-only turbo operation to audible real-time playback.
@@ -311,6 +313,12 @@ and captures the currently mapped logical 64K address space, current `PC`, model
 ROM, and paged-RAM context. It does not capture every physical 128K RAM/ROM bank
 or the complete machine state; closing it resumes emulation when no other pause
 owner remains.
+`F7` atomically saves the complete emulated machine to one temporary Quick State
+slot, and `F8` restores it. This includes CPU, all RAM banks, paging, ULA/audio
+frame state, and tape/RZX positions. Restore is unavailable until a state has
+been saved. The slot remains available across resets and media loads in the same
+app session, but is deliberately in-memory only and is discarded when the app
+closes. Saving or restoring briefly shows an on-screen confirmation.
 `F9` opens the 48K-format `.sna` loader; that file format can run on the selected
 48K or 128K hardware model, but 128K-format `.sna` files are not supported.
 `F10`, `F11`, and `F12` open the Z80/RZX loader, tape loader, and machine-dump
@@ -350,6 +358,7 @@ Test coverage includes:
 - Audio sample generation
 - Audio pipeline behaviour
 - Z80 instruction decoding and disassembly snapshot behavior
+- Quick State deterministic machine, tape-cursor, and RZX-cursor restoration
 - ZEXDOC and ZEXALL compliance validation via the dedicated runner
 
 ZEXDOC and ZEXALL are used separately for full CPU validation.
@@ -513,7 +522,15 @@ and tools are completed incrementally.
 - The window captures an immutable copy of the currently mapped logical 64K address space and shows machine-model, ROM, paged-RAM, and screen-bank context
 - The snapshot-backed UI and result model remain ready for later breakpoints, stepping, labels, and execution history
 
-### Milestone 14 - Disassembler Navigation And Usability Planned
+### Milestone 14 - In-Memory Quick State In Validation
+- `F7` atomically captures one temporary Quick State and `F8` restores it; restore remains disabled until a state exists
+- The state deep-copies the CPU, all eight RAM banks, paging/model state, ULA border and partial-frame audio state, tape transport/cursor, RZX cursor, and mounted-loader continuation context
+- Restore clears host key state, resets presentation scheduling, and recreates the host audio pipeline to prevent stuck input and stale buffered sound
+- The right-click menu and in-app help expose both controls in F-key order, with short on-screen saved/restored confirmations
+- The slot survives machine resets and media loads within the running app but is intentionally discarded on exit; it is not a replacement for portable `.sna` or `.z80` files
+- Deterministic core regressions cover machine replay plus exact tape and RZX cursor restoration; manual game validation is pending
+
+### Milestone 15 - Disassembler Navigation And Usability Planned
 - Add Back and Forward address history, with keyboard shortcuts for history, Go to PC, and Refresh
 - Add keyboard-first row navigation and Enter-to-follow for branch targets while retaining double-click navigation
 - Add find-by-address, byte sequence, and mnemonic text within the captured mapped-memory view
@@ -521,7 +538,7 @@ and tools are completed incrementally.
 - Remember window size, column widths, and the most recent listing address without changing machine state
 - Improve copy/export formatting for selected rows and complete listings
 
-### Milestone 15 - Debug Execution Controls Planned
+### Milestone 16 - Debug Execution Controls Planned
 - Keep opening the window paused by default, with an explicit Run/Pause control if live execution is enabled
 - Add Step Into first, then Step Over, Step Out, and Run to Cursor using temporary execution stops where appropriate
 - Add persistent address breakpoints, enable/disable controls, and a compact breakpoint list
@@ -529,7 +546,7 @@ and tools are completed incrementally.
 - Clearly distinguish frozen snapshots from optional throttled live refresh while the machine is running
 - Keep execution control and breakpoint state in platform-neutral core/debugger services, with deterministic instruction-boundary and interrupt tests
 
-### Milestone 16 - Bank-Aware Disassembly And Symbolic Analysis Planned
+### Milestone 17 - Bank-Aware Disassembly And Symbolic Analysis Planned
 - Allow inspection of physical ROM and RAM banks independently of the currently mapped 64K address space
 - Annotate logical addresses with ROM/RAM bank identity and make paging changes visible in refreshed snapshots
 - Add user labels, symbol import/export, and automatic labels for followed branch and call targets
