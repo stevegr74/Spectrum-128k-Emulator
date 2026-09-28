@@ -1,6 +1,6 @@
 # ZX Spectrum 128K Emulator (C#)
 
-A from-scratch ZX Spectrum 128K emulator written in C# using only standard libraries.
+A from-scratch ZX Spectrum 128K emulator written in C# with no third-party runtime dependencies.
 
 This project focuses on correctness, clean architecture, and incremental development, with strong validation through automated tests and Z80 compliance tooling.
 
@@ -12,12 +12,13 @@ This project focuses on correctness, clean architecture, and incremental develop
 - Full ZEXDOC and ZEXALL CPU compliance (all instruction groups passing)
 - 128K memory paging (port `0x7FFD`)
 - ROM loading (128K + 48K modes)
-- 48K `.sna` snapshot loading (verified)
+- 48K-format `.sna` snapshot loading (verified)
 - `.z80` snapshot support
   - v1 loading implemented
   - v2/v3 page-block support implemented
 - Keyboard matrix (8x5, active low)
-- Screen rendering (`256x192`)
+- Explicit 48K/128K machine selection, with 128K as the startup default
+- Screen rendering (`256x192`) with fixed 1x, Scale2x, and Scale3x display modes
 - Attribute handling (INK, PAPER, BRIGHT, FLASH)
 - Frame-based FLASH implementation
 - Frame pacing (~50Hz)
@@ -29,6 +30,7 @@ This project focuses on correctness, clean architecture, and incremental develop
 - ROM-driven `LD-BYTES` loading path implemented
 - VERIFY path implemented
 - deterministic multi-block sequencing implemented
+- Manual tape stop/resume and resumable TZX 48K stop markers
 - Shared audio output pipeline
 - 48K beeper audio output
 - AY-3-8912 audio support
@@ -41,15 +43,18 @@ This project focuses on correctness, clean architecture, and incremental develop
 - Headless machine core (testable)
 - Renderer separated from emulation
 - Headless Z80 compliance runner (ZEXDOC / ZEXALL)
+- Side-effect-free Z80 instruction decoder
+- Read-only `F6` disassembler with navigation, copy, and paging context
 
 ---
 
 ## Current Status
 
 The established baseline on `master` includes CPU compliance, a headless core,
-clock-driven audio, and the first ULA contention/border model. Tape
-compatibility, live-tape audio handoff polish, and broader video-timing accuracy
-remain active work.
+clock-driven audio, the first ULA contention/border model, explicit 48K/128K
+operation, resumable tape transport, and the initial disassembler. Broader tape
+compatibility, live-tape audio handoff polish, disassembler expansion, and
+video-timing accuracy remain active work.
 
 - Emulator boots into 128K menu
 - Menu navigation works
@@ -96,7 +101,7 @@ remain active work.
   - tape/snapshot loads pause emulation and start from a clean machine/input boundary
 - Z80 core refactored into focused partial files without intended behaviour changes
 
-CPU Compliance Baseline
+### CPU Compliance Baseline
 - ZEXDOC runs to completion in a headless runner
 - ZEXALL runs to completion in a headless runner
 - All ZEXDOC/ZEXALL instruction groups pass in the current headless harness
@@ -105,7 +110,7 @@ CPU Compliance Baseline
 
 ZEXDOC and ZEXALL are major CPU regression gates, but they are not treated as proof that every undocumented or I/O-data-dependent behaviour is complete.
 
-Snapshot Support Progress (Milestone 5)
+### Snapshot Support Progress (Milestone 5)
 - 48K `.sna` loading implemented and verified (real game runs)
 - `.z80` snapshot support implemented (v1 + v2/v3)
 - 128K paging and memory restoration working
@@ -114,10 +119,14 @@ Snapshot Support Progress (Milestone 5)
   - `.sna` restores interrupt state from header semantics
   - 48K `.z80` uses the dedicated generic 48K `.z80` machine path
 
-Tape Loading Progress (Milestone 6)
+### Recording Replay Progress
+- `.rzx` parsing and replay are implemented
+- embedded SNA/Z80 snapshot restoration is supported for the implemented replay path
+- `aufmonty.rzx` has been verified playing successfully
+
+### Tape Loading Progress (Milestone 6)
 - `.tap` parsing implemented
 - `.tzx` parsing implemented
-- `.rzx` replay loading implemented
 - fake loader path implemented
 - ROM-driven `LD-BYTES` path implemented
 - VERIFY path implemented
@@ -132,7 +141,6 @@ Tape Loading Progress (Milestone 6)
   - `Where Time Stood Still.tap`
   - `Batman - Release 1.tzx`
   - `Target Renegade (Imagine, OR) 128k.tzx` (protected 128K continuation and final tape stop)
-  - `aufmonty.rzx`
 - tape execution is selected from parsed tape structure rather than title-specific rules:
   - standard BASIC chains use the fast bootstrap path where their ROM side effects can be reproduced
   - mixed and protected tapes retain mounted signal playback for the live/protected stage
@@ -159,16 +167,15 @@ Tape Loading Progress (Milestone 6)
 - 48K TZX stop markers now preserve the remaining blocks as resumable transport stops instead of truncating the tape
 - tape transitions show a full top-left status for three seconds; playing then keeps a compact icon, while paused/stopped icons disappear after five seconds
 - the window title persistently distinguishes playing, manual pause, automatic stop, and ended states
+- broader `.tzx` compatibility remains active work beyond the verified Batman, Exolon, Impossible Mission, and Target Renegade baseline
 
-Disassembly Progress
+### Disassembly Progress
 - the side-effect-free instruction decoder foundation is integrated
 - `Z80TraceDiagnostics.cs` remains separate diagnostic CPU trace scaffolding
 - `F6` opens a read-only disassembly window over an immutable 64K machine snapshot
 - hexadecimal navigation, Go to PC, Refresh, Copy, branch-target navigation, current-PC highlighting, model, and paged-bank context are implemented
 
-Broader `.tzx` compatibility work still remains for additional protected/custom titles. The current active structural goal is expanding the same format, transport, ROM/trap, bootstrap-policy, and regression layers beyond the working Batman / Exolon / Impossible Mission / Target Renegade baseline.
-
-Audio Progress (Milestone 7)
+### Audio Progress (Milestone 7)
 - AY register model implemented
 - AY port wiring implemented (`0xFFFD` / `0xBFFD`)
 - 48K beeper signal implemented via port `0xFE`
@@ -186,44 +193,29 @@ Audio Progress (Milestone 7)
 - Protected live-tape loads now resume audio when playable code begins before the
   tape stream ends. The transition is improved but not yet seamless in every
   title; refine the turbo-to-realtime audio handoff without distorting tape timing.
-- Remaining polish is mostly app-side input responsiveness rather than core audio generation
+- Outside the live-tape handoff, remaining polish is mostly app-side input responsiveness rather than core audio generation
 
 ## Current Development Plan
 
-The core/UI boundary, clock-driven audio, hardware-derived block-I/O flags, and
-the initial ULA contention/border model are merged on `master`. Each milestone
-will be developed on its own `...` branch. Current work builds on those
-foundations:
+Completed milestones remain regression baselines rather than being repeated as
+new work. Each planned milestone will be developed on its own `...`
+branch. These are parallel work streams; within the disassembler stream,
+Milestones 14, 15, and 16 are intentionally ordered dependencies:
 
-1. **Maintain the integrated reusable disassembler foundation.**
-   - Preserve base, `CB`, `ED`, `DD`, `FD`, `DD CB`, and `FD CB` coverage and the focused regression suite.
-   - Keep decoding side-effect-free and independent of the Windows frontend.
+1. **Expand the disassembler in three stages.**
+   - Milestone 14 adds history, keyboard-first navigation, search, clearer snapshot state, layout persistence, and stronger copy/export behavior while preserving paused immutable inspection.
+   - Milestone 15 adds explicit Run/Pause, stepping, Run to Cursor, breakpoints, and register/stack context through deterministic platform-neutral debugger services.
+   - Milestone 16 adds physical bank selection, bank-qualified addresses, labels, cross-references, code/data marking, and stable exports without treating arbitrary data as code.
 
-2. **Maintain the completed explicit 48K and 128K machine modes.**
-   - Keep 128K as the startup default and the selected model authoritative over automatic tape heuristics.
-   - Preserve the tested `F3`, context-menu, status-overlay, snapshot-hardware, and genuine 48K AY-gating behavior.
-
-3. **Maintain the completed resumable tape transport and dual-mode TZX support.**
-   - Preserve `F5`, exact pulse-position preservation, resumable 48K stop markers, timed translucent feedback, and persistent title status.
-   - Target Renegade's all-at-once 128K route and level-at-a-time 48K route have been manually validated without title-specific behavior.
-   - The three-second text, persistent playing icon, five-second stopped icon, and title-status presentation have been manually accepted as the working baseline.
-
-4. **Expand the disassembler in controlled stages.**
-   - `F6` and the right-click quick menu open a read-only view from the current `PC` while emulation is paused.
-   - Preserve hexadecimal address entry, Go to PC, Refresh, Copy, branch-target navigation, model, and paged-bank context.
-   - Add navigation and usability improvements before introducing execution control.
-   - Keep paused immutable snapshots as the default, then add explicit run/step controls without weakening pause-lease or timing guarantees.
-   - Build later bank-aware and symbolic analysis on platform-neutral core APIs rather than embedding debugger behavior in WinForms.
-
-5. **Refine live-tape audio handoff.**
+2. **Refine live-tape audio handoff.**
    - Keep tape timing exact while moving from loader-only turbo operation to audible real-time playback.
    - Remove the remaining non-seamless transitions in protected titles without regressing normal playback.
 
-6. **Extend video timing accuracy.**
+3. **Extend video timing accuracy.**
    - Preserve the tested 48K/128K contention and border baseline while improving scanline/raster accuracy.
    - Do not accept a timing change that regresses the verified tape or snapshot matrix.
 
-7. **Use the compatibility matrix as the merge gate.**
+4. **Use the compatibility matrix as the merge gate.**
    - `exolon.tap` and `Exolon.tzx`
    - `Where Time Stood Still.tap`
    - `Impossible Mission - Bugfix.tzx`
@@ -243,7 +235,7 @@ Spectrum128kEmulator/
 |-- Spectrum128kEmulator.Core/             net8.0 platform-neutral emulator
 |   |-- Audio/                             AY/beeper synthesis and sample clock
 |   |-- Tape/                              TAP/TZX parsing, transport, and bootstrap policy
-|   |-- Z80/                               CPU execution, registers, flags, and opcode groups
+|   |-- Z80/                               CPU execution plus side-effect-free instruction decoding
 |   |-- Spectrum128Machine.cs              machine, memory, paging, ULA timing, and input matrix
 |   |-- SpectrumFrameBuffer.cs             platform-neutral ARGB frame buffer
 |   |-- BorderFrame.cs                     timestamped border events
@@ -253,6 +245,8 @@ Spectrum128kEmulator/
 |   `-- RzxPlaybackSession.cs              RZX playback orchestration
 |
 |-- Audio/                                 Windows frontend audio pipeline and output adapters
+|-- DisassemblerForm.cs                    read-only Z80 disassembly window
+|-- DisassemblySnapshot.cs                 immutable 64K inspection snapshot and address parser
 |-- EmulatorHelpForm.cs                    WinForms shortcut-reference dialog
 |-- EmulationPauseLeaseManager.cs          nested-safe UI pause ownership
 |-- MainForm.cs                            WinForms menus, host input, and presentation scheduling
@@ -287,10 +281,11 @@ Run the emulator:
 dotnet run
 ```
 
-ROM files must be placed in:
+ROM files must be present in the `ROMs` directory copied beside the executable
+(the project does this automatically for files under its local `ROMs` folder):
 
 ```text
-/ROMs
+ROMs/
 ```
 
 Expected ROMs:
@@ -305,9 +300,8 @@ pixel-art scaling; the same modes are available from the display context menu.
 
 Press `F1` for the in-app control reference. `F2` toggles the FPS and display
 mode overlay, which is hidden by default. `F3` resets and toggles between
-explicit 128K and 48K machine modes. `F9`, `F10`, `F11`, and `F12` open the
-48K-format SNA loader, Z80/RZX loader, tape loader, and machine-dump action.
-`F5` stops or resumes a mounted tape while CPU emulation continues. Manual
+explicit 128K and 48K machine modes, and `F4` cycles the display mode. `F5`
+stops or resumes a mounted tape while CPU emulation continues. Manual
 transport changes show a full top-left status for three seconds. Playing then
 keeps a compact icon; paused and automatically stopped states keep the icon for
 five seconds in total before hiding it. The window title continues to show the
@@ -315,6 +309,10 @@ current tape state, including an explicit `Tape: Auto-stopped` marker status.
 `F6` opens or closes the read-only Z80 disassembler. Opening it pauses emulation
 and captures the visible 64K address space, current `PC`, model, ROM, and paged
 RAM context; closing it resumes emulation when no other pause owner remains.
+`F9` opens the 48K-format `.sna` loader; that file format can run on the selected
+48K or 128K hardware model, but 128K-format `.sna` files are not supported.
+`F10`, `F11`, and `F12` open the Z80/RZX loader, tape loader, and machine-dump
+action respectively.
 The emulator pauses while Help or a file chooser is open and resumes only when
 the final UI pause owner closes.
 
@@ -344,9 +342,12 @@ Test coverage includes:
 - VERIFY handling
 - Tape sequencing and reset behaviour
 - banked tape-loader regression coverage
+- Tape transport pause/resume and 48K stop-marker behaviour
+- 48K/128K machine-model behavior
 - AY register behaviour
 - Audio sample generation
 - Audio pipeline behaviour
+- Z80 instruction decoding and disassembly snapshot behavior
 - ZEXDOC and ZEXALL compliance validation via the dedicated runner
 
 ZEXDOC and ZEXALL are used separately for full CPU validation.
@@ -358,17 +359,20 @@ ZEXDOC and ZEXALL are used separately for full CPU validation.
 Current snapshot status:
 
 - `.sna`
-  - 48K loading implemented and verified
+  - 48K file-format loading implemented and verified
+  - 48K-format snapshots can run on the selected 48K or 128K hardware model
+  - 128K-format `.sna` files are not currently supported
   - interrupt state restored from snapshot header semantics
   - generic format-based load path in use
 
 - `.z80`
   - v1 loading implemented
   - v2/v3 page-block support implemented
+  - 128K paging and RAM-bank restoration supported for applicable v2/v3 snapshots
   - interrupt state and interrupt mode restored from snapshot metadata
   - 48K `.z80` uses a dedicated generic restore path
 
-Snapshots can be loaded via keyboard shortcuts in the UI.
+Snapshots can be loaded with `F9` (`.sna`) and `F10` (`.z80`) in the UI.
 
 ---
 
@@ -410,6 +414,10 @@ Notes:
 
 ## Roadmap
 
+Milestone numbers record delivery order. Milestones 6 and 7 remain open for
+broader compatibility and polish while later, independently scoped foundations
+and tools are completed incrementally.
+
 ### Milestone 1 - Keyboard & Menu Complete
 - Keyboard matrix implemented
 - 128K menu navigation working
@@ -432,8 +440,9 @@ Notes:
 - Core CPU behaviour validated by compliance tests and targeted regressions
 - Hardware-derived block-I/O flags, including data-dependent and undocumented bits, are implemented and covered by targeted regressions
 
-### Milestone 5 - Snapshots Complete
+### Milestone 5 - Supported Snapshot Formats Complete
 - 48K `.sna` loading complete and verified
+- 128K-format `.sna` files remain outside the completed milestone scope
 - `.z80` support implemented (v1 + v2/v3)
 - Real snapshot validated (`robocop128k.z80` playable)
 - Snapshot-format-specific restore paths now stabilised for current `.sna` and `.z80` support
@@ -528,12 +537,9 @@ Notes:
 
 ---
 
-## Future Improvements
+## Longer-Term Improvements
 
-- Scanline-accurate rendering
-- Demo compatibility improvements
-- Higher-fidelity tape timing
-- Extended tape compatibility
+- Demo compatibility beyond the current validation matrix
 - Remaining menu/input responsiveness polish for games like Jet Set Willy
 - Broader real-game validation
 - Additional platform frontends, including a browser/WebAssembly adapter using the established headless engine boundary
@@ -542,7 +548,7 @@ Notes:
 
 ## Design Principles
 
-- Standard library only (no external dependencies)
+- No third-party runtime dependencies; xUnit and its runner are test-only packages
 - Incremental development (no large rewrites)
 - Behaviour verified with tests, ZEXDOC, and ZEXALL
 - Clear separation between emulation and UI, with platform-neutral video and audio contracts
@@ -554,10 +560,8 @@ Notes:
 
 This is primarily a personal project for learning and development.
 
-Contributions are welcome for:
-
-- Bug fixes
-- Improvements with accompanying tests
+Contributions are welcome for bug fixes with tests. Feature changes should
+align with the roadmap and be discussed before implementation.
 
 See `CONTRIBUTING.md` for details.
 
