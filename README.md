@@ -53,7 +53,7 @@ This project focuses on correctness, clean architecture, and incremental develop
 
 The established baseline on `master` includes CPU compliance, a headless core,
 clock-driven audio, the first ULA contention/border model, explicit 48K/128K
-operation, resumable tape transport, the initial disassembler, and a temporary
+operation, resumable tape transport, a paused read-only disassembler, and a temporary
 in-memory Quick State slot. Broader tape compatibility, live-tape audio handoff
 polish, disassembler expansion, and video-timing accuracy remain active work.
 
@@ -83,7 +83,7 @@ polish, disassembler expansion, and video-timing accuracy remain active work.
 - loader-only turbo tape phases skip unnecessary per-frame audio-frame construction; live playback returns to real-time audio submission when the machine becomes audible
 - protected non-ROM live tape streams use a lower turbo ceiling than ordinary streaming tape
 - the Spectrum palette now uses standard `0xD7` normal and `0xFF` bright intensity levels
-- AY register model implemented and wired to ports
+- AY register model implemented and wired to the register-select and write ports
 - 48K beeper implemented via port `0xFE` (speaker state + edge detection)
 - AY tone, envelope, and noise output implemented
 - Basic audio mixing implemented
@@ -179,7 +179,7 @@ ZEXDOC and ZEXALL are major CPU regression gates, but they are not treated as pr
 
 ### Audio Progress (Milestone 7)
 - AY register model implemented
-- AY port wiring implemented (`0xFFFD` / `0xBFFD`)
+- AY register-select and write-port wiring implemented (`0xFFFD` / `0xBFFD`); selected-register input reads are planned in Milestone 18
 - 48K beeper signal implemented via port `0xFE`
 - Shared audio output pipeline implemented
 - PCM audio output implemented using Windows APIs only
@@ -481,7 +481,7 @@ and tools are completed incrementally.
 
 ### Milestone 7 - Audio (In Progress)
 - AY-3-8912 register emulation
-- AY port wiring implemented
+- AY register-select and write-port wiring implemented; selected-register input reads remain planned in Milestone 18
 - 48K beeper implemented
 - Shared audio output pipeline implemented
 - Basic audio output working
@@ -531,13 +531,13 @@ and tools are completed incrementally.
 - The window captures an immutable copy of the currently mapped logical 64K address space and shows machine-model, ROM, paged-RAM, and screen-bank context
 - The snapshot-backed UI and result model remain ready for later breakpoints, stepping, labels, and execution history
 
-### Milestone 14 - In-Memory Quick State In Validation
+### Milestone 14 - In-Memory Quick State Complete
 - `F7` atomically captures one temporary Quick State and `F8` restores it; restore remains disabled until a state exists
 - The state deep-copies the CPU, all eight RAM banks, paging/model state, ULA border and partial-frame audio state, tape transport/cursor, RZX cursor, and mounted-loader continuation context
 - Restore clears host key state, resets presentation scheduling, and recreates the host audio pipeline to prevent stuck input and stale buffered sound
 - The right-click menu and in-app help expose both controls in F-key order, with short on-screen saved/restored confirmations
 - The slot survives machine resets and media loads within the running app but is intentionally discarded on exit; it is not a replacement for portable `.sna` or `.z80` files
-- Deterministic core regressions cover machine replay plus exact tape and RZX cursor restoration; manual game validation is pending
+- Deterministic core regressions cover machine replay plus exact tape and RZX cursor restoration, and the save/restore UI flow was manually validated before merge
 
 ### Milestone 15 - Disassembler Navigation And Usability In Validation
 - Back and Forward address history is available through buttons and Alt+Left/Right, with forward history discarded after a new branch
