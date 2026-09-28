@@ -3,7 +3,7 @@ using System.Collections.Generic;
 
 namespace Spectrum128kEmulator
 {
-    public sealed class RzxPlaybackSession
+    public sealed partial class RzxPlaybackSession
     {
         private readonly IReadOnlyList<RzxFrame> frames;
         private int frameIndex;

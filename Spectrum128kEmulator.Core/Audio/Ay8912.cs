@@ -1,6 +1,6 @@
 namespace Spectrum128kEmulator.Audio
 {
-    public class Ay8912
+    public partial class Ay8912
     {
         private readonly byte[] registers = new byte[16];
         private int selectedRegister;
