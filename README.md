@@ -88,6 +88,7 @@ polish, disassembler expansion, and video-timing accuracy remain active work.
 - AY tone, envelope, and noise output implemented
 - Basic audio mixing implemented
 - CPU/frame timing and interrupt handling improved through real-game testing
+- 48K floating-bus reads are implemented; original 128K/+2 unattached-port reads still return `0xFF` and are explicitly planned for Milestone 16
 - Snapshot restore semantics now follow generic `.sna` and `.z80` format paths without snapshot-name hacks
 - 48K `.z80` snapshots now use a dedicated format-based restore path that restores correct `JSWAPRIL.Z80` audio behaviour
 - Jet Set Willy menu and in-game music now play with correct pitch and sequencing again
@@ -507,6 +508,7 @@ and tools are completed incrementally.
 ### Milestone 9 - ULA Timing And Border Effects Baseline Complete
 - Static visible borders and timestamped `OUT (FE)` raster border changes are rendered through the platform-neutral frame buffer
 - 48K and 128K ULA contention coverage includes display phase, contended memory, contended I/O, and every paged 128K RAM bank
+- This baseline does not include original 128K/+2 floating-bus reads or beam-aware active-screen rendering; those limitations are planned for Milestones 16 and 17 respectively
 - The core/UI boundary and clock-driven audio contract are merged on `master`; focused CPU, renderer, audio, machine, snapshot/RZX, and tape regression suites cover the baseline
 
 ### Milestone 10 - Disassembler Foundation Complete
