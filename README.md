@@ -146,7 +146,7 @@ ZEXDOC and ZEXALL are major CPU regression gates, but they are not treated as pr
   - `Target Renegade (Imagine, OR) 128k.tzx` (protected 128K continuation and final tape stop)
 - tape execution is selected from parsed tape structure rather than title-specific rules:
   - standard BASIC chains use the fast bootstrap path where their ROM side effects can be reproduced
-  - fast bootstrap is capability-gated; autorun loaders with unsupported BASIC control flow fall back to ROM-driven execution with the remaining tape mounted
+  - fast bootstrap is capability-gated; autorun loaders with unsupported BASIC control flow boot the real BASIC ROM to a valid initialized state, enter the ROM interpreter through its autorun path, and leave the remaining tape mounted
   - mixed and protected tapes retain mounted signal playback for the live/protected stage
   - the ROM `LD-BYTES` trap remains the shared path for standard header/data loads and VERIFY
 - protected BASIC bootstrap now honours Spectrum `CLEAR -1` semantics, preserving all RAM before a `USR` handoff; this is required by the Impossible Mission loader
