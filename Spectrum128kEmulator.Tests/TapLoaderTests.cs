@@ -1854,6 +1854,56 @@ namespace Spectrum128kEmulator.Tests
         }
 
         [Fact]
+        public void LoadWithPolicy_Uses_Rom_Bootstrap_When_Mounted_Loader_Has_Unsupported_Control_Flow()
+        {
+            string tempFolder = CreateTempRoms();
+            string tapePath = Path.Combine(tempFolder, "control-flow-loader.tap");
+
+            try
+            {
+                byte[] loader = BuildBasicProgram(
+                    BuildBasicLine(10,
+                        Token(253), Ascii("24575"), NumberMarker(24575),
+                        Colon(),
+                        Token(239), Ascii("\"\""), Token(175),
+                        Colon(),
+                        Token(239), Ascii("\"\""), Token(175),
+                        Colon(),
+                        Token(239), Ascii("\"\""), Token(175)),
+                    BuildBasicLine(20,
+                        Token(250), Token(192), Ascii("60895"), NumberMarker(60895),
+                        Token(203), Token(248), Ascii("\"SCORE\""), Token(175),
+                        Colon(),
+                        Token(236), Ascii("20"), NumberMarker(20)),
+                    BuildBasicLine(30,
+                        Token(239), Ascii("\"SCORE\""), Token(175),
+                        Colon(),
+                        Token(236), Ascii("20"), NumberMarker(20)));
+                byte[] tape = BuildTap(
+                    BuildHeaderBlock(type: 0, fileName: "LOADER", dataLength: (ushort)loader.Length, parameter1: 10, parameter2: (ushort)loader.Length),
+                    BuildDataBlock(loader),
+                    BuildHeaderBlock(type: 3, fileName: "PART1", dataLength: 1, parameter1: 0x8000, parameter2: 0),
+                    BuildDataBlock(new byte[] { 0x11 }),
+                    BuildHeaderBlock(type: 3, fileName: "PART2", dataLength: 1, parameter1: 0x9000, parameter2: 0),
+                    BuildDataBlock(new byte[] { 0x22 }),
+                    BuildHeaderBlock(type: 3, fileName: "PART3", dataLength: 1, parameter1: 0xA000, parameter2: 0),
+                    BuildDataBlock(new byte[] { 0x33 }));
+                File.WriteAllBytes(tapePath, tape);
+
+                var machine = new Spectrum128Machine(tempFolder);
+                TapeExecutionResult result = TapLoader.LoadWithPolicy(machine, tapePath);
+
+                Assert.Equal(TapeLoadStrategy.RomBootstrapMounted, result.Strategy);
+                Assert.Equal(2, result.ConsumedBlockCount);
+                Assert.True(machine.HasMountedTape);
+            }
+            finally
+            {
+                Directory.Delete(tempFolder, true);
+            }
+        }
+
+        [Fact]
         public void LoadLeadingBasicProgramAndMountRemainingForRomAutoStart_Mounts_Second_Basic_Stage_For_Rom_Driven_Autostart()
         {
             string tempFolder = CreateTempRoms();

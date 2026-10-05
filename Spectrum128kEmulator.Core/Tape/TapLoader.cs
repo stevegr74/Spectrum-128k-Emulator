@@ -2040,6 +2040,13 @@ namespace Spectrum128kEmulator.Tap
 
                 if (RequiresMountedLoadSemanticsForStandardTape(machine, blocks, use128kMode))
                 {
+                    if (!CanExecuteLeadingBasicProgramWithBootstrap(machine, blocks, use128kMode))
+                    {
+                        return new TapeLoadPlan(
+                            TapeLoadStrategy.RomBootstrapMounted,
+                            "Standard tape requires mounted LOAD semantics, but its autorun BASIC control flow must execute under ROM control.");
+                    }
+
                     return new TapeLoadPlan(
                         TapeLoadStrategy.BootstrapHybrid,
                         "Standard tape contains a protected or chained loader stage that requires mounted LOAD semantics.");
@@ -2770,6 +2777,34 @@ namespace Spectrum128kEmulator.Tap
             }
 
             return false;
+        }
+
+        private static bool CanExecuteLeadingBasicProgramWithBootstrap(
+            Spectrum128Machine machine,
+            IReadOnlyList<TapeBlock> blocks,
+            bool use128kMode)
+        {
+            int index = 0;
+            while (index < blocks.Count && blocks[index].Kind == TapeBlockKind.Metadata)
+                index++;
+
+            if (index + 1 >= blocks.Count ||
+                !IsStandardHeaderBlock(blocks[index]) ||
+                blocks[index + 1].Flag != DataFlag ||
+                blocks[index + 1].Payload == null)
+            {
+                return false;
+            }
+
+            TapHeaderInfo header = ParseHeaderInfo(blocks[index]);
+            if (header.Type != ProgramType || header.AutoStartLine >= 32768)
+                return false;
+
+            return CanBootstrapLoadedBasicProgram(
+                machine,
+                header,
+                blocks[index + 1].Payload!,
+                use128kMode);
         }
 
         private static bool CanBootstrapLoadedBasicProgram(
