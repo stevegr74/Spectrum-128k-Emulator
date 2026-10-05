@@ -254,8 +254,9 @@ namespace Spectrum128kEmulator
 
         private void RefreshSnapshot()
         {
+            ushort selectedAddress = SelectedInstruction()?.Address ?? listingAddress;
             snapshot = captureSnapshot();
-            PopulateListing(selectFirstRow: true);
+            PopulateListing(selectedAddress);
             UpdateCaptureState();
             statusLabel.Text = $"Capture refreshed at PC={snapshot.ProgramCounter:X4}H; listing remains at {listingAddress:X4}H.";
         }
@@ -272,27 +273,56 @@ namespace Spectrum128kEmulator
             NavigateTo(address);
         }
 
-        private void NavigateTo(ushort address, bool recordHistory = true, string? status = null)
+        private void NavigateTo(
+            ushort address,
+            bool recordHistory = true,
+            string? status = null,
+            ushort? selectedAddress = null)
         {
-            listingAddress = address;
+            ushort selection = selectedAddress ?? address;
             if (recordHistory)
-                navigationHistory.NavigateTo(address);
+            {
+                PreserveCurrentHistorySelection();
+                navigationHistory.NavigateTo(new DisassemblyNavigationLocation(address, selection));
+            }
+
+            listingAddress = address;
             addressTextBox.Text = address.ToString("X4");
-            PopulateListing(selectFirstRow: true);
+            PopulateListing(selection);
             UpdateNavigationButtons();
             statusLabel.Text = status ?? $"Showing {InstructionCount} instructions from {address:X4}H in the frozen capture.";
         }
 
         private void GoBack()
         {
-            if (navigationHistory.TryGoBack(out ushort address))
-                NavigateTo(address, recordHistory: false, status: $"Back to {address:X4}H.");
+            PreserveCurrentHistorySelection();
+            if (navigationHistory.TryGoBack(out DisassemblyNavigationLocation location))
+            {
+                NavigateTo(
+                    location.ListingAddress,
+                    recordHistory: false,
+                    status: $"Back to {location.SelectedAddress:X4}H.",
+                    selectedAddress: location.SelectedAddress);
+            }
         }
 
         private void GoForward()
         {
-            if (navigationHistory.TryGoForward(out ushort address))
-                NavigateTo(address, recordHistory: false, status: $"Forward to {address:X4}H.");
+            PreserveCurrentHistorySelection();
+            if (navigationHistory.TryGoForward(out DisassemblyNavigationLocation location))
+            {
+                NavigateTo(
+                    location.ListingAddress,
+                    recordHistory: false,
+                    status: $"Forward to {location.SelectedAddress:X4}H.",
+                    selectedAddress: location.SelectedAddress);
+            }
+        }
+
+        private void PreserveCurrentHistorySelection()
+        {
+            if (SelectedInstruction() is Z80Instruction instruction)
+                navigationHistory.UpdateCurrentSelection(instruction.Address);
         }
 
         private void UpdateNavigationButtons()
@@ -301,7 +331,7 @@ namespace Spectrum128kEmulator
             forwardButton.Enabled = navigationHistory.CanGoForward;
         }
 
-        private void PopulateListing(bool selectFirstRow)
+        private void PopulateListing(ushort selectedAddress)
         {
             IReadOnlyList<Z80Instruction> instructions = Z80InstructionDisassembler.DisassembleBlock(
                 listingAddress,
@@ -327,11 +357,15 @@ namespace Spectrum128kEmulator
                     instructionList.Items.Add(item);
                 }
 
-                if (selectFirstRow && instructionList.Items.Count > 0)
+                ListViewItem? itemToSelect = instructionList.Items
+                    .Cast<ListViewItem>()
+                    .FirstOrDefault(item => ((Z80Instruction)item.Tag!).Address == selectedAddress);
+                itemToSelect ??= instructionList.Items.Count > 0 ? instructionList.Items[0] : null;
+                if (itemToSelect != null)
                 {
-                    instructionList.Items[0].Selected = true;
-                    instructionList.Items[0].Focused = true;
-                    instructionList.EnsureVisible(0);
+                    itemToSelect.Selected = true;
+                    itemToSelect.Focused = true;
+                    itemToSelect.EnsureVisible();
                 }
             }
             finally

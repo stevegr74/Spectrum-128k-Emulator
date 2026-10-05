@@ -545,7 +545,7 @@ and tools are completed incrementally.
 - Deterministic core regressions cover machine replay plus exact tape and RZX cursor restoration, and the save/restore UI flow was manually validated before merge
 
 ### Milestone 15 - Disassembler Navigation And Usability In Validation
-- Back and Forward address history is available through buttons and Alt+Left/Right, with forward history discarded after a new branch
+- Back and Forward address history is available through buttons and Alt+Left/Right, restores the selected source row, and discards forward history after a new branch
 - Arrow-key row navigation and Enter-to-follow complement retained double-click branch navigation
 - Typed search finds hexadecimal addresses, byte sequences, and mnemonic text throughout the immutable mapped 64K capture; F3 repeats a search
 - The header continuously distinguishes paused immutable inspection and shows capture time/age, captured `PC`, current listing address, model, and paging context

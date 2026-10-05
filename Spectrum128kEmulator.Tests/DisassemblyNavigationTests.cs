@@ -13,15 +13,15 @@ namespace Spectrum128kEmulator.Tests
             Assert.True(history.NavigateTo(0x1000));
             Assert.True(history.NavigateTo(0x2000));
             Assert.True(history.NavigateTo(0x3000));
-            Assert.True(history.TryGoBack(out ushort back));
-            Assert.Equal((ushort)0x2000, back);
-            Assert.True(history.TryGoForward(out ushort forward));
-            Assert.Equal((ushort)0x3000, forward);
+            Assert.True(history.TryGoBack(out DisassemblyNavigationLocation back));
+            Assert.Equal((ushort)0x2000, back.ListingAddress);
+            Assert.True(history.TryGoForward(out DisassemblyNavigationLocation forward));
+            Assert.Equal((ushort)0x3000, forward.ListingAddress);
             Assert.True(history.TryGoBack(out _));
 
             Assert.True(history.NavigateTo(0x4000));
             Assert.False(history.CanGoForward);
-            Assert.Equal((ushort)0x4000, history.Current);
+            Assert.Equal((ushort)0x4000, history.Current?.ListingAddress);
         }
 
         [Fact]
@@ -32,6 +32,20 @@ namespace Spectrum128kEmulator.Tests
             Assert.True(history.NavigateTo(0x1234));
             Assert.False(history.NavigateTo(0x1234));
             Assert.False(history.CanGoBack);
+        }
+
+        [Fact]
+        public void NavigationHistory_BackRestoresSelectedBranchSourceWithinOriginalListing()
+        {
+            var history = new DisassemblyNavigationHistory();
+
+            Assert.True(history.NavigateTo(0x1000));
+            Assert.True(history.UpdateCurrentSelection(0x1015));
+            Assert.True(history.NavigateTo(0x4000));
+
+            Assert.True(history.TryGoBack(out DisassemblyNavigationLocation back));
+            Assert.Equal((ushort)0x1000, back.ListingAddress);
+            Assert.Equal((ushort)0x1015, back.SelectedAddress);
         }
 
         [Theory]
