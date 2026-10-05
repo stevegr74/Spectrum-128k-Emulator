@@ -203,25 +203,23 @@ ZEXDOC and ZEXALL are major CPU regression gates, but they are not treated as pr
 Completed milestones remain regression baselines rather than being repeated as
 new work. Each planned milestone will be developed on its own feature branch.
 The next core and debugger milestones are intentionally ordered dependencies,
-while tape/audio compatibility remains a parallel work stream:
+while tape/audio compatibility remains a parallel work stream. Milestone 15 is
+now the validated debugger baseline:
 
-1. **Finish validating the current disassembler milestone.**
-   - Complete Milestone 15 manual usability testing and merge it as the new baseline before starting another feature branch.
-
-2. **Establish ULA timing accuracy in two stages.**
+1. **Establish ULA timing accuracy in two stages.**
    - Milestone 16 centralizes model timing, strengthens contention and border conformance, and adds original 128K/+2 floating-bus and input-port accuracy.
    - Milestone 17 introduces an event-driven beam-aware video pipeline so active-screen memory and paging changes are represented at their actual raster times.
    - Preserve the tested tape, snapshot, audio, RZX, and CPU baseline throughout the timing work.
 
-3. **Expand the debugger on the stabilized core.**
+2. **Expand the debugger on the stabilized core.**
    - Milestone 18 adds explicit Run/Pause, stepping, Run to Cursor, breakpoints, and register/stack context through deterministic platform-neutral debugger services.
    - Milestone 19 adds physical bank selection, bank-qualified addresses, labels, cross-references, code/data marking, and stable exports without treating arbitrary data as code.
 
-4. **Refine live-tape audio handoff.**
+3. **Refine live-tape audio handoff.**
    - Keep tape timing exact while moving from loader-only turbo operation to audible real-time playback.
    - Remove the remaining non-seamless transitions in protected titles without regressing normal playback.
 
-5. **Use the compatibility matrix as the merge gate.**
+4. **Use the compatibility matrix as the merge gate.**
    - `exolon.tap` and `Exolon.tzx`
    - `Where Time Stood Still.tap`
    - `Impossible Mission - Bugfix.tzx`
@@ -544,14 +542,14 @@ and tools are completed incrementally.
 - The slot survives machine resets and media loads within the running app but is intentionally discarded on exit; it is not a replacement for portable `.sna` or `.z80` files
 - Deterministic core regressions cover machine replay plus exact tape and RZX cursor restoration, and the save/restore UI flow was manually validated before merge
 
-### Milestone 15 - Disassembler Navigation And Usability In Validation
+### Milestone 15 - Disassembler Navigation And Usability Complete
 - Back and Forward address history is available through buttons and Alt+Left/Right, restores the selected source row, and discards forward history after a new branch
 - Arrow-key row navigation and Enter-to-follow complement retained double-click branch navigation
 - Typed search finds hexadecimal addresses, byte sequences, and mnemonic text throughout the immutable mapped 64K capture; F3 repeats a search
 - The header continuously distinguishes paused immutable inspection and shows capture time/age, captured `PC`, current listing address, model, and paging context
 - Window size, column widths, and the most recent listing address persist under the current user's local application data
 - Selected or displayed rows copy with capture metadata, while export produces a complete mapped 64K listing from the chosen start address
-- Deterministic tests cover history branching, search parsing/wrapping, complete export, metadata formatting, and settings recovery; manual UI validation is pending
+- Deterministic tests cover history branching and selection restoration, search parsing/wrapping, complete export, metadata formatting, and settings recovery; manual UI validation is complete
 
 ### Milestone 16 - ULA Timing Conformance And Port Accuracy Planned
 - Introduce one model-specific timing profile for frame length, scanline length, contention start, display fetches, visible raster mapping, and the documented timing convention
