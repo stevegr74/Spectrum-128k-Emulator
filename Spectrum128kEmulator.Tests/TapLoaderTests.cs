@@ -142,7 +142,7 @@ namespace Spectrum128kEmulator.Tests
                 Assert.Equal((byte)0x32, machine.PeekMemory(0x8002));
                 Assert.Equal((byte)0x00, machine.PeekMemory(0x8003));
                 Assert.Equal((byte)0x80, machine.PeekMemory(0x8004));
-                Assert.Equal((ushort)0x1555, machine.Cpu.Regs.PC);
+                Assert.Equal((ushort)0x12A2, machine.Cpu.Regs.PC);
                 Assert.Equal((ushort)0xFF58, machine.Cpu.Regs.SP);
                 Assert.Equal(1, machine.CurrentRomBank);
                 Assert.True(machine.PagingLocked);
@@ -1854,12 +1854,89 @@ namespace Spectrum128kEmulator.Tests
         }
 
         [Fact]
+        public void LoadWithPolicy_Uses_Rom_Bootstrap_When_Mounted_Loader_Has_Unsupported_Control_Flow()
+        {
+            string tempFolder = CreateTempRoms();
+            string tapePath = Path.Combine(tempFolder, "control-flow-loader.tap");
+
+            try
+            {
+                byte[] rom = new byte[16384];
+                byte[] bootstrap =
+                {
+                    0x31, 0x58, 0xFF,       // LD SP,FF58
+                    0x21, 0x50, 0xFF,       // LD HL,FF50
+                    0x22, 0x3D, 0x5C,       // LD (ERR_SP),HL
+                    0xC3, 0xE7, 0x15        // JP 15E7
+                };
+                Buffer.BlockCopy(bootstrap, 0, rom, 0, bootstrap.Length);
+                File.WriteAllBytes(Path.Combine(tempFolder, "128-1.rom"), rom);
+
+                byte[] loader = BuildBasicProgram(
+                    BuildBasicLine(10,
+                        Token(253), Ascii("24575"), NumberMarker(24575),
+                        Colon(),
+                        Token(239), Ascii("\"\""), Token(175),
+                        Colon(),
+                        Token(239), Ascii("\"\""), Token(175),
+                        Colon(),
+                        Token(239), Ascii("\"\""), Token(175)),
+                    BuildBasicLine(20,
+                        Token(250), Token(192), Ascii("60895"), NumberMarker(60895),
+                        Token(203), Token(248), Ascii("\"SCORE\""), Token(175),
+                        Colon(),
+                        Token(236), Ascii("20"), NumberMarker(20)),
+                    BuildBasicLine(30,
+                        Token(239), Ascii("\"SCORE\""), Token(175),
+                        Colon(),
+                        Token(236), Ascii("20"), NumberMarker(20)));
+                byte[] tape = BuildTap(
+                    BuildHeaderBlock(type: 0, fileName: "LOADER", dataLength: (ushort)loader.Length, parameter1: 10, parameter2: (ushort)loader.Length),
+                    BuildDataBlock(loader),
+                    BuildHeaderBlock(type: 3, fileName: "PART1", dataLength: 1, parameter1: 0x8000, parameter2: 0),
+                    BuildDataBlock(new byte[] { 0x11 }),
+                    BuildHeaderBlock(type: 3, fileName: "PART2", dataLength: 1, parameter1: 0x9000, parameter2: 0),
+                    BuildDataBlock(new byte[] { 0x22 }),
+                    BuildHeaderBlock(type: 3, fileName: "PART3", dataLength: 1, parameter1: 0xA000, parameter2: 0),
+                    BuildDataBlock(new byte[] { 0x33 }));
+                File.WriteAllBytes(tapePath, tape);
+
+                var machine = new Spectrum128Machine(tempFolder);
+                TapeExecutionResult result = TapLoader.LoadWithPolicy(machine, tapePath);
+
+                Assert.Equal(TapeLoadStrategy.RomBootstrapMounted, result.Strategy);
+                Assert.Equal(2, result.ConsumedBlockCount);
+                Assert.True(machine.HasMountedTape);
+                Assert.Equal((ushort)0x1B9E, machine.Cpu.Regs.PC);
+                Assert.Equal((ushort)10, machine.Cpu.Regs.HL);
+                Assert.Equal(ReadWord(machine, 23613), machine.Cpu.Regs.SP);
+                Assert.Equal((ushort)0x1303, ReadWord(machine, machine.Cpu.Regs.SP));
+                Assert.NotEqual(0, machine.PeekMemory(23611) & 0x80);
+            }
+            finally
+            {
+                Directory.Delete(tempFolder, true);
+            }
+        }
+
+        [Fact]
         public void LoadLeadingBasicProgramAndMountRemainingForRomAutoStart_Mounts_Second_Basic_Stage_For_Rom_Driven_Autostart()
         {
             string tempFolder = CreateTempRoms();
 
             try
             {
+                byte[] rom = new byte[16384];
+                byte[] bootstrap =
+                {
+                    0x31, 0x58, 0xFF,       // LD SP,FF58
+                    0x21, 0x50, 0xFF,       // LD HL,FF50
+                    0x22, 0x3D, 0x5C,       // LD (ERR_SP),HL
+                    0xC3, 0xE7, 0x15        // JP 15E7
+                };
+                Buffer.BlockCopy(bootstrap, 0, rom, 0, bootstrap.Length);
+                File.WriteAllBytes(Path.Combine(tempFolder, "128-1.rom"), rom);
+
                 byte[] firstStage = BuildBasicProgram(
                     BuildBasicLine(10,
                         Token(244), Ascii("23624"), NumberMarker(23624), Ascii(","), Ascii("0"), NumberMarker(0),

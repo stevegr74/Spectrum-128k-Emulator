@@ -1690,9 +1690,13 @@ namespace Spectrum128kEmulator.Tap
         private const int ProtectedLiveTapeTimingDivisor = 8;
         private const int ProtectedLiveChainTapeTimingDivisor = 64;
         private const int PreloadedLoadableReplayTimingDivisor = 1;
+        private const int RomInitializationFrameLimit = 150;
 
         private const ushort BasicProgramStart = 23755;
-        private const ushort MainExecutionLoopAddress = 0x1555;
+        private const ushort MainExecutionLoopAddress = 0x12A2;
+        private const ushort MainExecutionReportAddress = 0x1303;
+        private const ushort BasicLineNewAddress = 0x1B9E;
+        private const ushort RomKeyboardInputLoopAddress = 0x15E7;
         private const ushort UsrReturnAddress = 0x2D2B;
         private const ushort EndCalcLiteralAddress = 0x2758;
         private const ushort DefaultStackPointer = 0xFF58;
@@ -1702,6 +1706,7 @@ namespace Spectrum128kEmulator.Tap
         private const ushort NspPcAddress = 23620;
         private const ushort PpcAddress = 23621;
         private const ushort SubPpcAddress = 23623;
+        private const ushort ErrorStackPointerAddress = 23613;
         private const ushort FlagsSystemVariableAddress = 23611;
         private const ushort TvFlagSystemVariableAddress = 23612;
         private const ushort BorderSystemVariableAddress = 23624;
@@ -2040,6 +2045,13 @@ namespace Spectrum128kEmulator.Tap
 
                 if (RequiresMountedLoadSemanticsForStandardTape(machine, blocks, use128kMode))
                 {
+                    if (!CanExecuteLeadingBasicProgramWithBootstrap(machine, blocks, use128kMode))
+                    {
+                        return new TapeLoadPlan(
+                            TapeLoadStrategy.RomBootstrapMounted,
+                            "Standard tape requires mounted LOAD semantics, but its autorun BASIC control flow must execute under ROM control.");
+                    }
+
                     return new TapeLoadPlan(
                         TapeLoadStrategy.BootstrapHybrid,
                         "Standard tape contains a protected or chained loader stage that requires mounted LOAD semantics.");
@@ -2772,6 +2784,34 @@ namespace Spectrum128kEmulator.Tap
             return false;
         }
 
+        private static bool CanExecuteLeadingBasicProgramWithBootstrap(
+            Spectrum128Machine machine,
+            IReadOnlyList<TapeBlock> blocks,
+            bool use128kMode)
+        {
+            int index = 0;
+            while (index < blocks.Count && blocks[index].Kind == TapeBlockKind.Metadata)
+                index++;
+
+            if (index + 1 >= blocks.Count ||
+                !IsStandardHeaderBlock(blocks[index]) ||
+                blocks[index + 1].Flag != DataFlag ||
+                blocks[index + 1].Payload == null)
+            {
+                return false;
+            }
+
+            TapHeaderInfo header = ParseHeaderInfo(blocks[index]);
+            if (header.Type != ProgramType || header.AutoStartLine >= 32768)
+                return false;
+
+            return CanBootstrapLoadedBasicProgram(
+                machine,
+                header,
+                blocks[index + 1].Payload!,
+                use128kMode);
+        }
+
         private static bool CanBootstrapLoadedBasicProgram(
             Spectrum128Machine machine,
             TapHeaderInfo header,
@@ -2821,7 +2861,7 @@ namespace Spectrum128kEmulator.Tap
                 throw new InvalidOperationException("The tape image does not contain any blocks.");
 
             bool use128kMode = Use128kTapeLoadMode(machine);
-            InitializeMachineForFakeTapeLoad(machine, use128kMode);
+            InitializeMachineForRomDrivenTapeLoad(machine, use128kMode);
 
             int consumedBlockCount = 0;
             while (consumedBlockCount < blocks.Count && blocks[consumedBlockCount].Kind == TapeBlockKind.Metadata)
@@ -2955,12 +2995,56 @@ namespace Spectrum128kEmulator.Tap
             Spectrum128Machine machine,
             ushort autoStartLine)
         {
-            machine.Cpu.Regs.PC = MainExecutionLoopAddress;
-
             WriteWord(machine, NewPpcAddress, autoStartLine);
             machine.PokeMemory((ushort)(NewPpcAddress + 2), 0);
             WriteWord(machine, PpcAddress, autoStartLine);
             machine.PokeMemory(SubPpcAddress, 0);
+
+            // Enter the same interpreter path used after LOAD has selected an
+            // autostart line, with an error return frame for MAIN-4.
+            ushort errorStackPointer = ReadWord(machine, ErrorStackPointerAddress);
+            if (errorStackPointer < 0x4000 || errorStackPointer == 0xFFFF)
+                throw new InvalidOperationException("The Spectrum ROM did not initialize a valid BASIC error stack.");
+
+            WriteWord(machine, errorStackPointer, MainExecutionReportAddress);
+            machine.Cpu.Regs.SP = errorStackPointer;
+            machine.Cpu.Regs.HL = autoStartLine;
+            machine.Cpu.Regs.PC = BasicLineNewAddress;
+            machine.PokeMemory(
+                FlagsSystemVariableAddress,
+                (byte)(machine.PeekMemory(FlagsSystemVariableAddress) | 0x80));
+        }
+
+        private static void InitializeMachineForRomDrivenTapeLoad(
+            Spectrum128Machine machine,
+            bool use128kMode)
+        {
+            machine.Reset();
+            if (use128kMode)
+                machine.ConfigureFor128kTapeLoad(borderColor: 0);
+            else
+                machine.ConfigureFor48kTapeLoad(borderColor: 0);
+
+            machine.Cpu.StopBeforeInstruction = cpu => cpu.Regs.PC == RomKeyboardInputLoopAddress;
+            try
+            {
+                for (int frame = 0; frame < RomInitializationFrameLimit && !machine.Cpu.ExecutionStopped; frame++)
+                    machine.ExecuteTimeSlice(machine.FrameTStates);
+            }
+            finally
+            {
+                machine.Cpu.StopBeforeInstruction = null;
+            }
+
+            if (!machine.Cpu.ExecutionStopped)
+                throw new InvalidOperationException("The Spectrum ROM did not reach the BASIC input loop during tape initialization.");
+
+            while (machine.TryDequeueCompletedAudioFrame(out _))
+            {
+            }
+
+            machine.ClearLogs();
+            machine.ClearKeyboard();
         }
 
         private static int FindFirstCustomHeaderBlockIndex(IReadOnlyList<TapeBlock> blocks)

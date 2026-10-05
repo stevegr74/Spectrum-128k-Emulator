@@ -256,6 +256,17 @@ namespace Spectrum128kEmulator.Tests
 
             try
             {
+                byte[] rom = new byte[16384];
+                byte[] bootstrap =
+                {
+                    0x31, 0x58, 0xFF,       // LD SP,FF58
+                    0x21, 0x50, 0xFF,       // LD HL,FF50
+                    0x22, 0x3D, 0x5C,       // LD (ERR_SP),HL
+                    0xC3, 0xE7, 0x15        // JP 15E7
+                };
+                Buffer.BlockCopy(bootstrap, 0, rom, 0, bootstrap.Length);
+                File.WriteAllBytes(Path.Combine(romFolder, "128-1.rom"), rom);
+
                 byte[] fullLoadProgram = BuildBasicProgram(
                     BuildBasicLine(10,
                         Token(249), Ascii(" "), Token(192), Ascii("32768"), NumberMarker(32768)));
