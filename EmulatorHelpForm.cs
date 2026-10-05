@@ -80,6 +80,17 @@ namespace Spectrum128kEmulator
                 ("F11", "Mount a .tap or .tzx tape image"),
                 ("F12", "Write a machine diagnostic dump")
             }));
+            content.Controls.Add(CreateShortcutSection("Disassembler Window", new[]
+            {
+                ("Arrow keys", "Move through listing rows; Enter follows a direct branch target"),
+                ("Alt+Left / Right", "Move backward or forward through address history"),
+                ("Ctrl+G / Ctrl+P", "Focus address entry or return to the captured PC"),
+                ("Ctrl+F / F3", "Focus search or find the next address, byte, or mnemonic match"),
+                ("F5 / Ctrl+R", "Refresh the immutable capture while remaining paused"),
+                ("Ctrl+C", "Copy selected rows with capture metadata"),
+                ("Ctrl+Shift+C", "Copy every displayed row with capture metadata"),
+                ("Ctrl+E", "Export a complete mapped 64K disassembly listing")
+            }));
             content.Controls.Add(CreateShortcutSection("Spectrum Keyboard", new[]
             {
                 ("Letters / numbers", "Map to their Spectrum keys"),

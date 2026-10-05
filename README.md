@@ -44,7 +44,7 @@ This project focuses on correctness, clean architecture, and incremental develop
 - Renderer separated from emulation
 - Headless Z80 compliance runner (ZEXDOC / ZEXALL)
 - Side-effect-free Z80 instruction decoder
-- Read-only `F6` disassembler with navigation, copy, and paging context
+- Read-only `F6` disassembler with history, capture search, export, and paging context
 - In-memory `F7`/`F8` Quick State save and restore
 
 ---
@@ -53,7 +53,7 @@ This project focuses on correctness, clean architecture, and incremental develop
 
 The established baseline on `master` includes CPU compliance, a headless core,
 clock-driven audio, the first ULA contention/border model, explicit 48K/128K
-operation, resumable tape transport, the initial disassembler, and a temporary
+operation, resumable tape transport, a paused read-only disassembler, and a temporary
 in-memory Quick State slot. Broader tape compatibility, live-tape audio handoff
 polish, disassembler expansion, and video-timing accuracy remain active work.
 
@@ -83,11 +83,12 @@ polish, disassembler expansion, and video-timing accuracy remain active work.
 - loader-only turbo tape phases skip unnecessary per-frame audio-frame construction; live playback returns to real-time audio submission when the machine becomes audible
 - protected non-ROM live tape streams use a lower turbo ceiling than ordinary streaming tape
 - the Spectrum palette now uses standard `0xD7` normal and `0xFF` bright intensity levels
-- AY register model implemented and wired to ports
+- AY register model implemented and wired to the register-select and write ports
 - 48K beeper implemented via port `0xFE` (speaker state + edge detection)
 - AY tone, envelope, and noise output implemented
 - Basic audio mixing implemented
 - CPU/frame timing and interrupt handling improved through real-game testing
+- 48K floating-bus reads are implemented; original 128K/+2 unattached-port reads still return `0xFF` and are explicitly planned for Milestone 16
 - Snapshot restore semantics now follow generic `.sna` and `.z80` format paths without snapshot-name hacks
 - 48K `.z80` snapshots now use a dedicated format-based restore path that restores correct `JSWAPRIL.Z80` audio behaviour
 - Jet Set Willy menu and in-game music now play with correct pitch and sequencing again
@@ -175,11 +176,11 @@ ZEXDOC and ZEXALL are major CPU regression gates, but they are not treated as pr
 - the side-effect-free instruction decoder foundation is integrated
 - `Z80TraceDiagnostics.cs` remains separate diagnostic CPU trace scaffolding
 - `F6` opens a read-only disassembly window over an immutable capture of the currently mapped logical 64K address space
-- hexadecimal navigation, Go to PC, Refresh, Copy, branch-target navigation, current-PC highlighting, model, and paged-bank context are implemented
+- address history, keyboard navigation, address/byte/mnemonic search, capture age, persisted layout, metadata-rich copy, complete 64K export, and branch-target navigation are implemented
 
 ### Audio Progress (Milestone 7)
 - AY register model implemented
-- AY port wiring implemented (`0xFFFD` / `0xBFFD`)
+- AY register-select and write-port wiring implemented (`0xFFFD` / `0xBFFD`); selected-register input reads are planned in Milestone 16
 - 48K beeper signal implemented via port `0xFE`
 - Shared audio output pipeline implemented
 - PCM audio output implemented using Windows APIs only
@@ -200,22 +201,23 @@ ZEXDOC and ZEXALL are major CPU regression gates, but they are not treated as pr
 ## Current Development Plan
 
 Completed milestones remain regression baselines rather than being repeated as
-new work. Each planned milestone will be developed on its own `...`
-branch. These are parallel work streams; within the disassembler stream,
-Milestones 15, 16, and 17 are intentionally ordered dependencies:
+new work. Each planned milestone will be developed on its own feature branch.
+The next core and debugger milestones are intentionally ordered dependencies,
+while tape/audio compatibility remains a parallel work stream. Milestone 15 is
+now the validated debugger baseline:
 
-1. **Expand the disassembler in three stages.**
-   - Milestone 15 adds history, keyboard-first navigation, search, clearer capture state, layout persistence, and stronger copy/export behavior while preserving paused immutable inspection.
-   - Milestone 16 adds explicit Run/Pause, stepping, Run to Cursor, breakpoints, and register/stack context through deterministic platform-neutral debugger services.
-   - Milestone 17 adds physical bank selection, bank-qualified addresses, labels, cross-references, code/data marking, and stable exports without treating arbitrary data as code.
+1. **Establish ULA timing accuracy in two stages.**
+   - Milestone 16 centralizes model timing, strengthens contention and border conformance, and adds original 128K/+2 floating-bus and input-port accuracy.
+   - Milestone 17 introduces an event-driven beam-aware video pipeline so active-screen memory and paging changes are represented at their actual raster times.
+   - Preserve the tested tape, snapshot, audio, RZX, and CPU baseline throughout the timing work.
 
-2. **Refine live-tape audio handoff.**
+2. **Expand the debugger on the stabilized core.**
+   - Milestone 18 adds explicit Run/Pause, stepping, Run to Cursor, breakpoints, and register/stack context through deterministic platform-neutral debugger services.
+   - Milestone 19 adds physical bank selection, bank-qualified addresses, labels, cross-references, code/data marking, and stable exports without treating arbitrary data as code.
+
+3. **Refine live-tape audio handoff.**
    - Keep tape timing exact while moving from loader-only turbo operation to audible real-time playback.
    - Remove the remaining non-seamless transitions in protected titles without regressing normal playback.
-
-3. **Extend video timing accuracy.**
-   - Preserve the tested 48K/128K contention and border baseline while improving scanline/raster accuracy.
-   - Do not accept a timing change that regresses the verified tape or snapshot matrix.
 
 4. **Use the compatibility matrix as the merge gate.**
    - `exolon.tap` and `Exolon.tzx`
@@ -249,6 +251,10 @@ Spectrum128kEmulator/
 |-- Audio/                                 Windows frontend audio pipeline and output adapters
 |-- DisassemblerForm.cs                    read-only Z80 disassembly window
 |-- DisassemblySnapshot.cs                 immutable mapped-memory capture and address parser
+|-- DisassemblyNavigationHistory.cs        deterministic back/forward address history
+|-- DisassemblySearch.cs                   address, byte-sequence, and mnemonic capture search
+|-- DisassemblyListingFormatter.cs         metadata-rich copy and complete-listing export
+|-- DisassemblerWindowSettings.cs          resilient per-user disassembler layout persistence
 |-- EmulatorHelpForm.cs                    WinForms shortcut-reference dialog
 |-- EmulationPauseLeaseManager.cs          nested-safe UI pause ownership
 |-- MainForm.cs                            WinForms menus, host input, and presentation scheduling
@@ -312,7 +318,12 @@ current tape state, including an explicit `Tape: Auto-stopped` marker status.
 and captures the currently mapped logical 64K address space, current `PC`, model,
 ROM, and paged-RAM context. It does not capture every physical 128K RAM/ROM bank
 or the complete machine state; closing it resumes emulation when no other pause
-owner remains.
+owner remains. Inside the window, Alt+Left/Right navigate address history,
+Ctrl+G focuses address entry, Ctrl+P returns to the captured PC, Ctrl+F and F3
+search addresses, byte sequences, or mnemonics, and Enter follows a selected
+direct branch. F5 refreshes the immutable capture, copy includes capture
+metadata, and export writes a complete mapped 64K listing. Window size, column
+widths, and the latest listing address are remembered per user.
 `F7` atomically saves the complete emulated machine to one temporary Quick State
 slot, and `F8` restores it. This includes CPU, all RAM banks, paging, ULA/audio
 frame state, and tape/RZX positions. Restore is unavailable until a state has
@@ -357,7 +368,7 @@ Test coverage includes:
 - AY register behaviour
 - Audio sample generation
 - Audio pipeline behaviour
-- Z80 instruction decoding and disassembly snapshot behavior
+- Z80 instruction decoding, disassembly navigation/search, listing export, settings, and snapshot behavior
 - Quick State deterministic machine, tape-cursor, and RZX-cursor restoration
 - ZEXDOC and ZEXALL compliance validation via the dedicated runner
 
@@ -472,7 +483,7 @@ and tools are completed incrementally.
 
 ### Milestone 7 - Audio (In Progress)
 - AY-3-8912 register emulation
-- AY port wiring implemented
+- AY register-select and write-port wiring implemented; selected-register input reads remain planned in Milestone 16
 - 48K beeper implemented
 - Shared audio output pipeline implemented
 - Basic audio output working
@@ -495,6 +506,7 @@ and tools are completed incrementally.
 ### Milestone 9 - ULA Timing And Border Effects Baseline Complete
 - Static visible borders and timestamped `OUT (FE)` raster border changes are rendered through the platform-neutral frame buffer
 - 48K and 128K ULA contention coverage includes display phase, contended memory, contended I/O, and every paged 128K RAM bank
+- This baseline does not include original 128K/+2 floating-bus reads or beam-aware active-screen rendering; those limitations are planned for Milestones 16 and 17 respectively
 - The core/UI boundary and clock-driven audio contract are merged on `master`; focused CPU, renderer, audio, machine, snapshot/RZX, and tape regression suites cover the baseline
 
 ### Milestone 10 - Disassembler Foundation Complete
@@ -522,23 +534,41 @@ and tools are completed incrementally.
 - The window captures an immutable copy of the currently mapped logical 64K address space and shows machine-model, ROM, paged-RAM, and screen-bank context
 - The snapshot-backed UI and result model remain ready for later breakpoints, stepping, labels, and execution history
 
-### Milestone 14 - In-Memory Quick State In Validation
+### Milestone 14 - In-Memory Quick State Complete
 - `F7` atomically captures one temporary Quick State and `F8` restores it; restore remains disabled until a state exists
 - The state deep-copies the CPU, all eight RAM banks, paging/model state, ULA border and partial-frame audio state, tape transport/cursor, RZX cursor, and mounted-loader continuation context
 - Restore clears host key state, resets presentation scheduling, and recreates the host audio pipeline to prevent stuck input and stale buffered sound
 - The right-click menu and in-app help expose both controls in F-key order, with short on-screen saved/restored confirmations
 - The slot survives machine resets and media loads within the running app but is intentionally discarded on exit; it is not a replacement for portable `.sna` or `.z80` files
-- Deterministic core regressions cover machine replay plus exact tape and RZX cursor restoration; manual game validation is pending
+- Deterministic core regressions cover machine replay plus exact tape and RZX cursor restoration, and the save/restore UI flow was manually validated before merge
 
-### Milestone 15 - Disassembler Navigation And Usability Planned
-- Add Back and Forward address history, with keyboard shortcuts for history, Go to PC, and Refresh
-- Add keyboard-first row navigation and Enter-to-follow for branch targets while retaining double-click navigation
-- Add find-by-address, byte sequence, and mnemonic text within the captured mapped-memory view
-- Make snapshot age, captured `PC`, current listing address, and paused state visually unambiguous
-- Remember window size, column widths, and the most recent listing address without changing machine state
-- Improve copy/export formatting for selected rows and complete listings
+### Milestone 15 - Disassembler Navigation And Usability Complete
+- Back and Forward address history is available through buttons and Alt+Left/Right, restores the selected source row, and discards forward history after a new branch
+- Arrow-key row navigation and Enter-to-follow complement retained double-click branch navigation
+- Typed search finds hexadecimal addresses, byte sequences, and mnemonic text throughout the immutable mapped 64K capture; F3 repeats a search
+- The header continuously distinguishes paused immutable inspection and shows capture time/age, captured `PC`, current listing address, model, and paging context
+- Window size, column widths, and the most recent listing address persist under the current user's local application data
+- Selected or displayed rows copy with capture metadata, while export produces a complete mapped 64K listing from the chosen start address
+- Deterministic tests cover history branching and selection restoration, search parsing/wrapping, complete export, metadata formatting, and settings recovery; manual UI validation is complete
 
-### Milestone 16 - Debug Execution Controls Planned
+### Milestone 16 - ULA Timing Conformance And Port Accuracy Planned
+- Introduce one model-specific timing profile for frame length, scanline length, contention start, display fetches, visible raster mapping, and the documented timing convention
+- Add table-driven contention coverage across complete 48K and original 128K display phases, line/frame boundaries, contended memory banks, and all four I/O contention cases
+- Timestamp CPU memory and I/O bus accesses at their actual machine-cycle positions where required, rather than relying on instruction-total timing
+- Generalize the existing floating-bus model for the original Spectrum 128K and grey +2, including normal bank 5 and shadow bank 7 screen selection
+- Decode attached input devices before the floating-bus fallback, including `IN (0xFFFD)` reading the selected AY register
+- Correct and test border-latch timestamps and visible pixel/T-state mapping without claiming +2A/+3 behavior
+- Validate with published contention and floating-bus diagnostics plus the existing tape, snapshot, RZX, ZEXDOC, and ZEXALL regression matrix
+
+### Milestone 17 - Beam-Aware Video Pipeline Planned
+- Add an event-driven ULA raster that advances to timed machine events; a literal per-T-state host loop is not required when the observable result is equivalent
+- Latch bitmap and attribute bytes when the ULA fetches them instead of rendering the active display from final end-of-frame RAM
+- Apply border changes and 128K normal/shadow screen switches at their raster positions through the same timing model
+- Preserve FLASH, palette, scaling, and the platform-neutral frame-buffer boundary while replacing only the frame's source data
+- Implement and validate the 48K fetch path first, then original 128K/+2 timing and shadow-screen behavior
+- Add deterministic mid-frame bitmap, attribute, border, and paging tests, followed by representative multicolour and racing-beam demo validation
+
+### Milestone 18 - Debug Execution Controls Planned
 - Keep opening the window paused by default, with an explicit Run/Pause control if live execution is enabled
 - Add Step Into first, then Step Over, Step Out, and Run to Cursor using temporary execution stops where appropriate
 - Add persistent address breakpoints, enable/disable controls, and a compact breakpoint list
@@ -546,7 +576,7 @@ and tools are completed incrementally.
 - Clearly distinguish frozen snapshots from optional throttled live refresh while the machine is running
 - Keep execution control and breakpoint state in platform-neutral core/debugger services, with deterministic instruction-boundary and interrupt tests
 
-### Milestone 17 - Bank-Aware Disassembly And Symbolic Analysis Planned
+### Milestone 19 - Bank-Aware Disassembly And Symbolic Analysis Planned
 - Allow inspection of physical ROM and RAM banks independently of the currently mapped 64K address space
 - Annotate logical addresses with ROM/RAM bank identity and make paging changes visible in refreshed snapshots
 - Add user labels, symbol import/export, and automatic labels for followed branch and call targets
