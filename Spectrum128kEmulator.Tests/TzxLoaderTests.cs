@@ -253,6 +253,7 @@ namespace Spectrum128kEmulator.Tests
             string romDrivenPath = Path.Combine(romFolder, "rom-driven.tzx");
             string hybridPath = Path.Combine(romFolder, "hybrid.tzx");
             string chainedBasicPrefixPath = Path.Combine(romFolder, "chained-basic-prefix.tzx");
+            string romControlledMixedPath = Path.Combine(romFolder, "rom-controlled-mixed.tzx");
 
             try
             {
@@ -308,6 +309,15 @@ namespace Spectrum128kEmulator.Tests
                         BuildStandardSpeedDataBlock(BuildSpectrumHeaderBlock(type: 3, fileName: "FAST", dataLength: 1, parameter1: 0x8000, parameter2: 0), pauseMs: 1000),
                         BuildStandardSpeedDataBlock(BuildSpectrumDataBlock(new byte[] { 0x99 }), pauseMs: 1000)));
 
+                File.WriteAllBytes(
+                    romControlledMixedPath,
+                    BuildTzx(
+                        BuildStandardSpeedDataBlock(BuildSpectrumHeaderBlock(type: 0, fileName: "BOOT", dataLength: (ushort)mountedLoadProgram.Length, parameter1: 10, parameter2: (ushort)mountedLoadProgram.Length), pauseMs: 1000),
+                        BuildStandardSpeedDataBlock(BuildSpectrumDataBlock(mountedLoadProgram), pauseMs: 1000),
+                        BuildStandardSpeedDataBlock(BuildSpectrumHeaderBlock(type: 3, fileName: "CODE", dataLength: 1, parameter1: 0x8000, parameter2: 0), pauseMs: 1000),
+                        BuildStandardSpeedDataBlock(BuildSpectrumDataBlock(new byte[] { 0x99 }), pauseMs: 1000),
+                        BuildTurboDataBlock(new byte[] { 0xAA, 0x55, 0xF0 }, 2168, 3223, 855, 1710, 8)));
+
                 byte[] firstStagePatch = BuildBasicProgram(
                     BuildBasicLine(10, Token(239)));
                 byte[] secondBasicStage = BuildBasicProgram(
@@ -346,6 +356,10 @@ namespace Spectrum128kEmulator.Tests
                 var hybridMachine = new Spectrum128Machine(romFolder);
                 var hybridResult = Tap.TzxLoader.LoadWithPolicy(hybridMachine, hybridPath);
                 Assert.Equal("BootstrapHybrid", hybridResult.Strategy.ToString());
+
+                var romControlledMixedMachine = new Spectrum128Machine(romFolder);
+                var romControlledMixedResult = Tap.TzxLoader.LoadWithPolicy(romControlledMixedMachine, romControlledMixedPath);
+                Assert.Equal("RomBootstrapMounted", romControlledMixedResult.Strategy.ToString());
 
                 var chainedBasicPrefixMachine = new Spectrum128Machine(romFolder);
                 var chainedBasicPrefixResult = Tap.TzxLoader.LoadWithPolicy(chainedBasicPrefixMachine, chainedBasicPrefixPath);

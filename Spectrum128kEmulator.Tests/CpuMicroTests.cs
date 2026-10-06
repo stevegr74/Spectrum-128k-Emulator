@@ -615,6 +615,29 @@ namespace Spectrum128kEmulator.Tests
             Assert.Equal(0UL, readTStates[^1]);
         }
 
+        [Theory]
+        [InlineData(0x00, 0x0004, 12UL)]
+        [InlineData(0x40, 0x0002, 7UL)]
+        public void JrNz_UsesConditionDependentTiming(byte flags, ushort expectedPc, ulong expectedTStates)
+        {
+            var memory = new byte[65536];
+            var cpu = new Z80Cpu
+            {
+                ReadMemory = addr => memory[addr],
+                WriteMemory = (_, _) => { }
+            };
+
+            memory[0x0000] = 0x20; // JR NZ,+2
+            memory[0x0001] = 0x02;
+
+            cpu.Reset();
+            cpu.Regs.F = flags;
+            cpu.Step();
+
+            Assert.Equal(expectedPc, cpu.Regs.PC);
+            Assert.Equal(expectedTStates, cpu.TStates);
+        }
+
         [Fact]
         public void OutN_A_Invokes_Port_Write_At_Port_Cycle_Start()
         {

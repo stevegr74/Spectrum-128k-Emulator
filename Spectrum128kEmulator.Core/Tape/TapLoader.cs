@@ -1387,13 +1387,22 @@ namespace Spectrum128kEmulator.Tap
         private void BeginPause(TapeBlock block, int nextBlockIndex)
         {
             int pauseTStates = GetPauseLengthTStates(block);
-            int settlingTStates = Math.Min(PauseLevelSettlingTStates, pauseTStates);
-
-            // TZX pauses retain the post-data level for 1 ms before driving EAR low.
             earPlaybackState = EarPlaybackState.Pause;
-            earPulseLengthTStates = settlingTStates;
-            earPauseLowTailTStates = pauseTStates - settlingTStates;
             earNextBlockIndexAfterPause = nextBlockIndex;
+
+            if (!earLevel)
+            {
+                // TZX silence must first terminate a low final pulse with 1 ms high.
+                int terminatingPulseTStates = Math.Min(PauseLevelSettlingTStates, pauseTStates);
+                earLevel = true;
+                earPulseLengthTStates = terminatingPulseTStates;
+                earPauseLowTailTStates = pauseTStates - terminatingPulseTStates;
+                return;
+            }
+
+            earLevel = false;
+            earPulseLengthTStates = pauseTStates;
+            earPauseLowTailTStates = 0;
         }
 
         private void PauseAtStopMarker(int resumeBlockIndex)
@@ -2095,6 +2104,14 @@ namespace Spectrum128kEmulator.Tap
 
             if (RequiresMountedRealtimeForMixedTape(machine, blocks))
             {
+                if (HasStandardHeaderDataPairAfterLeadingBasic(blocks) &&
+                    !CanResolveMountedLoadUsrContinuation(machine, blocks))
+                {
+                    return new TapeLoadPlan(
+                        TapeLoadStrategy.RomBootstrapMounted,
+                        "Tape requires mounted continuation that cannot be represented safely by the bootstrap executor, so autorun must remain under ROM control.");
+                }
+
                 return new TapeLoadPlan(
                     TapeLoadStrategy.BootstrapHybrid,
                     "Tape begins with a BASIC stage followed by raw standard byte streams and should enter the mounted remainder through the bootstrap loader path.");
@@ -2620,7 +2637,17 @@ namespace Spectrum128kEmulator.Tap
 
                 TapeBlock block = blocks[index];
                 if (IsStandardHeaderBlock(block))
-                    return false;
+                {
+                    if (index + 1 >= blocks.Count ||
+                        blocks[index + 1].Kind != TapeBlockKind.Data ||
+                        blocks[index + 1].Flag != DataFlag)
+                    {
+                        return false;
+                    }
+
+                    index += 2;
+                    continue;
+                }
 
                 if (block.Kind != TapeBlockKind.Data)
                     return false;
@@ -2630,6 +2657,68 @@ namespace Spectrum128kEmulator.Tap
             }
 
             return sawRawStandardData;
+        }
+
+        private static bool HasStandardHeaderDataPairAfterLeadingBasic(IReadOnlyList<TapeBlock> blocks)
+        {
+            int index = 0;
+            while (index < blocks.Count && blocks[index].Kind == TapeBlockKind.Metadata)
+                index++;
+
+            if (index + 1 >= blocks.Count)
+                return false;
+
+            index += 2;
+            while (index < blocks.Count)
+            {
+                while (index < blocks.Count && blocks[index].Kind == TapeBlockKind.Metadata)
+                    index++;
+
+                if (index >= blocks.Count)
+                    break;
+
+                if (!IsStandardHeaderBlock(blocks[index]))
+                {
+                    index++;
+                    continue;
+                }
+
+                return index + 1 < blocks.Count &&
+                       blocks[index + 1].Kind == TapeBlockKind.Data &&
+                       blocks[index + 1].Flag == DataFlag;
+            }
+
+            return false;
+        }
+
+        private static bool CanResolveMountedLoadUsrContinuation(
+            Spectrum128Machine machine,
+            IReadOnlyList<TapeBlock> blocks)
+        {
+            int index = 0;
+            while (index < blocks.Count && blocks[index].Kind == TapeBlockKind.Metadata)
+                index++;
+
+            if (index + 1 >= blocks.Count ||
+                !IsStandardHeaderBlock(blocks[index]) ||
+                blocks[index + 1].Flag != DataFlag)
+            {
+                return false;
+            }
+
+            TapHeaderInfo header = ParseHeaderInfo(blocks[index]);
+            if (header.Type != ProgramType || header.AutoStartLine >= 32768)
+                return false;
+
+            bool use128kMode = Use128kTapeLoadMode(machine);
+            InitializeMachineForFakeTapeLoad(machine, use128kMode);
+            LoadBasicProgram(machine, header, blocks[index + 1].Payload!);
+            return BasicBootstrapExecutor.CreateMountedLoadUsrContinuationResolver(
+                machine,
+                BasicProgramStart,
+                header.ProgramLength,
+                header.AutoStartLine,
+                requireUsrReturnAddressBetweenSteps: false) != null;
         }
 
         private static TapBootstrapResult LoadLeadingStandardBasicChainAndMountRemaining(

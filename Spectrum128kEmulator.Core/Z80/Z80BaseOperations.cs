@@ -474,8 +474,14 @@ namespace Spectrum128kEmulator.Z80
         {
             sbyte e = (sbyte)FetchByte();
             if (condition)
+            {
                 Regs.PC = (ushort)(Regs.PC + e);
-            TStates += 12;
+                TStates += 12;
+            }
+            else
+            {
+                TStates += 7;
+            }
         }
 
         private void JPcc(bool condition)
