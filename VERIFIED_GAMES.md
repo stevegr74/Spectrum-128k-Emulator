@@ -11,7 +11,7 @@ that every level, control path, or hardware edge case has been tested.
 | Batman | `.tzx` | Chained BASIC and protected loading complete; game runs |
 | Captain America | `.tzx` | Protected loader completes; game runs |
 | Donkey Kong (Erbe) | `.tzx` | Custom loader completes without corrupting the loading screen; game runs |
-| Exolon | Tape image | Loads and reaches the game |
+| Exolon | `.tap`, `.tzx` | Both tape formats load and reach the game |
 | Ikari Warriors | `.tzx` | Both the original and Encore releases load and run; transport stops after loading |
 | Impossible Mission | `.tzx` | Protected loader completes; game runs |
 | Impossible Mission II | `.tzx` | Protected loader completes; game runs |
