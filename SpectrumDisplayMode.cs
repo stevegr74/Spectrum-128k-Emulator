@@ -56,5 +56,20 @@ namespace Spectrum128kEmulator
                 _ => throw new ArgumentOutOfRangeException(nameof(mode))
             };
         }
+
+        public static Point GetStatusOverlayLocation(
+            SpectrumDisplayLayout layout,
+            int overlayHeight,
+            int margin = 5)
+        {
+            if (overlayHeight < 0)
+                throw new ArgumentOutOfRangeException(nameof(overlayHeight));
+            if (margin < 0)
+                throw new ArgumentOutOfRangeException(nameof(margin));
+
+            return new Point(
+                layout.ViewportX + margin,
+                layout.ViewportY + Math.Max(margin, layout.ClientHeight - overlayHeight - margin));
+        }
     }
 }

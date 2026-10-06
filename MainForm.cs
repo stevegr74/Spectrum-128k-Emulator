@@ -246,7 +246,7 @@ namespace Spectrum128kEmulator
             displayMode = mode;
             SpectrumDisplayLayout layout = SpectrumDisplayModes.GetLayout(mode);
             ClientSize = new Size(layout.ClientWidth, layout.ClientHeight);
-            fpsLabel.Location = new Point(layout.ViewportX + 5, layout.ViewportY + 5);
+            fpsLabel.Location = SpectrumDisplayModes.GetStatusOverlayLocation(layout, fpsLabel.Height);
             nativeDisplayMenuItem.Checked = mode == SpectrumDisplayMode.Native;
             enhanced2xDisplayMenuItem.Checked = mode == SpectrumDisplayMode.Enhanced2x;
             enhanced3xDisplayMenuItem.Checked = mode == SpectrumDisplayMode.Enhanced3x;
@@ -1695,7 +1695,7 @@ namespace Spectrum128kEmulator
             bool showFullOverlay = nowTicks < tapeTransportFullOverlayExpiresAtTicks;
 
             int x = 8 * scale;
-            int y = (isStatusOverlayVisible ? 30 : 8) * scale;
+            int y = 8 * scale;
             int width = (showFullOverlay ? (tapeTransportOverlayMarkerStop ? 238 : 190) : 30) * scale;
             int height = (showFullOverlay ? 30 : 24) * scale;
             int iconLeft = x + (8 * scale);
@@ -1740,7 +1740,7 @@ namespace Spectrum128kEmulator
             int width = 150 * scale;
             int height = 30 * scale;
             int x = bitmap.Width - width - (8 * scale);
-            int y = (isStatusOverlayVisible ? 30 : 8) * scale;
+            int y = 8 * scale;
 
             using Graphics graphics = Graphics.FromImage(bitmap);
             graphics.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
