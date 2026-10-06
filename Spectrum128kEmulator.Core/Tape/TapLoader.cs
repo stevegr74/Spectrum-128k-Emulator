@@ -471,6 +471,7 @@ namespace Spectrum128kEmulator.Tap
                 return false;
 
             bool success = false;
+            ushort? romDrivenBasicAutoStartLine = null;
             ushort trapReturnAddress = GetRomTrapReturnAddress(
                 machine,
                 cpu,
@@ -622,11 +623,24 @@ namespace Spectrum128kEmulator.Tap
                                 TapLoader.LoadBasicProgram(machine, pendingHeaderInfo, block.Payload!, preserveInterpreterWorkspace: false);
                             }
 
-                            TapLoader.TryExecuteLoadedMountedBasicProgram(
+                            bool executedLoadedProgram = TapLoader.TryExecuteLoadedMountedBasicProgram(
                                 machine,
                                 pendingHeaderInfo.ProgramLength,
                                 (ushort)block.Payload!.Length,
                                 pendingHeaderInfo.AutoStartLine);
+                            if (!executedLoadedProgram &&
+                                !machine.HasPendingMountedLoadUsrContinuation &&
+                                pendingHeaderInfo.AutoStartLine < 32768 &&
+                                TapLoader.CanStartRomDrivenMountedBasicAutoStart(machine))
+                            {
+                                TapLoader.LoadBasicProgram(
+                                    machine,
+                                    pendingHeaderInfo,
+                                    block.Payload!,
+                                    preserveInterpreterWorkspace: false);
+                                romDrivenBasicAutoStartLine = pendingHeaderInfo.AutoStartLine;
+                            }
+
                             machine.Trace?.Invoke(
                                 $"[RomTrap] BASIC side-effects applied file={pendingHeaderInfo.FileName} pending={(machine.HasPendingMountedLoadUsrContinuation ? 1 : 0)} pc=0x{machine.Cpu.Regs.PC:X4}");
                         }
@@ -657,6 +671,14 @@ namespace Spectrum128kEmulator.Tap
 
                 AdvanceBlockState(block);
                 SyncEarPlaybackToNextBlock(block.PauseAfterBlockMs);
+
+                if (romDrivenBasicAutoStartLine.HasValue)
+                {
+                    TapLoader.StartRomDrivenMountedBasicAutoStart(
+                        machine,
+                        romDrivenBasicAutoStartLine.Value);
+                    return true;
+                }
 
                 if (appliedStructuredBasicProgramSideEffects)
                 {
@@ -3096,7 +3118,7 @@ namespace Spectrum128kEmulator.Tap
             return machine.MachineModel == SpectrumMachineModel.Spectrum128K;
         }
 
-        private static void StartRomDrivenMountedBasicAutoStart(
+        internal static void StartRomDrivenMountedBasicAutoStart(
             Spectrum128Machine machine,
             ushort autoStartLine)
         {
@@ -3118,6 +3140,12 @@ namespace Spectrum128kEmulator.Tap
             machine.PokeMemory(
                 FlagsSystemVariableAddress,
                 (byte)(machine.PeekMemory(FlagsSystemVariableAddress) | 0x80));
+        }
+
+        internal static bool CanStartRomDrivenMountedBasicAutoStart(Spectrum128Machine machine)
+        {
+            ushort errorStackPointer = ReadWord(machine, ErrorStackPointerAddress);
+            return errorStackPointer >= 0x4000 && errorStackPointer != 0xFFFF;
         }
 
         private static void InitializeMachineForRomDrivenTapeLoad(
