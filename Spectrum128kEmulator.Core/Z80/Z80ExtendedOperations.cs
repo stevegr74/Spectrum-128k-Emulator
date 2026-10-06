@@ -94,14 +94,6 @@ namespace Spectrum128kEmulator.Z80
                 ushort a = FetchWord();
                 byte low = (byte)(Regs.SP & 0xFF);
                 byte high = (byte)(Regs.SP >> 8);
-                if (a == 0x78DA)
-                {
-                    RecordInterruptEvent(
-                        $"ST_SP_PTR PC={lastPcBeforeStep:X4} ADDR={a:X4} VALUE={Regs.SP:X4} BYTES={low:X2} {high:X2} " +
-                        $"AF={Regs.AF:X4} BC={Regs.BC:X4} DE={Regs.DE:X4} HL={Regs.HL:X4} IX={Regs.IX:X4} IY={Regs.IY:X4}",
-                        true);
-                }
-
                 WriteMemory(a, low);
                 WriteMemory((ushort)(a + 1), high);
                 TStates += 20;
@@ -116,14 +108,6 @@ namespace Spectrum128kEmulator.Z80
                 byte low = ReadMemory(a);
                 byte high = ReadMemory((ushort)(a + 1));
                 ushort value = (ushort)(low | (high << 8));
-                if (a == 0x78DA || value < 0x4000)
-                {
-                    RecordInterruptEvent(
-                        $"LD_SP_PTR PC={lastPcBeforeStep:X4} ADDR={a:X4} VALUE={value:X4} BYTES={low:X2} {high:X2} " +
-                        $"AF={Regs.AF:X4} BC={Regs.BC:X4} DE={Regs.DE:X4} HL={Regs.HL:X4} IX={Regs.IX:X4} IY={Regs.IY:X4}",
-                        true);
-                }
-
                 Regs.SP = value;
                 TStates += 20;
             };

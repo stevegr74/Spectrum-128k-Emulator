@@ -109,11 +109,6 @@ namespace Spectrum128kEmulator.Z80
             lastFlagsBeforeInstruction = state.LastFlagsBeforeInstruction;
             ExecutionStopped = false;
 
-            reportedHighRamEntry = false;
-            reportedDiWindowEntry = false;
-            reportedLowStackEntry = false;
-            reported17xxStackEntry = false;
-            reportedRomStackWindowEntry = false;
             recentTrace.Clear();
             recentInterruptEvents.Clear();
         }
