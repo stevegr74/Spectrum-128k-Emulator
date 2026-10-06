@@ -153,10 +153,10 @@ display exposes the same controls in function-key order.
 
 Tape changes show a top-left badge: full text for three seconds, then a compact
 playing icon; paused/auto-stopped icons hide after five seconds. The title bar
-retains active tape state, while its ended status clears with the ended badge.
-Quick State is complete but temporary: it includes CPU,
-RAM banks, paging, ULA/audio frame state, tape, and RZX position, survives media
-loads during the session, and is discarded on exit.
+shows the current media name and active tape state, while its ended status clears
+with the ended badge. The temporary Quick State slot restores the associated
+media name as well as CPU, RAM banks, paging, ULA/audio frame state, tape, and
+RZX position; it survives media loads during the session and is discarded on exit.
 
 The disassembler captures the mapped logical 64K plus `PC`, model, ROM, and
 paging context; it does not yet expose every physical bank. Its own Help text

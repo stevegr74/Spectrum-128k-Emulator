@@ -27,6 +27,8 @@ namespace Spectrum128kEmulator
         private const double TapeTransportFullOverlaySeconds = 3.0;
         private const double TapeTransportStoppedIconSeconds = 5.0;
         private const double QuickStateOverlaySeconds = 2.5;
+        private const string ApplicationTitle = "Spectrum 128K Emulator";
+        private const int MaximumMediaTitleLength = 48;
 
         private int framesRenderedThisSecond;
         private int displayedFps;
@@ -113,6 +115,8 @@ namespace Spectrum128kEmulator
         private long tapeTransportFullOverlayExpiresAtTicks;
         private long tapeTransportIconExpiresAtTicks;
         private Spectrum128Machine.QuickState? quickState;
+        private string? loadedMediaDisplayName;
+        private string? quickStateMediaDisplayName;
         private string? quickStateOverlayText;
         private long quickStateOverlayExpiresAtTicks;
         private EmulatorHelpForm? helpForm;
@@ -122,7 +126,7 @@ namespace Spectrum128kEmulator
 
         public MainForm()
         {
-            Text = "Spectrum 128K Emulator";
+            Text = ApplicationTitle;
             AutoScaleMode = AutoScaleMode.None;
             FormBorderStyle = FormBorderStyle.FixedSingle;
             MaximizeBox = false;
@@ -333,6 +337,7 @@ namespace Spectrum128kEmulator
                 lock (machineLock)
                     quickState = machine.CaptureQuickState();
             });
+            quickStateMediaDisplayName = loadedMediaDisplayName;
 
             UpdateQuickStateMenuItems();
             ShowQuickStateOverlay("QUICK STATE SAVED");
@@ -352,6 +357,7 @@ namespace Spectrum128kEmulator
 
             ExecuteWithEmulationPaused(() =>
             {
+                loadedMediaDisplayName = quickStateMediaDisplayName;
                 lock (machineLock)
                     machine.RestoreQuickState(state);
                 ClearHostAndSpectrumInputState();
@@ -491,6 +497,7 @@ namespace Spectrum128kEmulator
             ExecuteWithEmulationPaused(() =>
             {
                 selectedMachineModel = model;
+                loadedMediaDisplayName = null;
                 ClearHostAndSpectrumInputState();
                 lock (machineLock)
                 {
@@ -985,6 +992,7 @@ namespace Spectrum128kEmulator
                     lock (machineLock)
                         machine.ClearDebugHistory();
                 });
+                SetLoadedMediaDisplayName(dialog.FileName);
                 fpsLabel.Text = $"Loaded: {Path.GetFileName(dialog.FileName)}";
                 SuppressSpectrumHostInputForMilliseconds(PostLoadInputSuppressionMilliseconds);
                 PresentCurrentMachineFrame(frameClock.ElapsedTicks, force: true);
@@ -1050,6 +1058,7 @@ namespace Spectrum128kEmulator
                     lock (machineLock)
                         machine.ClearDebugHistory();
                 });
+                SetLoadedMediaDisplayName(dialog.FileName);
                 SuppressSpectrumHostInputForMilliseconds(PostLoadInputSuppressionMilliseconds);
                 ShowMountedTapeTransportFeedback();
                 PresentCurrentMachineFrame(frameClock.ElapsedTicks, force: true);
@@ -1130,6 +1139,7 @@ namespace Spectrum128kEmulator
                             machine.ClearDebugHistory();
                     });
                 }
+                SetLoadedMediaDisplayName(dialog.FileName);
                 fpsLabel.Text = $"Loaded: {Path.GetFileName(dialog.FileName)}";
                 PresentCurrentMachineFrame(frameClock.ElapsedTicks, force: true);
                 screenBox.Focus();
@@ -1769,9 +1779,32 @@ namespace Spectrum128kEmulator
                 TapeTransportState.Ended when tapeTransportOverlayState == TapeTransportState.Ended => "Ended",
                 _ => null
             };
-            Text = tapeStatus is null
-                ? "Spectrum 128K Emulator"
-                : $"Spectrum 128K Emulator - Tape: {tapeStatus}";
+            string mediaTitle = loadedMediaDisplayName is null
+                ? string.Empty
+                : $" - {loadedMediaDisplayName}";
+            string tapeTitle = tapeStatus is null
+                ? string.Empty
+                : $" - Tape: {tapeStatus}";
+            Text = $"{ApplicationTitle}{mediaTitle}{tapeTitle}";
+        }
+
+        private void SetLoadedMediaDisplayName(string path)
+        {
+            string name = Path.GetFileNameWithoutExtension(path).Trim();
+            loadedMediaDisplayName = ShortenMediaTitle(name);
+            UpdateTapeTransportTitle(lastObservedTapeTransportState, lastObservedTapeMarkerStop);
+        }
+
+        private static string? ShortenMediaTitle(string name)
+        {
+            if (string.IsNullOrWhiteSpace(name))
+                return null;
+            if (name.Length <= MaximumMediaTitleLength)
+                return name;
+
+            const int suffixLength = 12;
+            int prefixLength = MaximumMediaTitleLength - suffixLength - 3;
+            return $"{name[..prefixLength]}...{name[^suffixLength..]}";
         }
 
         private static string FormatTapeTransportState(TapeTransportState state, bool markerStop)
