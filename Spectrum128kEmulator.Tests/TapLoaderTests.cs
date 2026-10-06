@@ -211,7 +211,7 @@ namespace Spectrum128kEmulator.Tests
                 Assert.Equal((byte)0xAA, machine.PeekMemory(23768));
                 Assert.Equal((ushort)23755, ReadWord(machine, 23635));
                 Assert.Equal((ushort)(23755 + 12), ReadWord(machine, 23627));
-                Assert.Equal((ushort)(23755 + basicAndVariables.Length), ReadWord(machine, 23641));
+                Assert.Equal((ushort)(23755 + basicAndVariables.Length + 1), ReadWord(machine, 23641));
                 Assert.Equal((ushort)10, ReadWord(machine, 23618));
                 Assert.Equal((byte)0, machine.PeekMemory(23620));
             }
@@ -590,6 +590,65 @@ namespace Spectrum128kEmulator.Tests
             {
                 Directory.Delete(tempFolder, true);
             }
+        }
+
+        [Fact]
+        public void MountedTape_LongTerminalPause_IsCappedBeforeAutoEject()
+        {
+            string tempFolder = CreateTempRoms();
+
+            try
+            {
+                var machine = new Spectrum128Machine(tempFolder);
+                var tape = new MountedTape(
+                    "terminal-silence",
+                    new TapeBlock[]
+                    {
+                        TapeBlock.CreateByteStreamData(new byte[] { 0x00 }, 1, 1, 1, 60000)
+                    },
+                    initialBlockIndex: 0,
+                    skipCustomHeaderForEarPlayback: false);
+                machine.MountTape(tape);
+
+                _ = tape.ReadEarBit(0);
+                _ = tape.ReadEarBit(2);
+
+                Assert.Equal("Pause", GetPrivateField(tape, "earPlaybackState").ToString());
+                Assert.Equal(3500, (int)GetPrivateField(tape, "earPulseLengthTStates"));
+                Assert.Equal(999 * 3500, (int)GetPrivateField(tape, "earPauseLowTailTStates"));
+
+                _ = tape.ReadEarBit((ulong)(1000 * 3500 + 2));
+                Assert.True(tape.HasCompletedPlayback);
+
+                machine.ExecuteTimeSlice(1);
+                Assert.False(machine.HasMountedTape);
+                Assert.Equal(TapeTransportState.Ended, machine.TapeTransportState);
+            }
+            finally
+            {
+                Directory.Delete(tempFolder, true);
+            }
+        }
+
+        [Fact]
+        public void MountedTape_LongIntermediatePause_PreservesRecordedDuration()
+        {
+            var tape = new MountedTape(
+                "intermediate-silence",
+                new TapeBlock[]
+                {
+                    TapeBlock.CreateByteStreamData(new byte[] { 0x00 }, 1, 1, 1, 60000),
+                    TapeBlock.CreatePureTone(100, 1)
+                },
+                initialBlockIndex: 0,
+                skipCustomHeaderForEarPlayback: false);
+
+            _ = tape.ReadEarBit(0);
+            _ = tape.ReadEarBit(2);
+
+            Assert.Equal("Pause", GetPrivateField(tape, "earPlaybackState").ToString());
+            Assert.Equal(3500, (int)GetPrivateField(tape, "earPulseLengthTStates"));
+            Assert.Equal(59999 * 3500, (int)GetPrivateField(tape, "earPauseLowTailTStates"));
         }
 
         [Fact]
@@ -1107,7 +1166,7 @@ namespace Spectrum128kEmulator.Tests
                 Assert.Equal((ushort)0x053F, machine.Cpu.Regs.PC);
                 Assert.Equal((ushort)23755, ReadWord(machine, 23635));
                 Assert.Equal((ushort)(23755 + basicProgram.Length), ReadWord(machine, 23627));
-                Assert.Equal((ushort)(23755 + basicProgram.Length), ReadWord(machine, 23641));
+                Assert.Equal((ushort)(23755 + basicProgram.Length + 1), ReadWord(machine, 23641));
                 Assert.Equal((ushort)10, ReadWord(machine, 23618));
                 Assert.Equal(basicProgram[0], machine.PeekMemory(23755));
                 Assert.Equal((byte)7, machine.PeekMemory(23624));
@@ -2494,12 +2553,13 @@ namespace Spectrum128kEmulator.Tests
                 executeBootstrap.Invoke(null, new object[] { machine, (ushort)23755, (ushort)firstStage.Length, (ushort)10, false });
 
                 ushort expectedVars = (ushort)(23755 + protectedStage.Length);
-                ushort expectedEnd = (ushort)(23755 + protectedStage.Length);
+                ushort expectedVariablesEnd = (ushort)(23755 + protectedStage.Length);
+                ushort expectedEditLine = (ushort)(expectedVariablesEnd + 1);
                 Assert.Equal(expectedVars, ReadWord(machine, 23627));
-                Assert.Equal(expectedEnd, ReadWord(machine, 23641));
-                Assert.Equal(expectedEnd, ReadWord(machine, 23649));
-                Assert.Equal(expectedEnd, ReadWord(machine, 23651));
-                Assert.Equal(expectedEnd, ReadWord(machine, 23653));
+                Assert.Equal(expectedEditLine, ReadWord(machine, 23641));
+                Assert.Equal(expectedEditLine, ReadWord(machine, 23649));
+                Assert.Equal(expectedEditLine, ReadWord(machine, 23651));
+                Assert.Equal(expectedEditLine, ReadWord(machine, 23653));
                 Assert.Equal((byte)0x00, machine.PeekMemory(23624));
                 Assert.Equal((byte)17, machine.PeekMemory(23662));
                 Assert.Equal((byte)34, machine.PeekMemory(23663));
@@ -2662,15 +2722,17 @@ namespace Spectrum128kEmulator.Tests
 
                 executeBootstrap.Invoke(null, new object[] { machine, (ushort)23755, (ushort)firstStage.Length, (ushort)10, false });
 
-                ushort expectedEnd = (ushort)(23755 + protectedStage.Length);
+                ushort expectedVariablesEnd = (ushort)(23755 + protectedStage.Length);
+                ushort expectedEditLine = (ushort)(expectedVariablesEnd + 1);
+                ushort expectedWorkspace = (ushort)(expectedEditLine + 1);
                 Assert.Equal((byte)0x00, machine.PeekMemory(23624));
                 Assert.Equal((byte)0, machine.PeekMemory(23662));
                 Assert.Equal((byte)0x00, machine.PeekMemory(23663));
                 Assert.Equal((byte)3, machine.PeekMemory(23664));
-                Assert.Equal(expectedEnd, ReadWord(machine, 23641));
-                Assert.Equal(expectedEnd, ReadWord(machine, 23649));
-                Assert.Equal((byte)(expectedEnd & 0xFF), machine.PeekMemory(expectedEnd));
-                Assert.Equal((byte)(expectedEnd >> 8), machine.PeekMemory((ushort)(expectedEnd + 1)));
+                Assert.Equal(expectedEditLine, ReadWord(machine, 23641));
+                Assert.Equal(expectedWorkspace, ReadWord(machine, 23649));
+                Assert.Equal((byte)(expectedWorkspace & 0xFF), machine.PeekMemory(expectedEditLine));
+                Assert.Equal((byte)(expectedWorkspace >> 8), machine.PeekMemory((ushort)(expectedEditLine + 1)));
                 Assert.Equal(machine.PeekMemory(23647), machine.PeekMemory(ReadWord(machine, 23633)));
                 Assert.Equal(machine.PeekMemory(23648), machine.PeekMemory((ushort)(ReadWord(machine, 23633) + 1)));
             }
@@ -4924,6 +4986,62 @@ namespace Spectrum128kEmulator.Tests
 
                 Assert.Equal((ushort)0x5CB6, (ushort)(machine.PeekMemory(23633) | (machine.PeekMemory(23634) << 8)));
                 Assert.Equal((ushort)0x0000, (ushort)(machine.PeekMemory(23647) | (machine.PeekMemory(23648) << 8)));
+            }
+            finally
+            {
+                Directory.Delete(tempFolder, true);
+            }
+        }
+
+        [Fact]
+        public void LoadBasicProgram_Appends_Variable_Terminator_And_Empty_Edit_Line()
+        {
+            string tempFolder = CreateTempRoms();
+
+            try
+            {
+                byte[] program = BuildBasicProgram(
+                    BuildBasicLine(10, Token(226)));
+                byte[] savedVariables =
+                {
+                    0x61, 0x00, 0x00, 0x01, 0x00, 0x00
+                };
+                byte[] payload = program.Concat(savedVariables).ToArray();
+
+                TapeBlock headerBlock = TapeBlock.CreateData(BuildHeaderBlock(
+                    type: 0,
+                    fileName: "VARS",
+                    dataLength: (ushort)payload.Length,
+                    parameter1: 10,
+                    parameter2: (ushort)program.Length), 2168, 8063, 667, 735, 855, 1710, 8, 1000);
+
+                MethodInfo parseHeaderInfo = typeof(TapLoader).GetMethod("ParseHeaderInfo", BindingFlags.NonPublic | BindingFlags.Static)!;
+                object header = parseHeaderInfo.Invoke(null, new object[] { headerBlock })!;
+                MethodInfo loadBasicProgram = typeof(TapLoader)
+                    .GetMethods(BindingFlags.NonPublic | BindingFlags.Static)
+                    .Single(method =>
+                    {
+                        ParameterInfo[] parameters = method.GetParameters();
+                        return method.Name == "LoadBasicProgram" &&
+                               parameters.Length == 3 &&
+                               parameters[2].ParameterType == typeof(byte[]);
+                    });
+
+                var machine = new Spectrum128Machine(tempFolder);
+                loadBasicProgram.Invoke(null, new object[] { machine, header, payload });
+
+                ushort variablesEnd = (ushort)(23755 + payload.Length);
+                ushort editLine = (ushort)(variablesEnd + 1);
+                ushort workspace = (ushort)(editLine + 1);
+
+                Assert.Equal((byte)0x80, machine.PeekMemory(variablesEnd));
+                Assert.Equal((byte)0x0D, machine.PeekMemory(editLine));
+                Assert.Equal(editLine, ReadWord(machine, 23641));
+                Assert.Equal(workspace, ReadWord(machine, 23649));
+                Assert.Equal(workspace, ReadWord(machine, 23651));
+                Assert.Equal(workspace, ReadWord(machine, 23653));
+                Assert.Equal(editLine, ReadWord(machine, 23643));
+                Assert.Equal(editLine, ReadWord(machine, 23645));
             }
             finally
             {
