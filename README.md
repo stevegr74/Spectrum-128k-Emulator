@@ -9,7 +9,7 @@ This project focuses on correctness, clean architecture, and incremental develop
 ## Features
 
 - Z80 CPU with passing ZEXDOC and ZEXALL instruction groups
-- Explicit 48K and 128K models, 128K paging, keyboard matrix, interrupts, and model timing
+- Explicit 48K and 128K models, 128K paging, keyboard matrix, interrupts, and a model-specific timing baseline
 - Spectrum display with INK, PAPER, BRIGHT, FLASH, borders, and fixed 1x/Scale2x/Scale3x modes
 - 48K beeper and AY-3-8912 tone, noise, envelope, and mixing through a clock-driven audio pipeline
 - 48K-format `.sna`, `.z80` v1/v2/v3, and `.rzx` loading/replay
@@ -33,7 +33,7 @@ is complete.
 Verified media includes:
 
 - Snapshots: `robocop128k.z80`, `JSWAPRIL.Z80`, and Exolon in `.sna`/`.z80` form
-- Tapes: Exolon, Where Time Stood Still, Impossible Mission, Batman, Target Renegade, and Scuba Dive
+- Tapes: Exolon, Where Time Stood Still, Impossible Mission, Batman, Target Renegade (128K all-at-once and 48K level-at-a-time), and Scuba Dive
 - Replay: `aufmonty.rzx`
 
 Current limitations and active work:
@@ -43,6 +43,12 @@ Current limitations and active work:
 - active-screen rendering is frame-snapshot based rather than beam-aware; Milestone 17 addresses this
 - protected live-tape audio handoff still needs polish in some titles
 - broader protected/custom TZX compatibility remains ongoing
+
+### Implementation Notes
+
+- Fast tape bootstrap is capability-gated. Unsupported BASIC loader control flow falls back to the real ROM autorun path with the remaining tape mounted.
+- Protected playback and Quick State preserve precise tape pulse, EAR, loader-continuation and replay positions.
+- The background emulation loop owns mutable machine state; the UI consumes copied snapshots and uses nested pause leases for safe inspection.
 
 ## Development Priorities
 
@@ -262,7 +268,7 @@ compatibility and polish; completed milestones remain regression baselines.
 | 1 | Complete | Keyboard matrix, 128K menu navigation, and BASIC entry |
 | 2 | Complete | Attribute/FLASH rendering and renderer optimization |
 | 3 | Complete | 50Hz pacing, frame execution, and interrupt cadence |
-| 4 | Complete | ZEXDOC/ZEXALL CPU baseline and targeted flag regressions |
+| 4 | Complete | ZEXDOC/ZEXALL CPU baseline and hardware-derived block-I/O flag regressions |
 | 5 | Complete | 48K-format `.sna` plus `.z80` v1/v2/v3 support |
 | 6 | In progress | Structure-driven TAP/TZX bootstrap, ROM, protected, mounted, VERIFY, and sequencing paths |
 | 7 | In progress | Beeper/AY synthesis and mixing; live-tape transition polish remains |
