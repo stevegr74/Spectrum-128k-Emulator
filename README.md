@@ -46,9 +46,11 @@ Current limitations and active work:
 ### Implementation Notes
 
 - Fast tape bootstrap is capability-gated. Unsupported initial or chained BASIC loader control flow falls back to a clean real-ROM autorun path with the remaining tape mounted.
+- Address-based ROM tape services are enabled only for the fingerprinted bundled ROM pair; an unknown ROM pair uses real-time mounted pulse/EAR playback instead of assuming compatible internal addresses.
 - ROM-driven tape handoffs preserve consumed-block pauses, exact TZX pause signal transitions, and zero-duration stop markers.
 - Mounted playback detects stable keyboard/HALT handoffs, pauses at multiload boundaries, and preserves custom ROM flag and LOAD/VERIFY state across accelerated blocks.
 - Protected playback and Quick State preserve precise tape pulse, EAR, loader-continuation and replay positions.
+- Mounted-loader continuation state, BASIC workspace preservation, resume gating, and Quick State capture are isolated from the machine in a dedicated controller.
 - The background emulation loop owns mutable machine state; the UI consumes copied snapshots and uses nested pause leases for safe inspection.
 - The undocumented Z80 Q latch is tracked by flag-writing semantics, including prefix and interrupt boundaries, with focused regressions alongside ZEXDOC/ZEXALL.
 
@@ -72,8 +74,10 @@ Spectrum128kEmulator/
 |-- Spectrum128kEmulator.Core/             net8.0 platform-neutral emulator
 |   |-- Audio/                             AY/beeper synthesis and sample clock
 |   |-- Tape/                              TAP/TZX parsing, transport, and bootstrap policy
+|   |   `-- MountedLoadContinuationController.cs  ROM-profile-aware loader resume policy
 |   |-- Z80/                               CPU execution plus side-effect-free instruction decoding
-|   |-- Spectrum128Machine.cs              machine, memory, paging, ULA timing, and input matrix
+|   |-- Spectrum128Machine.cs              machine orchestration, memory, paging, ULA timing, and input
+|   |-- SpectrumRomProfile.cs              fingerprinted ROM capabilities and internal entry points
 |   |-- SpectrumFrameBuffer.cs             platform-neutral ARGB frame buffer
 |   |-- BorderFrame.cs                     timestamped border events
 |   |-- SnapshotLoader.cs                  SNA snapshot loading

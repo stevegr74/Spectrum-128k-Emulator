@@ -2433,7 +2433,7 @@ namespace Spectrum128kEmulator.Tests
                     BuildDataBlock(new byte[] { 0x33 }));
                 File.WriteAllBytes(tapePath, tape);
 
-                var machine = new Spectrum128Machine(tempFolder);
+                var machine = new Spectrum128Machine(tempFolder, SpectrumRomProfile.SyntheticTest);
                 TapeExecutionResult result = TapLoader.LoadWithPolicy(machine, tapePath);
 
                 Assert.Equal(TapeLoadStrategy.RomBootstrapMounted, result.Strategy);
@@ -2484,7 +2484,7 @@ namespace Spectrum128kEmulator.Tests
                     BuildHeaderBlock(type: 0, fileName: "STAGE2", dataLength: (ushort)secondStage.Length, parameter1: 0, parameter2: (ushort)secondStage.Length),
                     BuildDataBlock(secondStage));
 
-                var machine = new Spectrum128Machine(tempFolder);
+                var machine = new Spectrum128Machine(tempFolder, SpectrumRomProfile.SyntheticTest);
                 MethodInfo parseBlocks = typeof(TapLoader).GetMethod("ParseBlocks", BindingFlags.NonPublic | BindingFlags.Static)!;
                 MethodInfo loadRomBootstrap = typeof(TapLoader).GetMethod("LoadLeadingBasicProgramAndMountRemainingForRomAutoStart", BindingFlags.NonPublic | BindingFlags.Static)!;
                 IReadOnlyList<TapeBlock> blocks = (IReadOnlyList<TapeBlock>)parseBlocks.Invoke(null, new object[] { tap })!;
@@ -4128,24 +4128,20 @@ namespace Spectrum128kEmulator.Tests
 
                 var resolver = (Func<Spectrum128Machine, ushort?>)resolverObject!;
 
-                FieldInfo pendingResolverField = typeof(Spectrum128Machine).GetField(
-                    "pendingMountedLoadUsrContinuationResolver",
-                    BindingFlags.Instance | BindingFlags.NonPublic)!;
-
                 ushort basicProgramStart = 23755;
                 for (int offset = 0; offset < basicLoader.Length; offset++)
                     machine.PokeMemory((ushort)(basicProgramStart + offset), 0x00);
 
                 ushort? firstEntryPoint = resolver(machine);
                 Assert.Equal((ushort)0x1234, firstEntryPoint);
-                Assert.NotNull(pendingResolverField.GetValue(machine));
+                Assert.NotNull(machine.PendingMountedLoadResolver);
 
                 machine.PokeMemory(23633, 0x78);
                 machine.PokeMemory(23634, 0x56);
-                var secondResolver = (Func<Spectrum128Machine, ushort?>)pendingResolverField.GetValue(machine)!;
+                var secondResolver = machine.PendingMountedLoadResolver!;
                 ushort? secondEntryPoint = secondResolver(machine);
                 Assert.Equal((ushort)0x5678, secondEntryPoint);
-                Assert.Null(pendingResolverField.GetValue(machine));
+                Assert.Null(machine.PendingMountedLoadResolver);
             }
             finally
             {
@@ -4209,10 +4205,6 @@ namespace Spectrum128kEmulator.Tests
                 MethodInfo resumeMethod = typeof(Spectrum128Machine).GetMethod(
                     "TryResumePendingMountedLoadUsrContinuation",
                     BindingFlags.Instance | BindingFlags.NonPublic)!;
-                FieldInfo pendingResolverField = typeof(Spectrum128Machine).GetField(
-                    "pendingMountedLoadUsrContinuationResolver",
-                    BindingFlags.Instance | BindingFlags.NonPublic)!;
-
                 var machine = new Spectrum128Machine(tempFolder);
                 machine.MountTape(new MountedTape("idle-mounted", Array.Empty<TapeBlock>()));
                 loadBasicProgram.Invoke(null, new object[] { machine, header, basicLoader });
@@ -4231,7 +4223,7 @@ namespace Spectrum128kEmulator.Tests
                 Assert.True(resumed);
                 Assert.Equal((ushort)0x1234, machine.Cpu.Regs.PC);
                 Assert.Equal((ushort)0x1234, machine.Cpu.Regs.BC);
-                Assert.Null(pendingResolverField.GetValue(machine));
+                Assert.Null(machine.PendingMountedLoadResolver);
             }
             finally
             {
@@ -4380,9 +4372,6 @@ namespace Spectrum128kEmulator.Tests
                 MethodInfo resumeMethod = typeof(Spectrum128Machine).GetMethod(
                     "TryResumePendingMountedLoadUsrContinuation",
                     BindingFlags.Instance | BindingFlags.NonPublic)!;
-                FieldInfo pendingResolverField = typeof(Spectrum128Machine).GetField(
-                    "pendingMountedLoadUsrContinuationResolver",
-                    BindingFlags.Instance | BindingFlags.NonPublic)!;
                 var machine = new Spectrum128Machine(tempFolder);
                 machine.MountTape(new MountedTape("idle-mounted", Array.Empty<TapeBlock>()));
                 loadBasicProgram.Invoke(null, new object[] { machine, header, basicLoader });
@@ -4400,12 +4389,12 @@ namespace Spectrum128kEmulator.Tests
                 bool resumedOnUsrReturn = (bool)resumeMethod.Invoke(machine, new object[] { machine.Cpu })!;
                 Assert.True(resumedOnUsrReturn);
                 Assert.Equal((ushort)0x1234, machine.Cpu.Regs.PC);
-                Assert.NotNull(pendingResolverField.GetValue(machine));
+                Assert.NotNull(machine.PendingMountedLoadResolver);
 
                 machine.Cpu.Regs.PC = 0x1555;
                 bool resumedTooEarly = (bool)resumeMethod.Invoke(machine, new object[] { machine.Cpu })!;
                 Assert.False(resumedTooEarly);
-                Assert.NotNull(pendingResolverField.GetValue(machine));
+                Assert.NotNull(machine.PendingMountedLoadResolver);
 
                 machine.Cpu.Regs.PC = 0x2D2B;
                 bool resumedFollowOn = (bool)resumeMethod.Invoke(machine, new object[] { machine.Cpu })!;
@@ -4422,7 +4411,7 @@ namespace Spectrum128kEmulator.Tests
                 Assert.Equal((byte)0, machine.PeekMemory(23623));
                 machine.DebugWritePort(0x7FFD, 0x03);
                 Assert.Equal(3, machine.PagedRamBank);
-                Assert.Null(pendingResolverField.GetValue(machine));
+                Assert.Null(machine.PendingMountedLoadResolver);
             }
             finally
             {
@@ -4488,10 +4477,6 @@ namespace Spectrum128kEmulator.Tests
                 MethodInfo resumeMethod = typeof(Spectrum128Machine).GetMethod(
                     "TryResumePendingMountedLoadUsrContinuation",
                     BindingFlags.Instance | BindingFlags.NonPublic)!;
-                FieldInfo pendingResolverField = typeof(Spectrum128Machine).GetField(
-                    "pendingMountedLoadUsrContinuationResolver",
-                    BindingFlags.Instance | BindingFlags.NonPublic)!;
-
                 var machine = new Spectrum128Machine(tempFolder);
                 machine.MountTape(new MountedTape("idle-mounted", Array.Empty<TapeBlock>()));
                 loadBasicProgram.Invoke(null, new object[] { machine, header, basicLoader });
@@ -4519,7 +4504,7 @@ namespace Spectrum128kEmulator.Tests
                 Assert.True(resumed);
                 Assert.Equal((ushort)0x1234, machine.Cpu.Regs.PC);
                 Assert.Equal((ushort)0x1234, machine.Cpu.Regs.BC);
-                Assert.NotNull(pendingResolverField.GetValue(machine));
+                Assert.NotNull(machine.PendingMountedLoadResolver);
             }
             finally
             {
@@ -4585,10 +4570,6 @@ namespace Spectrum128kEmulator.Tests
                 MethodInfo resumeMethod = typeof(Spectrum128Machine).GetMethod(
                     "TryResumePendingMountedLoadUsrContinuation",
                     BindingFlags.Instance | BindingFlags.NonPublic)!;
-                FieldInfo pendingResolverField = typeof(Spectrum128Machine).GetField(
-                    "pendingMountedLoadUsrContinuationResolver",
-                    BindingFlags.Instance | BindingFlags.NonPublic)!;
-
                 var machine = new Spectrum128Machine(tempFolder);
                 machine.MountTape(new MountedTape("idle-mounted", Array.Empty<TapeBlock>()));
                 loadBasicProgram.Invoke(null, new object[] { machine, header, basicLoader });
@@ -4618,7 +4599,7 @@ namespace Spectrum128kEmulator.Tests
                 Assert.Equal((ushort)0x0000, (ushort)(machine.PeekMemory(23618) | (machine.PeekMemory(23619) << 8)));
                 Assert.Equal((ushort)0x0000, (ushort)(machine.PeekMemory(23621) | (machine.PeekMemory(23622) << 8)));
                 Assert.Equal((ushort)0x5CBB, (ushort)(machine.PeekMemory(23633) | (machine.PeekMemory(23634) << 8)));
-                Assert.Null(pendingResolverField.GetValue(machine));
+                Assert.Null(machine.PendingMountedLoadResolver);
             }
             finally
             {
@@ -5795,10 +5776,6 @@ namespace Spectrum128kEmulator.Tests
                 MethodInfo createResolver = executorType
                     .GetMethods(BindingFlags.Public | BindingFlags.Static)
                     .Single(method => method.Name == "CreateMountedLoadUsrContinuationResolver" && method.GetParameters().Length == 4);
-                FieldInfo pendingResolverField = typeof(Spectrum128Machine).GetField(
-                    "pendingMountedLoadUsrContinuationResolver",
-                    BindingFlags.Instance | BindingFlags.NonPublic)!;
-
                 var machine = new Spectrum128Machine(tempFolder);
                 loadBasicProgram.Invoke(null, new object[] { machine, header, basicLoader });
 
@@ -5809,7 +5786,7 @@ namespace Spectrum128kEmulator.Tests
                 ushort? firstEntryPoint = resolver(machine);
                 Assert.Equal((ushort)24576, firstEntryPoint);
 
-                object? followOnResolverObject = pendingResolverField.GetValue(machine);
+                object? followOnResolverObject = machine.PendingMountedLoadResolver;
                 Assert.NotNull(followOnResolverObject);
                 var followOnResolver = (Func<Spectrum128Machine, ushort?>)followOnResolverObject!;
 
@@ -5822,7 +5799,7 @@ namespace Spectrum128kEmulator.Tests
 
                 ushort? secondEntryPoint = followOnResolver(machine);
                 Assert.Null(secondEntryPoint);
-                Assert.Null(pendingResolverField.GetValue(machine));
+                Assert.Null(machine.PendingMountedLoadResolver);
             }
             finally
             {

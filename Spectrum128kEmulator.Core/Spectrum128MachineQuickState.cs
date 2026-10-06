@@ -54,20 +54,7 @@ namespace Spectrum128kEmulator
             internal int MountedTapeHandoffFrames;
             internal RzxPlaybackSession? RzxPlayback;
             internal RzxPlaybackSession.QuickState? RzxPlaybackState;
-            internal Func<Spectrum128Machine, ushort?>? PendingUsrContinuationResolver;
-            internal bool PendingUsrContinuationRequiresUsrReturnAddress;
-            internal ushort? PendingBasicResumeLine;
-            internal byte PendingBasicResumeStatement;
-            internal ushort[]? PendingInterpreterContext;
-            internal ushort? PendingVariableAreaVars;
-            internal ushort? PendingVariableAreaEditLine;
-            internal byte[]? PendingVariableAreaData;
-            internal ushort? PendingCursorKCur;
-            internal ushort? PendingCursorChAdd;
-            internal ushort? PendingCursorXPtr;
-            internal bool HasPendingCursorOverride;
-            internal bool PendingPreserveLiveInterpreterState;
-            internal ulong PendingNextStreamingInterpreterRefreshTStates;
+            internal MountedLoadContinuationController.QuickState MountedLoadContinuationState = null!;
 
             internal QuickState(DateTime capturedAtUtc, SpectrumMachineModel model, ushort programCounter)
             {
@@ -136,38 +123,8 @@ namespace Spectrum128kEmulator
                 MountedTapeHandoffFrames = mountedTapeHandoffFrames,
                 RzxPlayback = rzxPlayback,
                 RzxPlaybackState = rzxPlayback?.CaptureQuickState(),
-                PendingUsrContinuationResolver = pendingMountedLoadUsrContinuationResolver,
-                PendingUsrContinuationRequiresUsrReturnAddress = pendingMountedLoadUsrContinuationRequiresUsrReturnAddress,
-                PendingBasicResumeLine = pendingMountedLoadBasicResumeLine,
-                PendingBasicResumeStatement = pendingMountedLoadBasicResumeStatement,
-                PendingPreserveLiveInterpreterState = pendingMountedLoadPreserveLiveInterpreterStateForDirectUsrEntry,
-                PendingNextStreamingInterpreterRefreshTStates = pendingMountedLoadNextStreamingInterpreterRefreshTStates
+                MountedLoadContinuationState = mountedLoadContinuation.CaptureQuickState()
             };
-
-            if (pendingMountedLoadInterpreterContext is { } context)
-            {
-                state.PendingInterpreterContext = new[]
-                {
-                    context.Vars, context.Prog, context.NextLine, context.Data,
-                    context.CurChl, context.EditLine, context.KCur, context.ChAdd,
-                    context.XPtr, context.Workspace, context.StackBottom, context.StackEnd
-                };
-            }
-
-            if (pendingMountedLoadBasicVariableArea is { } variableArea)
-            {
-                state.PendingVariableAreaVars = variableArea.Vars;
-                state.PendingVariableAreaEditLine = variableArea.EditLine;
-                state.PendingVariableAreaData = (byte[])variableArea.Data.Clone();
-            }
-
-            if (pendingMountedLoadResumeCursorOverride is { } cursor)
-            {
-                state.HasPendingCursorOverride = true;
-                state.PendingCursorKCur = cursor.KCur;
-                state.PendingCursorChAdd = cursor.ChAdd;
-                state.PendingCursorXPtr = cursor.XPtr;
-            }
 
             return state;
         }
@@ -255,33 +212,7 @@ namespace Spectrum128kEmulator
 
         private void RestoreMountedLoadContinuation(QuickState state)
         {
-            pendingMountedLoadUsrContinuationResolver = state.PendingUsrContinuationResolver;
-            pendingMountedLoadUsrContinuationRequiresUsrReturnAddress = state.PendingUsrContinuationRequiresUsrReturnAddress;
-            pendingMountedLoadBasicResumeLine = state.PendingBasicResumeLine;
-            pendingMountedLoadBasicResumeStatement = state.PendingBasicResumeStatement;
-            pendingMountedLoadPreserveLiveInterpreterStateForDirectUsrEntry = state.PendingPreserveLiveInterpreterState;
-            pendingMountedLoadNextStreamingInterpreterRefreshTStates = state.PendingNextStreamingInterpreterRefreshTStates;
-
-            ushort[]? context = state.PendingInterpreterContext;
-            pendingMountedLoadInterpreterContext = context == null
-                ? null
-                : new MountedLoadInterpreterContext(
-                    context[0], context[1], context[2], context[3], context[4], context[5],
-                    context[6], context[7], context[8], context[9], context[10], context[11]);
-
-            pendingMountedLoadBasicVariableArea = state.PendingVariableAreaData == null
-                ? null
-                : new MountedLoadBasicVariableArea(
-                    state.PendingVariableAreaVars!.Value,
-                    state.PendingVariableAreaEditLine!.Value,
-                    (byte[])state.PendingVariableAreaData.Clone());
-
-            pendingMountedLoadResumeCursorOverride = state.HasPendingCursorOverride
-                ? new MountedLoadResumeCursorOverride(
-                    state.PendingCursorKCur,
-                    state.PendingCursorChAdd,
-                    state.PendingCursorXPtr)
-                : null;
+            mountedLoadContinuation.RestoreQuickState(state.MountedLoadContinuationState);
         }
 
         private static byte[][] CloneRamBanks(byte[][] source)
@@ -298,7 +229,7 @@ namespace Spectrum128kEmulator
                 throw new InvalidOperationException("The quick state RAM layout is invalid.");
             if (state.KeyboardMatrix.Length != 8 || state.KeyboardRowScanCounts.Length != 8)
                 throw new InvalidOperationException("The quick state keyboard layout is invalid.");
-            if (state.PendingInterpreterContext is { Length: not 12 })
+            if (state.MountedLoadContinuationState == null)
                 throw new InvalidOperationException("The quick state loader continuation is invalid.");
         }
     }
