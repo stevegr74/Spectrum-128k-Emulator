@@ -55,11 +55,6 @@ namespace Spectrum128kEmulator.Z80
         private const int RecentTraceCapacity = 256;
         private const int RecentInterruptEventCapacity = 8192;
         private bool instructionTraceCaptureEnabled;
-        private bool reportedHighRamEntry = false;
-        private bool reportedDiWindowEntry = false;
-        private bool reportedLowStackEntry = false;
-        private bool reported17xxStackEntry = false;
-        private bool reportedRomStackWindowEntry = false;
         private bool flagsChangedLastInstruction = false;
         private byte lastFlagsBeforeInstruction = 0;
 
@@ -143,11 +138,6 @@ namespace Spectrum128kEmulator.Z80
             interruptMode = 1;
             qFlags = 0;
 
-            reportedHighRamEntry = false;
-            reportedDiWindowEntry = false;
-            reportedLowStackEntry = false;
-            reported17xxStackEntry = false;
-            reportedRomStackWindowEntry = false;
             recentTrace.Clear();
             recentInterruptEvents.Clear();
             TStates = 0;
@@ -190,12 +180,6 @@ namespace Spectrum128kEmulator.Z80
             qFlags = 0;
             LastInterruptProgressTStates = TStates;
 
-            reportedHighRamEntry = false;
-            reportedDiWindowEntry = false;
-            reportedLowStackEntry = false;
-            reported17xxStackEntry = false;
-            reportedRomStackWindowEntry = false;
-
             flagsChangedLastInstruction = false;
             lastFlagsBeforeInstruction = 0;
             ExecutionStopped = false;
@@ -219,11 +203,6 @@ namespace Spectrum128kEmulator.Z80
 
                 if (InterruptPending && IFF1)
                 {
-                    if (Regs.SP < 0x4000)
-                    {
-                        Trace?.Invoke($"INT with BAD SP: PC={Regs.PC:X4} SP={Regs.SP:X4} IX={Regs.IX:X4} IY={Regs.IY:X4}");
-                    }
-
                     ushort returnPc = Regs.PC;
                     RecordInterruptEvent($"INT_ACCEPT return={returnPc:X4}", true);
                     RecordInterruptEvent("INT_ACCEPT");
@@ -290,11 +269,6 @@ namespace Spectrum128kEmulator.Z80
 
                 if (InterruptPending && IFF1)
                 {
-                    if (Regs.SP < 0x4000)
-                    {
-                        Trace?.Invoke($"INT with BAD SP: PC={Regs.PC:X4} SP={Regs.SP:X4} IX={Regs.IX:X4} IY={Regs.IY:X4}");
-                    }
-
                     ushort returnPc = Regs.PC;
                     RecordInterruptEvent($"INT_ACCEPT return={returnPc:X4}", true);
                     RecordInterruptEvent("INT_ACCEPT");
@@ -341,57 +315,13 @@ namespace Spectrum128kEmulator.Z80
             }
         }
 
-        private bool reportedFirstPermanentOffCandidate;
-        private ushort lastPcBeforeStep;
-
         public void Step()
         {
             ushort pcBefore = Regs.PC;
-            ushort spBefore = Regs.SP;
-            ushort ixBefore = Regs.IX;
-            ushort iyBefore = Regs.IY;
             byte fBefore = Regs.F;
-            bool iff1Before = IFF1;
-            bool iff2Before = IFF2;
 
             byte op = FetchOpcodeByte();
-            lastPcBeforeStep = pcBefore;
             RecordTrace(pcBefore, op);
-            if (pcBefore == 0x6D21)
-            {
-                RecordInterruptEvent("ENTERING_6D21_BEFORE_DI", true);
-
-                foreach (var line in recentTrace)
-                    RecordInterruptEvent("TRACE_BEFORE_6D21 " + line, true);
-            }
-
-            if (pcBefore >= 0x6C00 && pcBefore <= 0x6E00)
-            {
-                if (!reportedDiWindowEntry)
-                {
-                    reportedDiWindowEntry = true;
-                    RecordInterruptEvent("ENTERED_6C00_WINDOW", true);
-
-                    foreach (var line in recentTrace)
-                        RecordInterruptEvent("TRACE_BEFORE_6C00 " + line, true);
-                }
-
-                Trace?.Invoke(
-                    $"DI-WINDOW T={TStates} PC={pcBefore:X4} OP={op:X2} " +
-                    $"N={ReadMemory((ushort)(pcBefore + 1)):X2} {ReadMemory((ushort)(pcBefore + 2)):X2} " +
-                    $"SP={Regs.SP:X4} [SP]={ReadMemory(Regs.SP):X2}{ReadMemory((ushort)(Regs.SP + 1)):X2} " +
-                    $"AF={Regs.AF:X4} BC={Regs.BC:X4} DE={Regs.DE:X4} HL={Regs.HL:X4} " +
-                    $"IX={Regs.IX:X4} IY={Regs.IY:X4} " +
-                    $"IFF1={(IFF1 ? 1 : 0)} IFF2={(IFF2 ? 1 : 0)}");
-            }
-
-            if (!reportedHighRamEntry && pcBefore >= 0xC000)
-            {
-                reportedHighRamEntry = true;
-                Trace?.Invoke("=== ENTERED HIGH RAM ===");
-                foreach (var line in recentTrace)
-                    Trace?.Invoke(line);
-            }
 
             if (op == 0xCB)
             {
@@ -436,72 +366,6 @@ namespace Spectrum128kEmulator.Z80
                 opcodeTable[op]();
             }
 
-            if (spBefore != Regs.SP || ixBefore != Regs.IX || iyBefore != Regs.IY)
-            {
-                Trace?.Invoke(
-                    $"STATE PC={pcBefore:X4} OP={op:X2} SP {spBefore:X4}->{Regs.SP:X4} IX {ixBefore:X4}->{Regs.IX:X4} IY {iyBefore:X4}->{Regs.IY:X4}");
-            }
-
-            if (!reportedLowStackEntry && spBefore >= 0x4000 && Regs.SP < 0x4000)
-            {
-                reportedLowStackEntry = true;
-                RecordInterruptEvent(
-                    $"LOW_STACK_ENTER PC={pcBefore:X4} OP={op:X2} SP {spBefore:X4}->{Regs.SP:X4} " +
-                    $"BYTES={FormatOpcodeWindow(pcBefore, 4)} AF={Regs.AF:X4} BC={Regs.BC:X4} DE={Regs.DE:X4} HL={Regs.HL:X4} " +
-                    $"IX={Regs.IX:X4} IY={Regs.IY:X4}",
-                    true);
-
-                foreach (var line in recentTrace)
-                    RecordInterruptEvent("TRACE_BEFORE_LOW_STACK " + line, true);
-            }
-
-            if (!reported17xxStackEntry &&
-                (spBefore < 0x1700 || spBefore > 0x17FF) &&
-                Regs.SP >= 0x1700 &&
-                Regs.SP <= 0x17FF)
-            {
-                reported17xxStackEntry = true;
-                RecordInterruptEvent(
-                    $"STACK_17XX_ENTER PC={pcBefore:X4} OP={op:X2} SP {spBefore:X4}->{Regs.SP:X4} " +
-                    $"BYTES={FormatOpcodeWindow(pcBefore, 4)} AF={Regs.AF:X4} BC={Regs.BC:X4} DE={Regs.DE:X4} HL={Regs.HL:X4} " +
-                    $"IX={Regs.IX:X4} IY={Regs.IY:X4}",
-                    true);
-
-                foreach (var line in recentTrace)
-                    RecordInterruptEvent("TRACE_BEFORE_17XX_STACK " + line, true);
-            }
-
-            if (!reportedRomStackWindowEntry &&
-                (spBefore < 0x1000 || spBefore > 0x3FFF) &&
-                Regs.SP >= 0x1000 &&
-                Regs.SP <= 0x3FFF)
-            {
-                reportedRomStackWindowEntry = true;
-                RecordInterruptEvent(
-                    $"ROM_STACK_ENTER PC={pcBefore:X4} OP={op:X2} SP {spBefore:X4}->{Regs.SP:X4} " +
-                    $"BYTES={FormatOpcodeWindow(pcBefore, 4)} AF={Regs.AF:X4} BC={Regs.BC:X4} DE={Regs.DE:X4} HL={Regs.HL:X4} " +
-                    $"IX={Regs.IX:X4} IY={Regs.IY:X4}",
-                    true);
-
-                foreach (var line in recentTrace)
-                    RecordInterruptEvent("TRACE_BEFORE_ROM_STACK " + line, true);
-            }
-
-            if (Regs.SP < 0x4000)
-            {
-                Trace?.Invoke(
-                    $"BAD SP after PC={pcBefore:X4} OP={op:X2}: SP={Regs.SP:X4} IX={Regs.IX:X4} IY={Regs.IY:X4}");
-            }
-
-            if ((iff1Before || iff2Before) && !IFF1 && !IFF2)
-            {
-                RecordInterruptEvent(
-                    $"IFF_DISABLED PC={pcBefore:X4} OP={op:X2} BYTES={FormatOpcodeWindow(pcBefore, 4)} " +
-                    $"SP={Regs.SP:X4} AF={Regs.AF:X4} BC={Regs.BC:X4} DE={Regs.DE:X4} HL={Regs.HL:X4} " +
-                    $"IX={Regs.IX:X4} IY={Regs.IY:X4}",
-                    true);
-            }
-
             if (eiDelay > 0)
             {
                 eiDelay--;
@@ -512,23 +376,6 @@ namespace Spectrum128kEmulator.Z80
                     IFF2 = true;
                     RecordInterruptEvent("EI_EFFECT", true);
                 }
-            }
-
-            if (!reportedFirstPermanentOffCandidate &&
-                !IFF1 &&
-                !IFF2 &&
-                TStates > 780018) // after known good interrupt in latest log
-            {
-                reportedFirstPermanentOffCandidate = true;
-
-                Trace?.Invoke("=== FIRST IFF1=0 IFF2=0 AFTER GOOD INTERRUPTS ===");
-                Trace?.Invoke(
-                    $"T={TStates} PC_BEFORE={pcBefore:X4} PC_AFTER={Regs.PC:X4} " +
-                    $"SP={Regs.SP:X4} AF={Regs.AF:X4} BC={Regs.BC:X4} DE={Regs.DE:X4} HL={Regs.HL:X4} " +
-                    $"IX={Regs.IX:X4} IY={Regs.IY:X4} OP={op:X2}");
-
-                foreach (var line in recentTrace)
-                    Trace?.Invoke(line);
             }
 
             lastFlagsBeforeInstruction = fBefore;
@@ -566,20 +413,6 @@ namespace Spectrum128kEmulator.Z80
 
             if (countsAsProgress)
                 LastInterruptProgressTStates = TStates;
-        }
-
-        private bool IsWatchedStackAddress(ushort addr)
-        {
-            return addr >= 0x17DC && addr <= 0x17DF;
-        }
-
-        private void RecordStackEvent(string eventText)
-        {
-            RecordInterruptEvent(
-                $"{eventText} PC={lastPcBeforeStep:X4} SP={Regs.SP:X4} " +
-                $"AF={Regs.AF:X4} BC={Regs.BC:X4} DE={Regs.DE:X4} HL={Regs.HL:X4} " +
-                $"IX={Regs.IX:X4} IY={Regs.IY:X4}",
-                true);
         }
 
         public void RestoreInterruptState(bool iff1, bool iff2, int interruptMode)

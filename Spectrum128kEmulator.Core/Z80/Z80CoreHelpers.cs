@@ -75,56 +75,30 @@ namespace Spectrum128kEmulator.Z80
         // Stack and fetch helpers
         // =========================================================
 
-/*        private void Push(ushort value)
-        {
-            Regs.SP -= 2;
-            WriteMemory(Regs.SP, (byte)value);
-            WriteMemory((ushort)(Regs.SP + 1), (byte)(value >> 8));
-        }*/
         private void Push(ushort value)
         {
             Regs.SP--;
             byte high = (byte)(value >> 8);
-            if (IsWatchedStackAddress(Regs.SP))
-                RecordStackEvent($"STACK_PUSH_HIGH {Regs.SP:X4}<-{high:X2} value={value:X4}");
             WriteMemory(Regs.SP, high); // high
             TStates += 3;
 
             Regs.SP--;
             byte low = (byte)(value & 0xFF);
-            if (IsWatchedStackAddress(Regs.SP))
-                RecordStackEvent($"STACK_PUSH_LOW {Regs.SP:X4}<-{low:X2} value={value:X4}");
             WriteMemory(Regs.SP, low); // low
             TStates += 3;
         }
 
-        /*private ushort Pop()
-        {
-            ushort value = (ushort)(ReadMemory(Regs.SP) | (ReadMemory((ushort)(Regs.SP + 1)) << 8));
-            Regs.SP += 2;
-            return value;
-        }*/
-
         private ushort Pop()
         {
-            ushort lowAddr = Regs.SP;
             byte low = ReadMemory(Regs.SP);
-            if (IsWatchedStackAddress(lowAddr))
-                RecordStackEvent($"STACK_POP_LOW {lowAddr:X4}->{low:X2}");
             TStates += 3;
             Regs.SP++;
 
-            ushort highAddr = Regs.SP;
             byte high = ReadMemory(Regs.SP);
-            if (IsWatchedStackAddress(highAddr))
-                RecordStackEvent($"STACK_POP_HIGH {highAddr:X4}->{high:X2}");
             TStates += 3;
             Regs.SP++;
 
-            ushort value = (ushort)(low | (high << 8));
-            if (value == 0x6C53 || value == 0x185C)
-                RecordStackEvent($"STACK_POP_VALUE {value:X4}");
-            return value;
+            return (ushort)(low | (high << 8));
         }
 
         // Fetch helpers do not add T-states here.
