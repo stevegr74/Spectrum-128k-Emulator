@@ -304,7 +304,7 @@ namespace Spectrum128kEmulator.Tests
         }
 
         [Fact]
-        public void MountedTape_PauseBoundary_Keeps_EarLow_When_Next_Block_Starts()
+        public void MountedTape_PauseBoundary_Drives_EarLow_Immediately_When_Data_EndsHigh()
         {
             string tempFolder = CreateTempRoms();
 
@@ -328,7 +328,44 @@ namespace Spectrum128kEmulator.Tests
                 }
 
                 Assert.Equal("Pause", GetPrivateField(tape, "earPlaybackState").ToString());
+                Assert.False((bool)GetPrivateField(tape, "earLevel"));
+
+                MethodInfo advanceEarPulse = typeof(MountedTape).GetMethod(
+                    "AdvanceEarPulse",
+                    BindingFlags.Instance | BindingFlags.NonPublic)!;
+                advanceEarPulse.Invoke(tape, Array.Empty<object>());
+
+                Assert.Equal("PureTone", GetPrivateField(tape, "earPlaybackState").ToString());
+                Assert.False((bool)GetPrivateField(tape, "earLevel"));
+            }
+            finally
+            {
+                Directory.Delete(tempFolder, true);
+            }
+        }
+
+        [Fact]
+        public void MountedTape_PauseBoundary_Adds_TerminatingHighPulse_When_Data_EndsLow()
+        {
+            string tempFolder = CreateTempRoms();
+
+            try
+            {
+                var machine = new Spectrum128Machine(tempFolder);
+                var tape = new MountedTape(
+                    "pause-termination",
+                    new TapeBlock[]
+                    {
+                        TapeBlock.CreateSetSignalLevel(false),
+                        TapeBlock.CreatePause(2),
+                        TapeBlock.CreatePureTone(100, 1)
+                    },
+                    skipCustomHeaderForEarPlayback: false);
+                machine.MountTape(tape);
+
+                Assert.Equal("Pause", GetPrivateField(tape, "earPlaybackState").ToString());
                 Assert.True((bool)GetPrivateField(tape, "earLevel"));
+                Assert.Equal(3500, (int)GetPrivateField(tape, "earPulseLengthTStates"));
 
                 MethodInfo advanceEarPulse = typeof(MountedTape).GetMethod(
                     "AdvanceEarPulse",
@@ -337,6 +374,7 @@ namespace Spectrum128kEmulator.Tests
 
                 Assert.Equal("Pause", GetPrivateField(tape, "earPlaybackState").ToString());
                 Assert.False((bool)GetPrivateField(tape, "earLevel"));
+                Assert.Equal(3500, (int)GetPrivateField(tape, "earPulseLengthTStates"));
 
                 advanceEarPulse.Invoke(tape, Array.Empty<object>());
 
