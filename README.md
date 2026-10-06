@@ -33,7 +33,7 @@ is complete.
 Verified media includes:
 
 - Snapshots: `robocop128k.z80`, `JSWAPRIL.Z80`, and Exolon in `.sna`/`.z80` form
-- Tapes: Exolon, Where Time Stood Still, Impossible Mission, Batman, Target Renegade (128K all-at-once and 48K level-at-a-time), and Scuba Dive
+- Tapes: Exolon, Where Time Stood Still, Impossible Mission I/II, Batman, Target Renegade (128K all-at-once and 48K level-at-a-time), Scuba Dive, Roller Coaster, Captain America, and Donkey Kong
 - Replay: `aufmonty.rzx`
 
 Current limitations and active work:
@@ -46,7 +46,8 @@ Current limitations and active work:
 
 ### Implementation Notes
 
-- Fast tape bootstrap is capability-gated. Unsupported BASIC loader control flow falls back to the real ROM autorun path with the remaining tape mounted.
+- Fast tape bootstrap is capability-gated. Unsupported initial or chained BASIC loader control flow falls back to a clean real-ROM autorun path with the remaining tape mounted.
+- ROM-driven tape handoffs preserve consumed-block pauses, exact TZX pause signal transitions, and zero-duration stop markers.
 - Protected playback and Quick State preserve precise tape pulse, EAR, loader-continuation and replay positions.
 - The background emulation loop owns mutable machine state; the UI consumes copied snapshots and uses nested pause leases for safe inspection.
 
