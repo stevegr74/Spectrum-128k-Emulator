@@ -117,6 +117,29 @@ namespace Spectrum128kEmulator.Tests
         }
 
         [Fact]
+        public void LoadZ80v1_Ejects_Previously_Mounted_Tape()
+        {
+            string tempFolder = CreateTempRoms();
+
+            try
+            {
+                var machine = new Spectrum128Machine(tempFolder);
+                machine.MountTape(new Tap.MountedTape(
+                    "playing.tap",
+                    new[] { Tap.TapeBlock.CreatePureTone(pulseLength: 100, pulseCount: 4) }));
+
+                Z80SnapshotLoader.Load(machine, BuildV1Snapshot(new byte[Ram48Size], compressed: false));
+
+                Assert.False(machine.HasMountedTape);
+                Assert.Equal(Tap.TapeTransportState.NoTape, machine.TapeTransportState);
+            }
+            finally
+            {
+                Directory.Delete(tempFolder, true);
+            }
+        }
+
+        [Fact]
         public void LoadZ80v1_CanUse128kHardwareFor48kFormatSnapshot()
         {
             string tempFolder = CreateTempRoms();

@@ -124,6 +124,29 @@ namespace Spectrum128kEmulator.Tests
         }
 
         [Fact]
+        public void LoadSna48k_Ejects_Previously_Mounted_Tape()
+        {
+            string tempFolder = CreateTempRoms();
+
+            try
+            {
+                var machine = new Spectrum128Machine(tempFolder);
+                machine.MountTape(new Tap.MountedTape(
+                    "playing.tap",
+                    new[] { Tap.TapeBlock.CreatePureTone(pulseLength: 100, pulseCount: 4) }));
+
+                SnapshotLoader.LoadSna48k(machine, CreateMinimalSna48());
+
+                Assert.False(machine.HasMountedTape);
+                Assert.Equal(Tap.TapeTransportState.NoTape, machine.TapeTransportState);
+            }
+            finally
+            {
+                Directory.Delete(tempFolder, true);
+            }
+        }
+
+        [Fact]
         public void LoadSna48k_Restores_Iff1_And_Iff2_From_Iff2_Bit()
         {
             string tempFolder = CreateTempRoms();

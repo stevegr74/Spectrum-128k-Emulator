@@ -1562,6 +1562,7 @@ namespace Spectrum128kEmulator
             displayedFrameCount = 0;
             totalPresentedFrameCount = 0;
             UpdateMachineModelMenuItems();
+            UpdateTapeTransportTitle(lastObservedTapeTransportState, lastObservedTapeMarkerStop);
             UpdateTapeTransportMenuItem();
             UpdateStatsLabel();
         }
