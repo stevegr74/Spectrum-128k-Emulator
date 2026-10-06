@@ -174,7 +174,7 @@ if (args.Length > 0)
     string extension = Path.GetExtension(snapshotPath);
     if (extension.Equals(".sna", StringComparison.OrdinalIgnoreCase))
     {
-        SnapshotLoader.LoadSna48k(machine, snapshotPath);
+        SnapshotLoader.Load(machine, snapshotPath);
     }
     else if (extension.Equals(".z80", StringComparison.OrdinalIgnoreCase))
     {

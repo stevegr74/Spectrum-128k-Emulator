@@ -213,7 +213,7 @@ namespace Spectrum128kEmulator
             displayContextMenu.Items.Add(restoreQuickStateMenuItem);
 
             displayContextMenu.Items.Add(new ToolStripSeparator());
-            displayContextMenu.Items.Add("F9 - Load .sna Snapshot (48K)", null, (_, _) => LoadSnaSnapshotFromDialog());
+            displayContextMenu.Items.Add("F9 - Load .sna Snapshot", null, (_, _) => LoadSnaSnapshotFromDialog());
             displayContextMenu.Items.Add("F10 - Load .z80 Snapshot or .rzx Recording", null, (_, _) => LoadSnapshotOrRecordingFromDialog());
             displayContextMenu.Items.Add("F11 - Mount .tap or .tzx Tape Image", null, (_, _) => MountTapFromDialog());
             displayContextMenu.Items.Add("F12 - Write Machine Diagnostic Dump", null, (_, _) => DumpMachineDebugState());
@@ -959,7 +959,7 @@ namespace Spectrum128kEmulator
         {
             using var dialog = new OpenFileDialog
             {
-                Title = "Load .sna Snapshot (48K)",
+                Title = "Load .sna Snapshot",
                 Filter = "Spectrum snapshots (*.sna)|*.sna|All files (*.*)|*.*",
                 CheckFileExists = true,
                 Multiselect = false
@@ -977,7 +977,7 @@ namespace Spectrum128kEmulator
                     lock (machineLock)
                     {
                         Spectrum128Machine newMachine = CreateConfiguredMachine();
-                        SnapshotLoader.LoadSna48k(newMachine, dialog.FileName, selectedMachineModel);
+                        SnapshotLoader.Load(newMachine, dialog.FileName, selectedMachineModel);
                         machine = newMachine;
                     }
                     ResetFrameScheduler();

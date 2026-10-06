@@ -126,7 +126,7 @@ namespace Spectrum128kEmulator
         {
             if (extension.Equals("SNA", StringComparison.OrdinalIgnoreCase))
             {
-                SnapshotLoader.LoadSna48k(machine, snapshotData);
+                SnapshotLoader.Load(machine, snapshotData);
                 return;
             }
 
