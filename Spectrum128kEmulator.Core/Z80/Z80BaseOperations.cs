@@ -132,7 +132,7 @@ namespace Spectrum128kEmulator.Z80
 
                 ushort af = DaaAfTable[index];
                 Regs.A = (byte)(af >> 8);
-                Regs.F = (byte)af;
+                WriteFlags((byte)af);
 
                 TStates += 4;
             };

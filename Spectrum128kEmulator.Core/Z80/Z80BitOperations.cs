@@ -178,12 +178,12 @@ namespace Spectrum128kEmulator.Z80
 
         private void SetShiftRotateFlags(byte result, bool carry)
         {
-            Regs.F = 0;
-            if ((result & 0x80) != 0) Regs.F |= 0x80;
-            if (result == 0) Regs.F |= 0x40;
-            if (Parity(result)) Regs.F |= 0x04;
-            if (carry) Regs.F |= 0x01;
-            Regs.F |= (byte)(result & 0x28);
+            byte flags = (byte)(result & 0x28);
+            if ((result & 0x80) != 0) flags |= 0x80;
+            if (result == 0) flags |= 0x40;
+            if (Parity(result)) flags |= 0x04;
+            if (carry) flags |= 0x01;
+            WriteFlags(flags);
         }
     }
 }

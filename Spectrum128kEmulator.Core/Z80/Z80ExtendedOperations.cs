@@ -341,7 +341,7 @@ namespace Spectrum128kEmulator.Z80
             int sum = value + (adjustment & 0xFF);
             byte parityOperand = (byte)((sum & 0x07) ^ Regs.B);
 
-            Regs.F = 0;
+            WriteFlags(0);
             SetFlag(Flag.S, (Regs.B & 0x80) != 0);
             SetFlag(Flag.Z, Regs.B == 0);
             CopyUndocumentedFlagsFrom(Regs.B);
