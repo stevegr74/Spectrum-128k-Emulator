@@ -357,23 +357,23 @@ namespace Spectrum128kEmulator.Tests
                         BuildPulseSequenceBlock(855, 1710),
                         BuildPureDataBlock(new byte[] { 0xAA, 0x55, 0xF0 }, usedBitsInLastByte: 8, pauseMs: 250)));
 
-                var standardMachine = new Spectrum128Machine(romFolder);
+                var standardMachine = new Spectrum128Machine(romFolder, SpectrumRomProfile.SyntheticTest);
                 var standardResult = Tap.TzxLoader.LoadWithPolicy(standardMachine, standardPath);
                 Assert.Equal("FullFakeLoad", standardResult.Strategy.ToString());
 
-                var romDrivenMachine = new Spectrum128Machine(romFolder);
+                var romDrivenMachine = new Spectrum128Machine(romFolder, SpectrumRomProfile.SyntheticTest);
                 var romDrivenResult = Tap.TzxLoader.LoadWithPolicy(romDrivenMachine, romDrivenPath);
                 Assert.Equal("RomBootstrapMounted", romDrivenResult.Strategy.ToString());
 
-                var hybridMachine = new Spectrum128Machine(romFolder);
+                var hybridMachine = new Spectrum128Machine(romFolder, SpectrumRomProfile.SyntheticTest);
                 var hybridResult = Tap.TzxLoader.LoadWithPolicy(hybridMachine, hybridPath);
                 Assert.Equal("BootstrapHybrid", hybridResult.Strategy.ToString());
 
-                var romControlledMixedMachine = new Spectrum128Machine(romFolder);
+                var romControlledMixedMachine = new Spectrum128Machine(romFolder, SpectrumRomProfile.SyntheticTest);
                 var romControlledMixedResult = Tap.TzxLoader.LoadWithPolicy(romControlledMixedMachine, romControlledMixedPath);
                 Assert.Equal("RomBootstrapMounted", romControlledMixedResult.Strategy.ToString());
 
-                var chainedBasicPrefixMachine = new Spectrum128Machine(romFolder);
+                var chainedBasicPrefixMachine = new Spectrum128Machine(romFolder, SpectrumRomProfile.SyntheticTest);
                 var chainedBasicPrefixResult = Tap.TzxLoader.LoadWithPolicy(chainedBasicPrefixMachine, chainedBasicPrefixPath);
                 Assert.Equal("BootstrapHybrid", chainedBasicPrefixResult.Strategy.ToString());
 
@@ -388,7 +388,7 @@ namespace Spectrum128kEmulator.Tests
                         BuildStandardSpeedDataBlock(new byte[] { 0x00, 0x10, 0x20, 0x30 }, pauseMs: 1000),
                         BuildStandardSpeedDataBlock(BuildSpectrumDataBlock(new byte[] { 0x05, 0x06, 0x07, 0x08 }), pauseMs: 1000)));
 
-                var mountedMixedMachine = new Spectrum128Machine(romFolder);
+                var mountedMixedMachine = new Spectrum128Machine(romFolder, SpectrumRomProfile.SyntheticTest);
                 var mountedMixedResult = Tap.TzxLoader.LoadWithPolicy(mountedMixedMachine, mountedMixedPath);
                 Assert.Equal("BootstrapHybrid", mountedMixedResult.Strategy.ToString());
 
@@ -422,7 +422,7 @@ namespace Spectrum128kEmulator.Tests
                         BuildPulseSequenceBlock(855, 1710),
                         BuildPureDataBlock(new byte[] { 0xAA, 0x55, 0xF0 }, usedBitsInLastByte: 8, pauseMs: 250)));
 
-                var protectedHybridMachine = new Spectrum128Machine(romFolder);
+                var protectedHybridMachine = new Spectrum128Machine(romFolder, SpectrumRomProfile.SyntheticTest);
                 var protectedHybridResult = Tap.TzxLoader.LoadWithPolicy(protectedHybridMachine, protectedHybridPath);
                 Assert.Equal("LeadingStandardChainFakeLoad", protectedHybridResult.Strategy.ToString());
             }
@@ -1591,10 +1591,7 @@ namespace Spectrum128kEmulator.Tests
 
                 Tap.TapeExecutionResult result = Tap.TzxLoader.LoadWithPolicy(machine, tzxPath);
                 Console.WriteLine($"BATMAN strategy={result.Strategy} consumed={result.ConsumedBlockCount}/{result.TotalBlockCount}");
-                FieldInfo pendingResolverField = typeof(Spectrum128Machine).GetField(
-                    "pendingMountedLoadUsrContinuationResolver",
-                    BindingFlags.Instance | BindingFlags.NonPublic)!;
-                object? initialPendingResolverObject = pendingResolverField.GetValue(machine);
+                object? initialPendingResolverObject = machine.PendingMountedLoadResolver;
                 Console.WriteLine(
                     $"BAT POST-LOAD pending={(initialPendingResolverObject != null ? 1 : 0)} " +
                     $"pc=0x{machine.Cpu.Regs.PC:X4} sp=0x{machine.Cpu.Regs.SP:X4} tape={machine.GetMountedTapeDebugState()}");
@@ -1604,7 +1601,7 @@ namespace Spectrum128kEmulator.Tests
                 ushort lastSlicePc = 0xFFFF;
                 for (int slice = 0; slice < 4000 && machine.FrameCount == 0; slice++)
                 {
-                    object? currentResolverObject = pendingResolverField.GetValue(machine);
+                    object? currentResolverObject = machine.PendingMountedLoadResolver;
                     if (currentResolverObject != null &&
                         !ReferenceEquals(currentResolverObject, wrappedResolverSource))
                     {
@@ -1621,7 +1618,7 @@ namespace Spectrum128kEmulator.Tests
                         });
                     }
 
-                    bool slicePendingNow = pendingResolverField.GetValue(machine) != null;
+                    bool slicePendingNow = machine.PendingMountedLoadResolver != null;
                     if (slicePending != slicePendingNow || machine.Cpu.Regs.PC != lastSlicePc)
                     {
                         Console.WriteLine(
@@ -1641,7 +1638,7 @@ namespace Spectrum128kEmulator.Tests
                 for (int frame = 0; frame < 15000; frame++)
                 {
                     machine.ExecuteFrame();
-                    object? currentPending = pendingResolverField.GetValue(machine);
+                    object? currentPending = machine.PendingMountedLoadResolver;
                     bool pending = currentPending != null;
                     if (pending != lastPending)
                     {
@@ -1668,7 +1665,7 @@ namespace Spectrum128kEmulator.Tests
                     }
                 }
 
-                object? pendingResolverObject = pendingResolverField.GetValue(machine);
+                object? pendingResolverObject = machine.PendingMountedLoadResolver;
                 Console.WriteLine($"BATMAN pending after run? {pendingResolverObject != null}");
                 Console.WriteLine($"BATMAN PC=0x{machine.Cpu.Regs.PC:X4} SP=0x{machine.Cpu.Regs.SP:X4}");
                 Console.WriteLine($"BATMAN tape={machine.GetMountedTapeDebugState()}");
@@ -1752,20 +1749,16 @@ namespace Spectrum128kEmulator.Tests
                 for (int frame = 0; frame < 17000; frame++)
                     machine.ExecuteFrame();
 
-                FieldInfo pendingResolverField = typeof(Spectrum128Machine).GetField(
-                    "pendingMountedLoadUsrContinuationResolver",
-                    BindingFlags.Instance | BindingFlags.NonPublic)!;
-
                 Console.WriteLine(
                     $"BAT FIRST strategy={first.Strategy} consumed={first.ConsumedBlockCount}/{first.TotalBlockCount} " +
-                    $"pc=0x{machine.Cpu.Regs.PC:X4} frameTStates={machine.FrameTStates} pending={(pendingResolverField.GetValue(machine) != null ? 1 : 0)} " +
+                    $"pc=0x{machine.Cpu.Regs.PC:X4} frameTStates={machine.FrameTStates} pending={(machine.PendingMountedLoadResolver != null ? 1 : 0)} " +
                     $"tape={machine.GetMountedTapeDebugState()}");
 
                 Tap.TapeExecutionResult second = Tap.TzxLoader.LoadWithPolicy(machine, tzxPath);
                 string secondLoadDump = machine.BuildDebugDump("batman-second-load");
                 Console.WriteLine(
                     $"BAT SECOND-LOAD strategy={second.Strategy} consumed={second.ConsumedBlockCount}/{second.TotalBlockCount} " +
-                    $"pc=0x{machine.Cpu.Regs.PC:X4} frameTStates={machine.FrameTStates} pending={(pendingResolverField.GetValue(machine) != null ? 1 : 0)} " +
+                    $"pc=0x{machine.Cpu.Regs.PC:X4} frameTStates={machine.FrameTStates} pending={(machine.PendingMountedLoadResolver != null ? 1 : 0)} " +
                     $"tape={machine.GetMountedTapeDebugState()}");
                 bool dumpsEqual = string.Equals(firstLoadDump, secondLoadDump, StringComparison.Ordinal);
                 Console.WriteLine($"BAT LOAD DUMPS EQUAL={(dumpsEqual ? 1 : 0)}");
@@ -1790,7 +1783,7 @@ namespace Spectrum128kEmulator.Tests
                     machine.ExecuteFrame();
 
                 Console.WriteLine(
-                    $"BAT SECOND-RUN pc=0x{machine.Cpu.Regs.PC:X4} frameTStates={machine.FrameTStates} pending={(pendingResolverField.GetValue(machine) != null ? 1 : 0)} " +
+                    $"BAT SECOND-RUN pc=0x{machine.Cpu.Regs.PC:X4} frameTStates={machine.FrameTStates} pending={(machine.PendingMountedLoadResolver != null ? 1 : 0)} " +
                     $"tape={machine.GetMountedTapeDebugState()}");
             }
             finally
@@ -1811,7 +1804,7 @@ namespace Spectrum128kEmulator.Tests
 
                 static string SnapshotState(Spectrum128Machine machine) =>
                     $"PC=0x{machine.Cpu.Regs.PC:X4} SP=0x{machine.Cpu.Regs.SP:X4} Frame={machine.FrameCount} " +
-                    $"Pending={(typeof(Spectrum128Machine).GetField("pendingMountedLoadUsrContinuationResolver", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(machine) != null ? 1 : 0)} " +
+                    $"Pending={(machine.PendingMountedLoadResolver != null ? 1 : 0)} " +
                     $"Tape={machine.GetMountedTapeDebugState()}";
 
                 static void ExecuteFrames(Spectrum128Machine machine, int targetFrame)

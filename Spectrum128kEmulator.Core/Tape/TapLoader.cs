@@ -130,9 +130,6 @@ namespace Spectrum128kEmulator.Tap
 
     public sealed partial class MountedTape
     {
-        private const ushort RomTapeReturnAddress = 0x053F;
-        private const ushort RomLoadBytesTrapAddress = 0x056B;
-        private const ushort RomLoadBytesSyncLoopAddress = 0x0574;
         private const byte FlagCarry = 0x01;
         private const byte HeaderFlag = 0x00;
         private const byte DataFlag = 0xFF;
@@ -464,11 +461,11 @@ namespace Spectrum128kEmulator.Tap
                 throw new ArgumentNullException(nameof(machine));
             if (cpu == null)
                 throw new ArgumentNullException(nameof(cpu));
-            if (playbackPaused)
+            if (playbackPaused || !machine.SupportsRomTapeAcceleration)
                 return false;
 
-            bool isSyncLoopTrap = cpu.Regs.PC == RomLoadBytesSyncLoopAddress;
-            if (cpu.Regs.PC != RomLoadBytesTrapAddress && !isSyncLoopTrap)
+            bool isSyncLoopTrap = cpu.Regs.PC == machine.RomProfile.LoadBytesSyncLoopAddress;
+            if (cpu.Regs.PC != machine.RomProfile.LoadBytesTrapAddress && !isSyncLoopTrap)
                 return false;
 
             bool success = false;
@@ -773,13 +770,13 @@ namespace Spectrum128kEmulator.Tap
                 if (hasUnstructuredStandardRomLoadContext &&
                     machine.PendingMountedLoadUsrContinuationRequiresUsrReturnAddress)
                 {
-                    return RomTapeReturnAddress;
+                    return machine.RomProfile.TapeReturnAddress;
                 }
 
                 return PeekWord(machine, cpu.Regs.SP);
             }
 
-            return RomTapeReturnAddress;
+            return machine.RomProfile.TapeReturnAddress;
         }
 
         public BootstrapTapeLoadResult TryConsumeBootstrapLoad(Spectrum128Machine machine)
@@ -1744,12 +1741,6 @@ namespace Spectrum128kEmulator.Tap
         private const int RomInitializationFrameLimit = 150;
 
         private const ushort BasicProgramStart = 23755;
-        private const ushort MainExecutionLoopAddress = 0x12A2;
-        private const ushort MainExecutionReportAddress = 0x1303;
-        private const ushort BasicLineNewAddress = 0x1B9E;
-        private const ushort RomKeyboardInputLoopAddress = 0x15E7;
-        private const ushort UsrReturnAddress = 0x2D2B;
-        private const ushort EndCalcLiteralAddress = 0x2758;
         private const ushort DefaultStackPointer = 0xFF58;
         private const ushort RomSystemVariablesBase = 0x5C3A;
 
@@ -2083,6 +2074,13 @@ namespace Spectrum128kEmulator.Tap
         {
             if (machine == null)
                 throw new ArgumentNullException(nameof(machine));
+
+            if (!machine.SupportsRomTapeAcceleration)
+            {
+                return new TapeLoadPlan(
+                    TapeLoadStrategy.MountedRealtime,
+                    $"ROM profile '{machine.RomProfile.Name}' is not compatible with address-based tape acceleration.");
+            }
 
             if (CanLoadAllStandardTapeBlocks(blocks))
             {
@@ -3138,10 +3136,10 @@ namespace Spectrum128kEmulator.Tap
             if (errorStackPointer < 0x4000 || errorStackPointer == 0xFFFF)
                 throw new InvalidOperationException("The Spectrum ROM did not initialize a valid BASIC error stack.");
 
-            WriteWord(machine, errorStackPointer, MainExecutionReportAddress);
+            WriteWord(machine, errorStackPointer, machine.RomProfile.MainExecutionReportAddress);
             machine.Cpu.Regs.SP = errorStackPointer;
             machine.Cpu.Regs.HL = autoStartLine;
-            machine.Cpu.Regs.PC = BasicLineNewAddress;
+            machine.Cpu.Regs.PC = machine.RomProfile.BasicLineNewAddress;
             machine.PokeMemory(
                 FlagsSystemVariableAddress,
                 (byte)(machine.PeekMemory(FlagsSystemVariableAddress) | 0x80));
@@ -3163,7 +3161,8 @@ namespace Spectrum128kEmulator.Tap
             else
                 machine.ConfigureFor48kTapeLoad(borderColor: 0);
 
-            machine.Cpu.StopBeforeInstruction = cpu => cpu.Regs.PC == RomKeyboardInputLoopAddress;
+            machine.Cpu.StopBeforeInstruction = cpu =>
+                cpu.Regs.PC == machine.RomProfile.KeyboardInputLoopAddress;
             try
             {
                 for (int frame = 0; frame < RomInitializationFrameLimit && !machine.Cpu.ExecutionStopped; frame++)
@@ -3401,7 +3400,7 @@ namespace Spectrum128kEmulator.Tap
             else
                 machine.ConfigureFor48kTapeLoad(borderColor: 0);
 
-            machine.Cpu.Regs.PC = MainExecutionLoopAddress;
+            machine.Cpu.Regs.PC = machine.RomProfile.TapeAutoStartExecutionLoopAddress;
             machine.Cpu.Regs.SP = DefaultStackPointer;
             machine.Cpu.Regs.IY = RomSystemVariablesBase;
             machine.Cpu.Regs.IX = RomSystemVariablesBase;
@@ -4361,13 +4360,13 @@ namespace Spectrum128kEmulator.Tap
                 // routine sees STACK-BC as its return address, and successful returns
                 // back to BASIC expect H'L' to still reference end-calc.
                 machine.Cpu.Regs.SP -= 2;
-                WriteWord(machine, machine.Cpu.Regs.SP, UsrReturnAddress);
+                WriteWord(machine, machine.Cpu.Regs.SP, machine.RomProfile.UsrReturnAddress);
                 machine.Cpu.Regs.BC = entryPoint;
                 // The ROM loads HL with STACK-BC before it pushes the return
                 // address and RETs into the USR target.
-                machine.Cpu.Regs.HL = UsrReturnAddress;
-                machine.Cpu.Regs.H_ = (byte)(EndCalcLiteralAddress >> 8);
-                machine.Cpu.Regs.L_ = (byte)(EndCalcLiteralAddress & 0xFF);
+                machine.Cpu.Regs.HL = machine.RomProfile.UsrReturnAddress;
+                machine.Cpu.Regs.H_ = (byte)(machine.RomProfile.EndCalcLiteralAddress >> 8);
+                machine.Cpu.Regs.L_ = (byte)(machine.RomProfile.EndCalcLiteralAddress & 0xFF);
                 machine.Cpu.Regs.PC = entryPoint;
             }
 

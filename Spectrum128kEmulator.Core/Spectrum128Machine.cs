@@ -114,75 +114,13 @@ namespace Spectrum128kEmulator
         private bool uses48kMemoryMap;
         private int tStatesUntilNextInterrupt;
         private bool realignInterruptPhaseAfterNextAccept;
-        private Func<Spectrum128Machine, ushort?>? pendingMountedLoadUsrContinuationResolver;
-        private bool pendingMountedLoadUsrContinuationRequiresUsrReturnAddress;
-        private ushort? pendingMountedLoadBasicResumeLine;
-        private byte pendingMountedLoadBasicResumeStatement;
-        private MountedLoadInterpreterContext? pendingMountedLoadInterpreterContext;
-        private MountedLoadBasicVariableArea? pendingMountedLoadBasicVariableArea;
-        private MountedLoadResumeCursorOverride? pendingMountedLoadResumeCursorOverride;
-        private bool pendingMountedLoadPreserveLiveInterpreterStateForDirectUsrEntry;
-        private ulong pendingMountedLoadNextStreamingInterpreterRefreshTStates;
+        private readonly MountedLoadContinuationController mountedLoadContinuation;
 
-        private const ushort RomMainLoopLoadReturnPcMin = 0x15F7;
-        private const ushort RomMainLoopLoadReturnPcMax = 0x15FA;
-        private const ushort RomLiveLoadLoopReturnPcMin = 0x0E51;
-        private const ushort RomLiveLoadLoopReturnPcMax = 0x0E5C;
-        private const ushort RomWorkspaceCallbackReturnPc = 0x5E87;
-        private const ushort RomKeyboardInputCallbackPcMin = 0x10A8;
-        private const ushort RomKeyboardInputCallbackPcMax = 0x10B4;
-        private const ushort RomMountedLoadServicePcMin = 0x1615;
-        private const ushort RomMountedLoadServicePcMax = 0x16E4;
-        private const ushort RomMountedLoadStackServicePcMin = 0x3631;
-        private const ushort RomMountedLoadStackServicePcMax = 0x3634;
-        private const ushort UsrReturnAddress = 0x2D2B;
-        private const ushort EndCalcLiteralAddress = 0x2758;
-        private const ushort MainExecutionLoopAddress = 0x1555;
-        private const ushort NewPpcAddress = 23618;
-        private const ushort NspPcAddress = 23620;
-        private const ushort PpcAddress = 23621;
-        private const ushort SubPpcAddress = 23623;
-        private const ushort CurChlAddress = 23633;
-        private const ushort EditLineAddress = 23641;
-        private const ushort KCurAddress = 23643;
-        private const ushort ChAddAddress = 23645;
-        private const ushort XPtrAddress = 23647;
-        private const ushort WorkspaceAddress = 23649;
-        private const ushort StackBottomAddress = 23651;
-        private const ushort StackEndAddress = 23653;
-        private const ushort VarsAddress = 23627;
-        private const ushort ProgAddress = 23635;
-        private const ushort NextLineAddress = 23637;
-        private const ushort DataAddress = 23639;
-        private const ushort ScreenChannelDescriptorAddress = 23734;
-        private const ushort KeyboardChannelDescriptorAddress = 23739;
-        private const ushort OldPpcAddress = 23662;
-        private const ushort OspPcAddress = 23664;
-        private const uint MountedLoadStreamingInterpreterRefreshIntervalTStates = 4096;
-
-        private readonly record struct MountedLoadInterpreterContext(
-            ushort Vars,
-            ushort Prog,
-            ushort NextLine,
-            ushort Data,
-            ushort CurChl,
-            ushort EditLine,
-            ushort KCur,
-            ushort ChAdd,
-            ushort XPtr,
-            ushort Workspace,
-            ushort StackBottom,
-            ushort StackEnd);
-
-        private readonly record struct MountedLoadBasicVariableArea(
-            ushort Vars,
-            ushort EditLine,
-            byte[] Data);
-
-        private readonly record struct MountedLoadResumeCursorOverride(
-            ushort? KCur,
-            ushort? ChAdd,
-            ushort? XPtr);
+        internal Func<Spectrum128Machine, ushort?>? PendingMountedLoadResolver
+        {
+            get => mountedLoadContinuation.Resolver;
+            set => mountedLoadContinuation.Resolver = value;
+        }
 
         public bool SpeakerHigh => speakerHigh;
         public bool SpeakerEdge { get; private set; }
@@ -217,6 +155,11 @@ namespace Spectrum128kEmulator
         public bool IsTapeStoppedAtMarker => mountedTape?.IsPausedByStopMarker == true;
 
         public Spectrum128Machine(string romFolder)
+            : this(romFolder, romProfileOverride: null)
+        {
+        }
+
+        internal Spectrum128Machine(string romFolder, SpectrumRomProfile? romProfileOverride)
         {
             if (string.IsNullOrWhiteSpace(romFolder))
                 throw new ArgumentException("ROM folder must be provided.", nameof(romFolder));
@@ -228,6 +171,9 @@ namespace Spectrum128kEmulator
                 romBanks[i] = new byte[16384];
 
             LoadRoms(romFolder);
+            if (romProfileOverride != null)
+                RomProfile = romProfileOverride;
+            mountedLoadContinuation = new MountedLoadContinuationController(this);
             InitializeScreenRam();
             ClearKeyboard();
 
@@ -267,6 +213,8 @@ namespace Spectrum128kEmulator
         public int FrameTStates => frameTStates;
         public int CurrentCpuClockHz => frameTStates == FrameTStates48 ? CpuClockHz48 : CpuClockHz128;
         public SpectrumMachineModel MachineModel { get; private set; } = SpectrumMachineModel.Spectrum128K;
+        public SpectrumRomProfile RomProfile { get; private set; } = null!;
+        public bool SupportsRomTapeAcceleration => RomProfile.SupportsAddressBasedTapeServices;
         public bool FlashPhase => ((FrameCount / 16) & 1) != 0;
         public BorderFrame LastCompletedBorderFrame => lastCompletedBorderFrame;
 
@@ -278,7 +226,7 @@ namespace Spectrum128kEmulator
         public bool HasRzxPlayback => rzxPlayback != null;
         public string? RzxPlaybackName => rzxPlayback?.DisplayName;
         public bool HasPendingMountedLoadUsrContinuation =>
-            pendingMountedLoadUsrContinuationResolver != null || pendingMountedLoadBasicResumeLine.HasValue;
+            mountedLoadContinuation.HasPending;
 
         public void Reset()
         {
@@ -300,12 +248,7 @@ namespace Spectrum128kEmulator
             mountedTape = null;
             TapeTransportState = TapeTransportState.NoTape;
             rzxPlayback = null;
-            pendingMountedLoadUsrContinuationResolver = null;
-            pendingMountedLoadUsrContinuationRequiresUsrReturnAddress = false;
-            pendingMountedLoadBasicResumeLine = null;
-            pendingMountedLoadBasicResumeStatement = 0;
-            pendingMountedLoadInterpreterContext = null;
-            pendingMountedLoadResumeCursorOverride = null;
+            mountedLoadContinuation.Clear();
             speakerHigh = false;
             micHigh = false;
             SpeakerEdge = false;
@@ -588,6 +531,7 @@ namespace Spectrum128kEmulator
 
             sb.AppendLine("=== MACHINE STATE ===");
             sb.AppendLine($"Frame={FrameCount} Border={BorderColor} PagedRamBank={PagedRamBank} ScreenBank={ScreenBank} RomBank={CurrentRomBank} PagingLocked={PagingLocked}");
+            sb.AppendLine($"RomProfile={RomProfile.Name} AddressTapeServices={(SupportsRomTapeAcceleration ? 1 : 0)}");
             sb.AppendLine($"SpeakerHigh={speakerHigh} SpeakerEdge={SpeakerEdge} FlashPhase={FlashPhase} MountedTape={mountedTape?.DisplayName ?? "(none)"}");
             sb.AppendLine($"TapeTransport={TapeTransportState} MarkerStop={(IsTapeStoppedAtMarker ? 1 : 0)}");
             if (mountedTape != null)
@@ -1063,7 +1007,9 @@ namespace Spectrum128kEmulator
 
         public bool TryServiceTapeTrap()
         {
-            return mountedTape != null && mountedTape.TryHandleRomLoadTrap(this, cpu);
+            return SupportsRomTapeAcceleration &&
+                   mountedTape != null &&
+                   mountedTape.TryHandleRomLoadTrap(this, cpu);
         }
 
         public BootstrapTapeLoadResult TryConsumeBootstrapTapeLoad()
@@ -1075,13 +1021,7 @@ namespace Spectrum128kEmulator
 
         public void SetPendingMountedLoadUsrContinuation(ushort entryPoint)
         {
-            CaptureMountedLoadInterpreterContextIfNeeded();
-            pendingMountedLoadUsrContinuationResolver = _ => entryPoint;
-            pendingMountedLoadUsrContinuationRequiresUsrReturnAddress = false;
-            pendingMountedLoadPreserveLiveInterpreterStateForDirectUsrEntry = false;
-            pendingMountedLoadNextStreamingInterpreterRefreshTStates = 0;
-            Trace?.Invoke(
-                $"[MountedLoad] Arm direct continuation entry=0x{entryPoint:X4} requireUsrReturn=0 frame={FrameCount} pc=0x{cpu.Regs.PC:X4}");
+            mountedLoadContinuation.SetEntryPoint(entryPoint);
         }
 
         public void SetScreenWriteDiagnosticsEnabled(bool enabled)
@@ -1095,143 +1035,30 @@ namespace Spectrum128kEmulator
             Func<Spectrum128Machine, ushort?> resolver,
             bool requireUsrReturnAddress = false)
         {
-            CaptureMountedLoadInterpreterContextIfNeeded();
-            pendingMountedLoadUsrContinuationResolver = resolver ?? throw new ArgumentNullException(nameof(resolver));
-            pendingMountedLoadUsrContinuationRequiresUsrReturnAddress = requireUsrReturnAddress;
-            pendingMountedLoadPreserveLiveInterpreterStateForDirectUsrEntry = false;
-            pendingMountedLoadNextStreamingInterpreterRefreshTStates = 0;
-            Trace?.Invoke(
-                $"[MountedLoad] Arm resolver requireUsrReturn={(requireUsrReturnAddress ? 1 : 0)} frame={FrameCount} pc=0x{cpu.Regs.PC:X4}");
+            mountedLoadContinuation.SetResolver(resolver, requireUsrReturnAddress);
         }
 
         public void SetPendingMountedLoadDirectUsrContextPolicy(bool preserveLiveInterpreterState)
         {
-            pendingMountedLoadPreserveLiveInterpreterStateForDirectUsrEntry = preserveLiveInterpreterState;
-            Trace?.Invoke(
-                $"[MountedLoad] DirectUsrContext preserveLiveInterpreter={(preserveLiveInterpreterState ? 1 : 0)} frame={FrameCount} pc=0x{cpu.Regs.PC:X4}");
+            mountedLoadContinuation.SetDirectUsrContextPolicy(preserveLiveInterpreterState);
         }
 
         internal bool PendingMountedLoadUsrContinuationRequiresUsrReturnAddress =>
-            pendingMountedLoadUsrContinuationRequiresUsrReturnAddress;
+            mountedLoadContinuation.RequiresUsrReturnAddress;
 
         public void ClearPendingMountedLoadUsrContinuation()
         {
-            bool hadPendingContinuation = pendingMountedLoadUsrContinuationResolver != null ||
-                pendingMountedLoadBasicResumeLine.HasValue;
-            pendingMountedLoadUsrContinuationResolver = null;
-            pendingMountedLoadUsrContinuationRequiresUsrReturnAddress = false;
-            pendingMountedLoadBasicResumeLine = null;
-            pendingMountedLoadBasicResumeStatement = 0;
-            pendingMountedLoadInterpreterContext = null;
-            pendingMountedLoadBasicVariableArea = null;
-            pendingMountedLoadResumeCursorOverride = null;
-            pendingMountedLoadPreserveLiveInterpreterStateForDirectUsrEntry = false;
-            pendingMountedLoadNextStreamingInterpreterRefreshTStates = 0;
-            if (hadPendingContinuation)
-            {
-                Trace?.Invoke(
-                    $"[MountedLoad] Clear pending continuation frame={FrameCount} pc=0x{cpu.Regs.PC:X4}");
-            }
+            mountedLoadContinuation.Clear();
         }
 
         public void RefreshPendingMountedLoadInterpreterContext(bool forceVariableAreaRefresh = false)
         {
-            if (forceVariableAreaRefresh || !pendingMountedLoadBasicVariableArea.HasValue)
-            {
-                ushort vars = ReadWord(VarsAddress);
-                ushort eLine = ReadWord(EditLineAddress);
-                byte[] variableData = Array.Empty<byte>();
-                if (vars < eLine)
-                {
-                    int length = eLine - vars;
-                    variableData = new byte[length];
-                    for (int i = 0; i < length; i++)
-                        variableData[i] = PeekMemory((ushort)(vars + i));
-                }
-
-                MountedLoadBasicVariableArea refreshedVariableArea = new MountedLoadBasicVariableArea(
-                    vars,
-                    eLine,
-                    variableData);
-                if (!pendingMountedLoadBasicVariableArea.HasValue ||
-                    ShouldReplacePendingMountedLoadBasicVariableArea(
-                        pendingMountedLoadBasicVariableArea.Value,
-                        refreshedVariableArea))
-                {
-                    pendingMountedLoadBasicVariableArea = refreshedVariableArea;
-                }
-            }
-
-            if (pendingMountedLoadInterpreterContext.HasValue)
-            {
-                MountedLoadInterpreterContext original = pendingMountedLoadInterpreterContext.Value;
-                pendingMountedLoadInterpreterContext = new MountedLoadInterpreterContext(
-                    original.Vars,
-                    original.Prog,
-                    original.NextLine,
-                    original.Data,
-                    ReadWord(CurChlAddress),
-                    ReadWord(EditLineAddress),
-                    ReadWord(KCurAddress),
-                    ReadWord(ChAddAddress),
-                    ReadWord(XPtrAddress),
-                    ReadWord(WorkspaceAddress),
-                    ReadWord(StackBottomAddress),
-                    ReadWord(StackEndAddress));
-                return;
-            }
-
-            pendingMountedLoadInterpreterContext = new MountedLoadInterpreterContext(
-                ReadWord(VarsAddress),
-                ReadWord(ProgAddress),
-                ReadWord(NextLineAddress),
-                ReadWord(DataAddress),
-                ReadWord(CurChlAddress),
-                ReadWord(EditLineAddress),
-                ReadWord(KCurAddress),
-                ReadWord(ChAddAddress),
-                ReadWord(XPtrAddress),
-                ReadWord(WorkspaceAddress),
-                ReadWord(StackBottomAddress),
-                ReadWord(StackEndAddress));
-        }
-
-        private bool PendingMountedLoadHasPreservedBasicVariableSnapshot()
-        {
-            return pendingMountedLoadBasicVariableArea.HasValue &&
-                   pendingMountedLoadBasicVariableArea.Value.Data.Length > 0;
-        }
-
-        private static bool ShouldReplacePendingMountedLoadBasicVariableArea(
-            MountedLoadBasicVariableArea existing,
-            MountedLoadBasicVariableArea candidate)
-        {
-            bool existingUsable = IsUsablePendingMountedLoadBasicVariableArea(existing);
-            bool candidateUsable = IsUsablePendingMountedLoadBasicVariableArea(candidate);
-
-            if (!existingUsable)
-                return true;
-
-            if (!candidateUsable)
-                return false;
-
-            return candidate.Data.Length >= existing.Data.Length;
-        }
-
-        private static bool IsUsablePendingMountedLoadBasicVariableArea(MountedLoadBasicVariableArea variableArea)
-        {
-            return variableArea.Vars >= 0x5B00 &&
-                   variableArea.Vars < variableArea.EditLine &&
-                   variableArea.Data.Length > 1 &&
-                   variableArea.Data[0] != 0x80;
+            mountedLoadContinuation.RefreshInterpreterContext(forceVariableAreaRefresh);
         }
 
         public void SetPendingMountedLoadBasicResume(ushort lineNumber, byte statementIndex)
         {
-            pendingMountedLoadBasicResumeLine = lineNumber;
-            pendingMountedLoadBasicResumeStatement = statementIndex;
-            Trace?.Invoke(
-                $"[MountedLoad] Arm BASIC resume line={lineNumber} stmt={statementIndex} frame={FrameCount} pc=0x{cpu.Regs.PC:X4}");
+            mountedLoadContinuation.SetBasicResume(lineNumber, statementIndex);
         }
 
         public void SetPendingMountedLoadResumeCursorOverride(
@@ -1239,41 +1066,17 @@ namespace Spectrum128kEmulator
             ushort? chAdd = null,
             ushort? xPtr = null)
         {
-            pendingMountedLoadResumeCursorOverride = new MountedLoadResumeCursorOverride(kCur, chAdd, xPtr);
-            Trace?.Invoke(
-                $"[MountedLoad] Cursor override KCUR={(kCur.HasValue ? $"0x{kCur.Value:X4}" : "live")} CHADD={(chAdd.HasValue ? $"0x{chAdd.Value:X4}" : "live")} XPTR={(xPtr.HasValue ? $"0x{xPtr.Value:X4}" : "live")} frame={FrameCount} pc=0x{cpu.Regs.PC:X4}");
+            mountedLoadContinuation.SetResumeCursorOverride(kCur, chAdd, xPtr);
         }
 
         internal bool TryGetPendingMountedLoadBasicVariableArea(out ushort vars, out ushort eLine)
         {
-            vars = 0;
-            eLine = 0;
-            if (!pendingMountedLoadBasicVariableArea.HasValue)
-                return false;
-
-            MountedLoadBasicVariableArea context = pendingMountedLoadBasicVariableArea.Value;
-            if (context.Vars >= context.EditLine)
-                return false;
-
-            vars = context.Vars;
-            eLine = context.EditLine;
-            return true;
+            return mountedLoadContinuation.TryGetBasicVariableArea(out vars, out eLine);
         }
 
         internal bool TryGetPendingMountedLoadBasicVariableSnapshot(out ushort vars, out byte[] data)
         {
-            vars = 0;
-            data = Array.Empty<byte>();
-            if (!pendingMountedLoadBasicVariableArea.HasValue)
-                return false;
-
-            MountedLoadBasicVariableArea context = pendingMountedLoadBasicVariableArea.Value;
-            if (context.Vars >= context.EditLine || context.Data.Length == 0)
-                return false;
-
-            vars = context.Vars;
-            data = context.Data;
-            return true;
+            return mountedLoadContinuation.TryGetBasicVariableSnapshot(out vars, out data);
         }
 
         private bool HandleBeforeInstruction(Z80Cpu z80)
@@ -1319,235 +1122,19 @@ namespace Spectrum128kEmulator
             if (TryResumePendingMountedLoadUsrContinuation(z80))
                 return false;
 
-            return mountedTape != null && mountedTape.TryHandleRomLoadTrap(this, z80);
+            return SupportsRomTapeAcceleration &&
+                   mountedTape != null &&
+                   mountedTape.TryHandleRomLoadTrap(this, z80);
         }
 
         private bool TryResumePendingMountedLoadUsrContinuation(Z80Cpu z80)
         {
-            if (pendingMountedLoadUsrContinuationResolver == null ||
-                mountedTape == null)
-            {
-                return false;
-            }
-
-            if (z80.Regs.PC == UsrReturnAddress)
-                RefreshPendingMountedLoadInterpreterContext(forceVariableAreaRefresh: true);
-
-            if (pendingMountedLoadUsrContinuationRequiresUsrReturnAddress &&
-                z80.Regs.PC != UsrReturnAddress)
-            {
-                return false;
-            }
-
-            if (!pendingMountedLoadUsrContinuationRequiresUsrReturnAddress &&
-                mountedTape.IsActivelyStreamingEarSignal &&
-                !PendingMountedLoadHasPreservedBasicVariableSnapshot() &&
-                z80.TStates >= pendingMountedLoadNextStreamingInterpreterRefreshTStates)
-            {
-                RefreshPendingMountedLoadInterpreterContext(forceVariableAreaRefresh: true);
-                pendingMountedLoadNextStreamingInterpreterRefreshTStates =
-                    z80.TStates + MountedLoadStreamingInterpreterRefreshIntervalTStates;
-            }
-
-            if (mountedTape.IsActivelyStreamingEarSignal)
-                return false;
-
-            if (!CanResumeMountedLoadUsrContinuation(z80.Regs.PC, mountedTape))
-                return false;
-
-            Trace?.Invoke(
-                $"[MountedLoad] Resume gate open frame={FrameCount} pc=0x{z80.Regs.PC:X4} basicResume={(pendingMountedLoadBasicResumeLine.HasValue ? 1 : 0)} requireUsrReturn={(pendingMountedLoadUsrContinuationRequiresUsrReturnAddress ? 1 : 0)}");
-
-            Func<Spectrum128Machine, ushort?> resolver = pendingMountedLoadUsrContinuationResolver;
-            pendingMountedLoadUsrContinuationResolver = null;
-            pendingMountedLoadUsrContinuationRequiresUsrReturnAddress = false;
-            ushort? resolvedEntryPoint = resolver(this);
-            bool preserveLiveInterpreterStateForDirectUsrEntry =
-                pendingMountedLoadPreserveLiveInterpreterStateForDirectUsrEntry;
-            pendingMountedLoadPreserveLiveInterpreterStateForDirectUsrEntry = false;
-            if (!resolvedEntryPoint.HasValue)
-            {
-                Trace?.Invoke(
-                    $"[MountedLoad] Resolver dropped continuation frame={FrameCount} pc=0x{z80.Regs.PC:X4}");
-                return false;
-            }
-
-            if (pendingMountedLoadBasicResumeLine.HasValue)
-            {
-                ushort lineNumber = pendingMountedLoadBasicResumeLine.Value;
-                byte statementIndex = pendingMountedLoadBasicResumeStatement;
-                pendingMountedLoadBasicResumeLine = null;
-                pendingMountedLoadBasicResumeStatement = 0;
-                RestoreInterpreterWorkspaceForRomBasicResume();
-                ApplyPendingMountedLoadResumeCursorOverride();
-                WriteMemory(NewPpcAddress, (byte)(lineNumber & 0xFF));
-                WriteMemory((ushort)(NewPpcAddress + 1), (byte)(lineNumber >> 8));
-                WriteMemory(NspPcAddress, statementIndex);
-                WriteMemory(PpcAddress, (byte)(lineNumber & 0xFF));
-                WriteMemory((ushort)(PpcAddress + 1), (byte)(lineNumber >> 8));
-                WriteMemory(SubPpcAddress, statementIndex);
-                z80.Regs.PC = MainExecutionLoopAddress;
-                Trace?.Invoke(
-                    $"[MountedLoad] Resume BASIC line={lineNumber} stmt={statementIndex} -> pc=0x{z80.Regs.PC:X4} frame={FrameCount}");
-                return true;
-            }
-
-            ushort entryPoint = resolvedEntryPoint.Value;
-
-            if (entryPoint == 0)
-            {
-                EnterUsr0Mode(z80);
-                Trace?.Invoke(
-                    $"[MountedLoad] Resume USR0 frame={FrameCount} pc=0x{z80.Regs.PC:X4}");
-                return true;
-            }
-
-            if (!preserveLiveInterpreterStateForDirectUsrEntry)
-            {
-                RestoreInterpreterWorkspaceForDirectUsrEntry();
-                ApplyPendingMountedLoadResumeCursorOverride();
-            }
-            else
-            {
-                pendingMountedLoadResumeCursorOverride = null;
-            }
-            z80.Regs.SP -= 2;
-            WriteMemory(z80.Regs.SP, (byte)(UsrReturnAddress & 0xFF));
-            WriteMemory((ushort)(z80.Regs.SP + 1), (byte)(UsrReturnAddress >> 8));
-
-            z80.Regs.BC = entryPoint;
-            z80.Regs.H_ = (byte)(EndCalcLiteralAddress >> 8);
-            z80.Regs.L_ = (byte)(EndCalcLiteralAddress & 0xFF);
-            z80.Regs.PC = entryPoint;
-            Trace?.Invoke(
-                $"[MountedLoad] Resume direct entry=0x{entryPoint:X4} frame={FrameCount} sp=0x{z80.Regs.SP:X4}");
-            return true;
+            return mountedLoadContinuation.TryResume(z80);
         }
 
-        private void RestoreInterpreterWorkspaceForRomBasicResume()
-        {
-            if (pendingMountedLoadInterpreterContext.HasValue)
-            {
-                MountedLoadInterpreterContext context = pendingMountedLoadInterpreterContext.Value;
-                WriteWord(VarsAddress, context.Vars);
-                WriteWord(ProgAddress, context.Prog);
-                WriteWord(NextLineAddress, context.NextLine);
-                WriteWord(DataAddress, context.Data);
-                WriteWord(CurChlAddress, context.CurChl);
-                WriteWord(EditLineAddress, context.EditLine);
-                WriteWord(KCurAddress, context.KCur);
-                WriteWord(ChAddAddress, context.ChAdd);
-                WriteWord(XPtrAddress, context.XPtr);
-                WriteWord(WorkspaceAddress, context.Workspace);
-                WriteWord(StackBottomAddress, context.StackBottom);
-                WriteWord(StackEndAddress, context.StackEnd);
-                WriteMemory(context.EditLine, 0x0D);
-                WriteMemory((ushort)(context.EditLine + 1), 0x00);
-                return;
-            }
-
-            ushort eLine = ReadWord(EditLineAddress);
-            WriteMemory(eLine, 0x0D);
-            WriteMemory((ushort)(eLine + 1), 0x00);
-            WriteWord(WorkspaceAddress, eLine);
-            WriteWord(StackBottomAddress, eLine);
-            WriteWord(StackEndAddress, eLine);
-            WriteWord(KCurAddress, eLine);
-            WriteWord(ChAddAddress, eLine);
-            WriteWord(XPtrAddress, eLine);
-        }
-
-        private void CaptureMountedLoadInterpreterContextIfNeeded()
-        {
-            if (pendingMountedLoadInterpreterContext.HasValue)
-                return;
-
-            RefreshPendingMountedLoadInterpreterContext();
-        }
-
-        private void RestoreInterpreterWorkspaceForDirectUsrEntry()
-        {
-            if (!pendingMountedLoadInterpreterContext.HasValue)
-                return;
-
-            MountedLoadInterpreterContext context = pendingMountedLoadInterpreterContext.Value;
-            WriteWord(VarsAddress, context.Vars);
-            WriteWord(ProgAddress, context.Prog);
-            WriteWord(NextLineAddress, context.NextLine);
-            WriteWord(DataAddress, context.Data);
-            WriteWord(CurChlAddress, context.CurChl);
-            WriteWord(EditLineAddress, context.EditLine);
-            WriteWord(KCurAddress, context.KCur);
-            WriteWord(ChAddAddress, context.ChAdd);
-            WriteWord(XPtrAddress, context.XPtr);
-            WriteWord(WorkspaceAddress, context.Workspace);
-            WriteWord(StackBottomAddress, context.StackBottom);
-            WriteWord(StackEndAddress, context.StackEnd);
-        }
-
-        private void ApplyPendingMountedLoadResumeCursorOverride()
-        {
-            if (!pendingMountedLoadResumeCursorOverride.HasValue)
-                return;
-
-            MountedLoadResumeCursorOverride cursorOverride = pendingMountedLoadResumeCursorOverride.Value;
-            pendingMountedLoadResumeCursorOverride = null;
-
-            if (cursorOverride.KCur.HasValue)
-                WriteWord(KCurAddress, cursorOverride.KCur.Value);
-
-            if (cursorOverride.ChAdd.HasValue)
-                WriteWord(ChAddAddress, cursorOverride.ChAdd.Value);
-
-            if (cursorOverride.XPtr.HasValue)
-                WriteWord(XPtrAddress, cursorOverride.XPtr.Value);
-        }
-
-        private ushort ReadWord(ushort address)
-        {
-            byte low = PeekMemory(address);
-            byte high = PeekMemory((ushort)(address + 1));
-            return (ushort)(low | (high << 8));
-        }
-
-        private void WriteWord(ushort address, ushort value)
-        {
-            WriteMemory(address, (byte)(value & 0xFF));
-            WriteMemory((ushort)(address + 1), (byte)(value >> 8));
-        }
-
-        private static bool CanResumeMountedLoadUsrContinuation(ushort pc, MountedTape mountedTape)
-        {
-            if (pc == UsrReturnAddress)
-                return true;
-
-            if (!IsMountedLoadReturnPc(pc))
-                return false;
-
-            return mountedTape.IsAtMountedLoadUsrContinuationBoundary;
-        }
-
-        private static bool IsMountedLoadReturnPc(ushort pc)
-        {
-            return (pc >= RomMainLoopLoadReturnPcMin && pc <= RomMainLoopLoadReturnPcMax) ||
-                   (pc >= RomLiveLoadLoopReturnPcMin && pc <= RomLiveLoadLoopReturnPcMax) ||
-                   (pc >= 0x15FD && pc <= 0x1600) ||
-                   (pc >= RomKeyboardInputCallbackPcMin && pc <= RomKeyboardInputCallbackPcMax) ||
-                   pc == RomWorkspaceCallbackReturnPc ||
-                   (pc >= RomMountedLoadServicePcMin && pc <= RomMountedLoadServicePcMax) ||
-                   (pc >= RomMountedLoadStackServicePcMin && pc <= RomMountedLoadStackServicePcMax);
-        }
-
-        private void EnterUsr0Mode(Z80Cpu z80)
+        internal void PrepareMountedLoadUsr0HardwareMode(Z80Cpu z80)
         {
             MachineModel = SpectrumMachineModel.Spectrum128K;
-            pendingMountedLoadBasicResumeLine = null;
-            pendingMountedLoadBasicResumeStatement = 0;
-            pendingMountedLoadInterpreterContext = null;
-            pendingMountedLoadBasicVariableArea = null;
-            pendingMountedLoadResumeCursorOverride = null;
-            pendingMountedLoadPreserveLiveInterpreterStateForDirectUsrEntry = false;
-            pendingMountedLoadNextStreamingInterpreterRefreshTStates = 0;
             if (mountedTape != null && !mountedTape.HasMoreBlocks)
             {
                 mountedTape = null;
@@ -1574,39 +1161,6 @@ namespace Spectrum128kEmulator
             completedAudioFrames.Clear();
             tStatesUntilNextInterrupt = 0;
             realignInterruptPhaseAfterNextAccept = false;
-
-            // USR 0 enters ROM48 from BASIC, but it should not carry a stale
-            // mounted-line continuation cursor into the fresh ROM entry path.
-            WriteWord(NewPpcAddress, 0);
-            WriteMemory(NspPcAddress, 0);
-            WriteWord(PpcAddress, 0);
-            WriteMemory(SubPpcAddress, 0);
-            WriteWord(OldPpcAddress, 0);
-            WriteMemory(OspPcAddress, 0);
-            InitializeUsr0InterpreterWorkspace();
-
-            z80.Regs.BC = 0;
-            z80.Regs.H_ = (byte)(EndCalcLiteralAddress >> 8);
-            z80.Regs.L_ = (byte)(EndCalcLiteralAddress & 0xFF);
-            z80.Regs.PC = 0;
-        }
-
-        private void InitializeUsr0InterpreterWorkspace()
-        {
-            ushort eLine = ReadWord(EditLineAddress);
-            if (eLine < 0x5B00)
-                eLine = (ushort)(ReadWord(VarsAddress) + 1);
-
-            WriteMemory(eLine, 0x0D);
-            WriteMemory((ushort)(eLine + 1), 0x00);
-            WriteWord(CurChlAddress, KeyboardChannelDescriptorAddress);
-            WriteWord(KCurAddress, eLine);
-            WriteWord(ChAddAddress, eLine);
-            WriteWord(XPtrAddress, 0);
-            ushort workspace = (ushort)(eLine + 1);
-            WriteWord(WorkspaceAddress, workspace);
-            WriteWord(StackBottomAddress, workspace);
-            WriteWord(StackEndAddress, workspace);
         }
 
         private void LoadRoms(string romFolder)
@@ -1622,6 +1176,7 @@ namespace Spectrum128kEmulator
 
             romBanks[0] = rom0;
             romBanks[1] = rom1;
+            RomProfile = SpectrumRomProfile.Detect(rom0, rom1);
         }
 
         private void ClearRam()
