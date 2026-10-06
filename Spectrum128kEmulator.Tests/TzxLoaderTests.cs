@@ -848,6 +848,43 @@ namespace Spectrum128kEmulator.Tests
             }
         }
 
+        [Fact]
+        public void ProtectedInterpreterHandoff_WithPurePulseRemainder_UsesRomBootstrap()
+        {
+            string romFolder = CreateTempRoms();
+            string tapePath = Path.Combine(romFolder, "protected-interpreter-handoff.tzx");
+
+            try
+            {
+                byte[] bootstrap = BuildBasicProgram(
+                    BuildBasicLine(10,
+                        Token(244), Ascii("23641"), NumberMarker(23641), Ascii(","),
+                        Token(190), Ascii("23641"), NumberMarker(23641), Ascii("+256"), NumberMarker(256)));
+
+                File.WriteAllBytes(
+                    tapePath,
+                    BuildTzx(
+                        BuildStandardSpeedDataBlock(BuildSpectrumHeaderBlock(type: 0, fileName: "BOOT", dataLength: (ushort)bootstrap.Length, parameter1: 10, parameter2: (ushort)bootstrap.Length), pauseMs: 1000),
+                        BuildStandardSpeedDataBlock(BuildSpectrumDataBlock(bootstrap), pauseMs: 1000),
+                        BuildPureToneBlock(564, 128),
+                        BuildPulseSequenceBlock(564, 1129),
+                        BuildPureDataBlock(new byte[] { 0xE8, 0xC3, 0x5B }, usedBitsInLastByte: 8, pauseMs: 0)));
+
+                var machine = new Spectrum128Machine(romFolder);
+                IReadOnlyList<Tap.TapeBlock> blocks = Tap.TzxLoader.ParseBlocks(File.ReadAllBytes(tapePath));
+                object plan = typeof(Tap.TapLoader)
+                    .GetMethod("CreateExecutionPlan", BindingFlags.NonPublic | BindingFlags.Static)!
+                    .Invoke(null, new object[] { machine, blocks })!;
+                object strategy = plan.GetType().GetProperty("Strategy")!.GetValue(plan)!;
+
+                Assert.Equal(Tap.TapeLoadStrategy.RomBootstrapMounted, strategy);
+            }
+            finally
+            {
+                Directory.Delete(romFolder, true);
+            }
+        }
+
 
         [Fact]
         public void BootstrapBasicProgramAndMountRemaining_Skips_Leading_Metadata()

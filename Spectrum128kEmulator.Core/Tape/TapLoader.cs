@@ -2220,9 +2220,35 @@ namespace Spectrum128kEmulator.Tap
             }
 
             if (CanBootstrapBasicProgramAndMountRemaining(blocks))
-                return new TapeLoadPlan(TapeLoadStrategy.BootstrapHybrid, "Tape begins with a standard BASIC loader and requires mounted continuation.");
+            {
+                bool use128kMode = Use128kTapeLoadMode(machine);
+                if (StartsProtectedRemainderImmediatelyAfterLeadingBasic(blocks) &&
+                    !CanExecuteLeadingBasicProgramWithBootstrap(machine, blocks, use128kMode))
+                {
+                    return new TapeLoadPlan(
+                        TapeLoadStrategy.RomBootstrapMounted,
+                        "Tape begins with a protected BASIC loader whose interpreter handoff must execute under ROM control.");
+                }
+
+                return new TapeLoadPlan(
+                    TapeLoadStrategy.BootstrapHybrid,
+                    "Tape begins with a standard BASIC loader and requires mounted continuation.");
+            }
 
             return new TapeLoadPlan(TapeLoadStrategy.MountedRealtime, "Tape does not have a safe fake-load bootstrap path.");
+        }
+
+        private static bool StartsProtectedRemainderImmediatelyAfterLeadingBasic(IReadOnlyList<TapeBlock> blocks)
+        {
+            int index = 0;
+            while (index < blocks.Count && blocks[index].Kind == TapeBlockKind.Metadata)
+                index++;
+
+            index += 2;
+            while (index < blocks.Count && blocks[index].Kind == TapeBlockKind.Metadata)
+                index++;
+
+            return index < blocks.Count && !blocks[index].IsLoadableRomBlock;
         }
 
         internal static TapeExecutionResult ExecutePlan(

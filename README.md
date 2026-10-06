@@ -33,7 +33,7 @@ is complete.
 Verified media includes:
 
 - Snapshots: `robocop128k.z80`, `JSWAPRIL.Z80`, Exolon in `.sna`/`.z80` form, and a converted 128K Renegade `.sna`
-- Tapes: Exolon, Where Time Stood Still, Impossible Mission I/II, Batman, Target Renegade (128K all-at-once and 48K level-at-a-time), Scuba Dive, Roller Coaster, Captain America, Donkey Kong, and Indiana Jones and the Last Crusade
+- Tapes: Exolon, Where Time Stood Still, Impossible Mission I/II, Batman, Target Renegade (128K all-at-once and 48K level-at-a-time), Scuba Dive, Roller Coaster, Captain America, Donkey Kong, Indiana Jones and the Last Crusade, and Rambo (Ocean and Hit Squad releases)
 - Replay: `aufmonty.rzx`
 
 Current limitations and active work:
@@ -45,7 +45,7 @@ Current limitations and active work:
 
 ### Implementation Notes
 
-- Fast tape bootstrap is capability-gated. Unsupported initial or chained BASIC loader control flow falls back to a clean real-ROM autorun path with the remaining tape mounted.
+- Fast tape bootstrap is capability-gated. Unsupported initial or chained BASIC control flow, including protected handoff directly into raw pulses, falls back to a clean real-ROM autorun path with the remaining tape mounted.
 - Address-based ROM tape services are enabled only for the fingerprinted bundled ROM pair; an unknown ROM pair uses real-time mounted pulse/EAR playback instead of assuming compatible internal addresses.
 - ROM-driven tape handoffs preserve consumed-block pauses, exact TZX pause signal transitions, and zero-duration stop markers.
 - Mounted playback detects stable keyboard/HALT handoffs, pauses at multiload boundaries, and preserves custom ROM flag and LOAD/VERIFY state across accelerated blocks.
