@@ -12,7 +12,7 @@ This project focuses on correctness, clean architecture, and incremental develop
 - Explicit 48K and 128K models, 128K paging, keyboard matrix, interrupts, and a model-specific timing baseline
 - Spectrum display with INK, PAPER, BRIGHT, FLASH, borders, and fixed 1x/Scale2x/Scale3x modes
 - 48K beeper and AY-3-8912 tone, noise, envelope, and mixing through a clock-driven audio pipeline
-- 48K-format `.sna`, `.z80` v1/v2/v3, and `.rzx` loading/replay
+- 48K/128K `.sna`, `.z80` v1/v2/v3, and `.rzx` loading/replay
 - `.tap` and `.tzx` parsing, fast bootstrap, ROM-driven loading, protected/mounted playback, VERIFY, and multi-block sequencing
 - Manual/resumable tape transport with 48K stop-marker support and persistent status feedback
 - Platform-neutral headless core with Windows presentation/audio adapters
@@ -38,7 +38,6 @@ Verified media includes:
 
 Current limitations and active work:
 
-- 128K-format `.sna` files are not supported; 48K-format `.sna` files can run on either selected model
 - original 128K/+2 floating-bus reads and AY selected-register reads are planned for Milestone 16
 - active-screen rendering is frame-snapshot based rather than beam-aware; Milestone 17 addresses this
 - protected live-tape audio handoff still needs polish in some titles
@@ -146,7 +145,7 @@ display exposes the same controls in function-key order.
 | `F5` | Stop or resume the mounted tape without ejecting it |
 | `F6` | Open the paused, read-only disassembler capture |
 | `F7` / `F8` | Save or restore the temporary in-memory Quick State |
-| `F9` | Load a 48K-format `.sna` snapshot |
+| `F9` | Load a 48K or 128K `.sna` snapshot |
 | `F10` | Load a `.z80` snapshot or `.rzx` recording |
 | `F11` | Mount a `.tap` or `.tzx` tape image |
 | `F12` | Write a machine diagnostic dump |
@@ -208,7 +207,8 @@ Current snapshot status:
 - `.sna`
   - 48K file-format loading implemented and verified
   - 48K-format snapshots can run on the selected 48K or 128K hardware model
-  - 128K-format `.sna` files are not currently supported
+  - 128K file-format loading restores all RAM banks, paging state, and the explicit program counter
+  - standard and duplicate-current-page 128K layouts are supported; TR-DOS snapshots are rejected because no TR-DOS ROM is emulated
   - interrupt state restored from snapshot header semantics
   - generic format-based load path in use
 
@@ -270,7 +270,7 @@ compatibility and polish; completed milestones remain regression baselines.
 | 2 | Complete | Attribute/FLASH rendering and renderer optimization |
 | 3 | Complete | 50Hz pacing, frame execution, and interrupt cadence |
 | 4 | Complete | ZEXDOC/ZEXALL CPU baseline and hardware-derived block-I/O flag regressions |
-| 5 | Complete | 48K-format `.sna` plus `.z80` v1/v2/v3 support |
+| 5 | Complete | 48K/128K `.sna` plus `.z80` v1/v2/v3 support |
 | 6 | In progress | Structure-driven TAP/TZX bootstrap, ROM, protected, mounted, VERIFY, and sequencing paths |
 | 7 | In progress | Beeper/AY synthesis and mixing; live-tape transition polish remains |
 | 8 | Complete | Headless core/UI split and clock-driven audio buffering |
