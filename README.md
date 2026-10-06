@@ -30,11 +30,8 @@ temporary Quick State slot. ZEXDOC and ZEXALL pass in the headless compliance
 runner, although they are not proof that every undocumented hardware interaction
 is complete.
 
-Verified media includes:
-
-- Snapshots: `robocop128k.z80`, `JSWAPRIL.Z80`, Exolon in `.sna`/`.z80` form, and a converted 128K Renegade `.sna`
-- Tapes: Exolon, Where Time Stood Still, Impossible Mission I/II, Batman, Target Renegade (128K all-at-once and 48K level-at-a-time), Scuba Dive, Roller Coaster, Captain America, Donkey Kong, Indiana Jones and the Last Crusade, and Rambo (Ocean and Hit Squad releases)
-- Replay: `aufmonty.rzx`
+Manually tested titles, formats, and reached checkpoints are tracked in
+[Verified Games And Media](VERIFIED_GAMES.md).
 
 Current limitations and active work:
 
@@ -60,7 +57,7 @@ Each feature is developed on its own branch. The next ordered work is ULA/port
 conformance (Milestone 16), beam-aware video (17), debugger execution controls
 (18), and bank-aware symbolic disassembly (19). Tape compatibility and the
 turbo-to-realtime audio transition continue in parallel, with the verified media
-above plus ZEXDOC/ZEXALL used as regression gates.
+matrix plus ZEXDOC/ZEXALL used as regression gates.
 
 ---
 
@@ -101,6 +98,7 @@ Spectrum128kEmulator/
 |-- SpectrumRenderer.cs                    System.Drawing presentation adapter
 |-- Program.cs                             Windows application entry point
 |-- Spectrum128kEmulator.csproj            net10.0-windows frontend project
+|-- VERIFIED_GAMES.md                      manual media compatibility record
 |
 |-- Spectrum128kEmulator.Tests/            xUnit unit and regression tests
 |-- Spectrum128kEmulator.ManualHarness/    repeatable diagnostic and capture tool
