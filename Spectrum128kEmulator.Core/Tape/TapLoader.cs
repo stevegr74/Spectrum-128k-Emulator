@@ -1390,17 +1390,15 @@ namespace Spectrum128kEmulator.Tap
             earPlaybackState = EarPlaybackState.Pause;
             earNextBlockIndexAfterPause = nextBlockIndex;
 
-            if (!earLevel)
+            if (earLevel)
             {
-                // TZX silence must first terminate a low final pulse with 1 ms high.
+                // Finish the last edge at its current level before TZX silence settles low.
                 int terminatingPulseTStates = Math.Min(PauseLevelSettlingTStates, pauseTStates);
-                earLevel = true;
                 earPulseLengthTStates = terminatingPulseTStates;
                 earPauseLowTailTStates = pauseTStates - terminatingPulseTStates;
                 return;
             }
 
-            earLevel = false;
             earPulseLengthTStates = pauseTStates;
             earPauseLowTailTStates = 0;
         }
