@@ -2068,6 +2068,10 @@ namespace Spectrum128kEmulator.Tests
                 Assert.Equal("rom-driven.tap", machine.MountedTapeName);
                 Assert.Equal((ushort)10, ReadWord(machine, 23618));
                 Assert.Equal((byte)0, machine.PeekMemory(23620));
+                object mountedTape = GetPrivateField(machine, "mountedTape");
+                Assert.Equal("Pause", GetPrivateField(mountedTape, "earPlaybackState").ToString());
+                Assert.Equal(1000 * 3500, (int)GetPrivateField(mountedTape, "earPulseLengthTStates"));
+                Assert.Equal(2, (int)GetPrivateField(mountedTape, "earPlaybackBlockIndex"));
             }
             finally
             {

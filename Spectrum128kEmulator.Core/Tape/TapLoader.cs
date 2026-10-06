@@ -3030,6 +3030,7 @@ namespace Spectrum128kEmulator.Tap
                     blocks,
                     initialBlockIndex: consumedBlockCount,
                     skipCustomHeaderForEarPlayback: skipCustomHeaderForEarPlayback,
+                    initialPrePlaybackPauseTStates: dataBlock.PauseAfterBlockMs * TStatesPerMillisecond48k,
                     nonRomTimingDivisor: nonRomTimingDivisor,
                     loadableTimingDivisor: loadableTimingDivisor,
                     initialEarLevelHigh: initialEarLevelHigh);
