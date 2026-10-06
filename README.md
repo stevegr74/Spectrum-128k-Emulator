@@ -32,7 +32,7 @@ is complete.
 
 Verified media includes:
 
-- Snapshots: `robocop128k.z80`, `JSWAPRIL.Z80`, and Exolon in `.sna`/`.z80` form
+- Snapshots: `robocop128k.z80`, `JSWAPRIL.Z80`, Exolon in `.sna`/`.z80` form, and a converted 128K Renegade `.sna`
 - Tapes: Exolon, Where Time Stood Still, Impossible Mission I/II, Batman, Target Renegade (128K all-at-once and 48K level-at-a-time), Scuba Dive, Roller Coaster, Captain America, and Donkey Kong
 - Replay: `aufmonty.rzx`
 
@@ -49,6 +49,7 @@ Current limitations and active work:
 - ROM-driven tape handoffs preserve consumed-block pauses, exact TZX pause signal transitions, and zero-duration stop markers.
 - Protected playback and Quick State preserve precise tape pulse, EAR, loader-continuation and replay positions.
 - The background emulation loop owns mutable machine state; the UI consumes copied snapshots and uses nested pause leases for safe inspection.
+- The undocumented Z80 Q latch is tracked by flag-writing semantics, including prefix and interrupt boundaries, with focused regressions alongside ZEXDOC/ZEXALL.
 
 ## Development Priorities
 
@@ -209,6 +210,7 @@ Current snapshot status:
   - 48K-format snapshots can run on the selected 48K or 128K hardware model
   - 128K file-format loading restores all RAM banks, paging state, and the explicit program counter
   - standard and duplicate-current-page 128K layouts are supported; TR-DOS snapshots are rejected because no TR-DOS ROM is emulated
+  - a converted 128K Renegade snapshot has passed exact representable-state round-trip comparison and an execution smoke test
   - interrupt state restored from snapshot header semantics
   - generic format-based load path in use
 
