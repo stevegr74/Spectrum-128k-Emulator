@@ -85,6 +85,34 @@ namespace Spectrum128kEmulator.Tests
         }
 
         [Fact]
+        public void Machine_ExhaustedIdleTape_AutoEjectsWithoutWaveformCompletion()
+        {
+            string tempFolder = CreateTempRoms();
+
+            try
+            {
+                var machine = new Spectrum128Machine(tempFolder);
+                var tape = new MountedTape(
+                    "fast-loaded.tap",
+                    new[] { TapeBlock.CreatePureTone(pulseLength: 100, pulseCount: 4) },
+                    initialBlockIndex: 1);
+                machine.MountTape(tape);
+
+                Assert.False(tape.HasCompletedPlayback);
+                Assert.True(tape.IsExhaustedAndIdle);
+
+                machine.ExecuteTimeSlice(1);
+
+                Assert.False(machine.HasMountedTape);
+                Assert.Equal(TapeTransportState.Ended, machine.TapeTransportState);
+            }
+            finally
+            {
+                Directory.Delete(tempFolder, true);
+            }
+        }
+
+        [Fact]
         public void Machine_ReachingStopMarker_ReportsPersistentStoppedTransport()
         {
             string tempFolder = CreateTempRoms();
@@ -1058,6 +1086,43 @@ namespace Spectrum128kEmulator.Tests
                 Assert.Equal("Pause", GetPrivateField(tape, "earPlaybackState").ToString());
                 Assert.Equal(1000 * 3500, (int)GetPrivateField(tape, "earPulseLengthTStates"));
                 Assert.Equal(2, (int)GetPrivateField(tape, "earPlaybackBlockIndex"));
+            }
+            finally
+            {
+                Directory.Delete(tempFolder, true);
+            }
+        }
+
+        [Fact]
+        public void MountedTap_FinalBootstrapLoad_MarksPlaybackCompleteAndAutoEjects()
+        {
+            string tempFolder = CreateTempRoms();
+
+            try
+            {
+                byte[] basicProgram = BuildBasicProgram(
+                    BuildBasicLine(10, Token(244), Ascii("23624"), Comma(), Ascii("7"), NumberMarker(7)));
+                TapeBlock headerBlock = TapeBlock.CreateData(
+                    BuildHeaderBlock(type: 0, fileName: "FINAL", dataLength: (ushort)basicProgram.Length, parameter1: 10, parameter2: (ushort)basicProgram.Length),
+                    2168, 8063, 667, 735, 855, 1710, 8, 1000);
+                TapeBlock dataBlock = TapeBlock.CreateData(
+                    BuildDataBlock(basicProgram),
+                    2168, 3223, 667, 735, 855, 1710, 8, 1000);
+
+                var machine = new Spectrum128Machine(tempFolder);
+                var tape = new MountedTape("final-bootstrap.tap", new[] { headerBlock, dataBlock });
+                machine.MountTape(tape);
+
+                BootstrapTapeLoadResult result = tape.TryConsumeBootstrapLoad(machine);
+
+                Assert.True(result.Success);
+                Assert.False(tape.HasMoreBlocks);
+                Assert.True(tape.HasCompletedPlayback);
+
+                machine.ExecuteTimeSlice(1);
+
+                Assert.False(machine.HasMountedTape);
+                Assert.Equal(TapeTransportState.Ended, machine.TapeTransportState);
             }
             finally
             {

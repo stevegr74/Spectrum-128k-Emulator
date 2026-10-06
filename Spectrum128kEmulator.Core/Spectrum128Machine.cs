@@ -451,7 +451,9 @@ namespace Spectrum128kEmulator
                 executedTStates += actualExecutedTStates;
                 MountedTape? activeTape = mountedTape;
                 activeTape?.AdvanceToTime(cpu.TStates);
-                if (activeTape?.HasCompletedPlayback == true && ReferenceEquals(mountedTape, activeTape))
+                bool tapeHasEnded = activeTape?.HasCompletedPlayback == true ||
+                    (activeTape?.IsExhaustedAndIdle == true && !HasPendingMountedLoadUsrContinuation);
+                if (tapeHasEnded && ReferenceEquals(mountedTape, activeTape))
                 {
                     mountedTape = null;
                     TapeTransportState = TapeTransportState.Ended;

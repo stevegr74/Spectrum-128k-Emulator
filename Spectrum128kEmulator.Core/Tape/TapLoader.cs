@@ -241,10 +241,19 @@ namespace Spectrum128kEmulator.Tap
             $"State={state} EarState={earPlaybackState} Byte={earStreamByteIndex} Bit={earBitIndex} " +
             $"Pilot={earPilotPulsesRemaining} PulseLen={earPulseLengthTStates} PulseSeq={earPulseSequenceIndex} " +
             $"EarLevel={(earLevel ? 1 : 0)} Started={(earPlaybackStarted ? 1 : 0)} Retained={(retainedByteStreamTrapAvailable ? 1 : 0)} " +
-            $"Paused={(playbackPaused ? 1 : 0)} Marker={(pausedByStopMarker ? 1 : 0)} " +
+            $"Paused={(playbackPaused ? 1 : 0)} Marker={(pausedByStopMarker ? 1 : 0)} Complete={(playbackCompleted ? 1 : 0)} " +
             $"RomTrapBlock={romStreamTrapBlockIndex} RomTrapByte={romStreamTrapByteIndex}";
         public bool IsActivelyDrivingEarLine => !playbackPaused && earPlaybackState != EarPlaybackState.Idle;
         public bool HasCompletedPlayback => playbackCompleted;
+        public bool IsExhaustedAndIdle =>
+            blocks.Count > 0 &&
+            !HasRemainingBlocks &&
+            earPlaybackBlockIndex >= blocks.Count &&
+            state == TapeState.Idle &&
+            earPlaybackState == EarPlaybackState.Idle &&
+            pendingPrePlaybackPauseTStates <= 0 &&
+            !retainedByteStreamTrapAvailable &&
+            !playbackPaused;
         public bool IsPlaybackPaused => playbackPaused;
         public bool IsPausedByStopMarker => pausedByStopMarker;
         public bool IsActivelyStreamingEarSignal =>
@@ -1250,6 +1259,13 @@ namespace Spectrum128kEmulator.Tap
             if (desiredBlockIndex == earPlaybackBlockIndex)
             {
                 pendingPrePlaybackPauseTStates = 0;
+                if (desiredBlockIndex >= blocks.Count &&
+                    !HasRemainingBlocks &&
+                    earPlaybackState == EarPlaybackState.Idle &&
+                    !retainedByteStreamTrapAvailable)
+                {
+                    playbackCompleted = true;
+                }
                 return;
             }
 
@@ -1629,6 +1645,7 @@ namespace Spectrum128kEmulator.Tap
                 earPulseLengthTStates = 0;
                 earLevel = true;
                 earPlaybackStarted = false;
+                playbackCompleted = true;
                 return;
             }
 
