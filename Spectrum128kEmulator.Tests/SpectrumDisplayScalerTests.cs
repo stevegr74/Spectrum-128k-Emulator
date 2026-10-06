@@ -1,3 +1,4 @@
+using System.Drawing;
 using Xunit;
 
 namespace Spectrum128kEmulator.Tests
@@ -76,6 +77,19 @@ namespace Spectrum128kEmulator.Tests
             Assert.Equal(SpectrumDisplayMode.Enhanced2x, SpectrumDisplayModes.Next(SpectrumDisplayMode.Native));
             Assert.Equal(SpectrumDisplayMode.Enhanced3x, SpectrumDisplayModes.Next(SpectrumDisplayMode.Enhanced2x));
             Assert.Equal(SpectrumDisplayMode.Native, SpectrumDisplayModes.Next(SpectrumDisplayMode.Enhanced3x));
+        }
+
+        [Theory]
+        [InlineData(SpectrumDisplayMode.Native, 222)]
+        [InlineData(SpectrumDisplayMode.Enhanced2x, 462)]
+        [InlineData(SpectrumDisplayMode.Enhanced3x, 702)]
+        public void StatusOverlay_IsAnchoredToBottomLeft(SpectrumDisplayMode mode, int expectedY)
+        {
+            SpectrumDisplayLayout layout = SpectrumDisplayModes.GetLayout(mode);
+
+            Point location = SpectrumDisplayModes.GetStatusOverlayLocation(layout, overlayHeight: 13);
+
+            Assert.Equal(new Point(5, expectedY), location);
         }
     }
 }
