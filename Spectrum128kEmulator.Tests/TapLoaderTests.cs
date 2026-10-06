@@ -593,6 +593,65 @@ namespace Spectrum128kEmulator.Tests
         }
 
         [Fact]
+        public void MountedTape_LongTerminalPause_IsCappedBeforeAutoEject()
+        {
+            string tempFolder = CreateTempRoms();
+
+            try
+            {
+                var machine = new Spectrum128Machine(tempFolder);
+                var tape = new MountedTape(
+                    "terminal-silence",
+                    new TapeBlock[]
+                    {
+                        TapeBlock.CreateByteStreamData(new byte[] { 0x00 }, 1, 1, 1, 60000)
+                    },
+                    initialBlockIndex: 0,
+                    skipCustomHeaderForEarPlayback: false);
+                machine.MountTape(tape);
+
+                _ = tape.ReadEarBit(0);
+                _ = tape.ReadEarBit(2);
+
+                Assert.Equal("Pause", GetPrivateField(tape, "earPlaybackState").ToString());
+                Assert.Equal(3500, (int)GetPrivateField(tape, "earPulseLengthTStates"));
+                Assert.Equal(999 * 3500, (int)GetPrivateField(tape, "earPauseLowTailTStates"));
+
+                _ = tape.ReadEarBit((ulong)(1000 * 3500 + 2));
+                Assert.True(tape.HasCompletedPlayback);
+
+                machine.ExecuteTimeSlice(1);
+                Assert.False(machine.HasMountedTape);
+                Assert.Equal(TapeTransportState.Ended, machine.TapeTransportState);
+            }
+            finally
+            {
+                Directory.Delete(tempFolder, true);
+            }
+        }
+
+        [Fact]
+        public void MountedTape_LongIntermediatePause_PreservesRecordedDuration()
+        {
+            var tape = new MountedTape(
+                "intermediate-silence",
+                new TapeBlock[]
+                {
+                    TapeBlock.CreateByteStreamData(new byte[] { 0x00 }, 1, 1, 1, 60000),
+                    TapeBlock.CreatePureTone(100, 1)
+                },
+                initialBlockIndex: 0,
+                skipCustomHeaderForEarPlayback: false);
+
+            _ = tape.ReadEarBit(0);
+            _ = tape.ReadEarBit(2);
+
+            Assert.Equal("Pause", GetPrivateField(tape, "earPlaybackState").ToString());
+            Assert.Equal(3500, (int)GetPrivateField(tape, "earPulseLengthTStates"));
+            Assert.Equal(59999 * 3500, (int)GetPrivateField(tape, "earPauseLowTailTStates"));
+        }
+
+        [Fact]
         public void MountedTape_CompletedProtectedEndOfStream_AutoEjectsAfterFinalTransition()
         {
             string tempFolder = CreateTempRoms();

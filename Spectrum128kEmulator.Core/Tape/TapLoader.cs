@@ -145,6 +145,7 @@ namespace Spectrum128kEmulator.Tap
         private const int ZeroBitPulseLengthTStates = 855;
         private const int OneBitPulseLengthTStates = 1710;
         private const int PauseLevelSettlingTStates = 3500;
+        private const int MaximumTerminalPauseMs = 1000;
         private readonly IReadOnlyList<TapeBlock> blocks;
         private readonly bool skipCustomHeaderForEarPlayback;
         private readonly int initialBlockIndex;
@@ -1408,7 +1409,7 @@ namespace Spectrum128kEmulator.Tap
 
         private void BeginPause(TapeBlock block, int nextBlockIndex)
         {
-            int pauseTStates = GetPauseLengthTStates(block);
+            int pauseTStates = GetPauseLengthTStates(block, nextBlockIndex);
             earPlaybackState = EarPlaybackState.Pause;
             earNextBlockIndexAfterPause = nextBlockIndex;
 
@@ -1644,9 +1645,13 @@ namespace Spectrum128kEmulator.Tap
             return Math.Max(1, clamped / nonRomTimingDivisor);
         }
 
-        private int GetPauseLengthTStates(TapeBlock block)
+        private int GetPauseLengthTStates(TapeBlock block, int nextBlockIndex)
         {
-            int basePauseTStates = Math.Max(1, block.PauseAfterBlockMs * 3500);
+            int pauseMs = block.PauseAfterBlockMs;
+            if (GetEarPlaybackStartBlockIndex(nextBlockIndex) >= blocks.Count)
+                pauseMs = Math.Min(pauseMs, MaximumTerminalPauseMs);
+
+            int basePauseTStates = Math.Max(1, pauseMs * 3500);
             if (block.PauseAfterBlockMs <= 2)
                 return basePauseTStates;
 
