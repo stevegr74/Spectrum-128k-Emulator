@@ -310,7 +310,6 @@ namespace Spectrum128kEmulator
             lastObservedTapeMarkerStop = markerStop;
             if (state is TapeTransportState.Playing or TapeTransportState.Stopped)
                 ShowTapeTransportOverlay(state, markerStop);
-            UpdateTapeTransportTitle(state, markerStop);
 
             UpdateTapeTransportMenuItem();
             UpdateStatsLabel();
@@ -1574,7 +1573,7 @@ namespace Spectrum128kEmulator
             displayedFrameCount = 0;
             totalPresentedFrameCount = 0;
             UpdateMachineModelMenuItems();
-            UpdateTapeTransportTitle(lastObservedTapeTransportState, lastObservedTapeMarkerStop);
+            UpdateWindowTitle();
             UpdateTapeTransportMenuItem();
             UpdateStatsLabel();
         }
@@ -1634,7 +1633,6 @@ namespace Spectrum128kEmulator
             UpdateTapeTransportMenuItem();
             if (state == TapeTransportState.Playing)
                 ShowTapeTransportOverlay(state, markerStop: false);
-            UpdateTapeTransportTitle(state, lastObservedTapeMarkerStop);
         }
 
         private void UpdateTapeTransportFeedback(long nowTicks)
@@ -1651,7 +1649,6 @@ namespace Spectrum128kEmulator
                 else if (state == TapeTransportState.NoTape)
                     ClearTapeTransportOverlay();
 
-                UpdateTapeTransportTitle(state, markerStop);
                 UpdateTapeTransportMenuItem();
                 UpdateStatsLabel();
             }
@@ -1660,7 +1657,6 @@ namespace Spectrum128kEmulator
                 nowTicks >= tapeTransportIconExpiresAtTicks)
             {
                 ClearTapeTransportOverlay();
-                UpdateTapeTransportTitle(state, markerStop);
             }
         }
 
@@ -1769,30 +1765,19 @@ namespace Spectrum128kEmulator
             graphics.DrawString(quickStateOverlayText, font, accentBrush, x + (9 * scale), y + (9 * scale));
         }
 
-        private void UpdateTapeTransportTitle(TapeTransportState state, bool markerStop)
+        private void UpdateWindowTitle()
         {
-            string? tapeStatus = state switch
-            {
-                TapeTransportState.Playing => "Playing",
-                TapeTransportState.Stopped when markerStop => "Auto-stopped",
-                TapeTransportState.Stopped => "Paused",
-                TapeTransportState.Ended when tapeTransportOverlayState == TapeTransportState.Ended => "Ended",
-                _ => null
-            };
             string mediaTitle = loadedMediaDisplayName is null
                 ? string.Empty
                 : $" - {loadedMediaDisplayName}";
-            string tapeTitle = tapeStatus is null
-                ? string.Empty
-                : $" - Tape: {tapeStatus}";
-            Text = $"{ApplicationTitle}{mediaTitle}{tapeTitle}";
+            Text = $"{ApplicationTitle}{mediaTitle}";
         }
 
         private void SetLoadedMediaDisplayName(string path)
         {
             string name = Path.GetFileNameWithoutExtension(path).Trim();
             loadedMediaDisplayName = ShortenMediaTitle(name);
-            UpdateTapeTransportTitle(lastObservedTapeTransportState, lastObservedTapeMarkerStop);
+            UpdateWindowTitle();
         }
 
         private static string? ShortenMediaTitle(string name)
