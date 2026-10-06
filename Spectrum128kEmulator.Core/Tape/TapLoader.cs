@@ -3512,13 +3512,19 @@ namespace Spectrum128kEmulator.Tap
                     $"BASIC header for '{header.FileName}' declares a program length of {programLength} bytes, but the data block only contains {payload.Length} bytes.");
             }
 
-            if (((int)programStart + payload.Length) > 0x10000)
-                throw new InvalidOperationException("The BASIC program and variables do not fit in 48K RAM.");
+            if (((int)programStart + payload.Length + 2) > 0x10000)
+                throw new InvalidOperationException("The BASIC program, variables, and interpreter terminators do not fit in 48K RAM.");
 
             LoadBytes(machine, programStart, payload);
 
             ushort varsAddress = (ushort)(programStart + programLength);
-            ushort endAddress = (ushort)(programStart + payload.Length);
+            ushort variablesEndAddress = (ushort)(programStart + payload.Length);
+            ushort editLineAddress = (ushort)(variablesEndAddress + 1);
+            ushort workspaceAddress = (ushort)(editLineAddress + 1);
+
+            // Tape files omit the in-memory variables terminator and edit line.
+            machine.PokeMemory(variablesEndAddress, 0x80);
+            machine.PokeMemory(editLineAddress, 0x0D);
 
             WriteWord(machine, ProgAddress, programStart);
             WriteWord(machine, VarsAddress, varsAddress);
@@ -3538,14 +3544,12 @@ namespace Spectrum128kEmulator.Tap
             }
             else
             {
-                WriteWord(machine, EditLineAddress, endAddress);
-                WriteWord(machine, WorkspaceAddress, endAddress);
-                WriteWord(machine, StackBottomAddress, endAddress);
-                WriteWord(machine, StackEndAddress, endAddress);
-                InitializeInterpreterPointersForLoadedProgram(machine, endAddress);
+                WriteWord(machine, EditLineAddress, editLineAddress);
+                WriteWord(machine, WorkspaceAddress, workspaceAddress);
+                WriteWord(machine, StackBottomAddress, workspaceAddress);
+                WriteWord(machine, StackEndAddress, workspaceAddress);
+                InitializeInterpreterPointersForLoadedProgram(machine, editLineAddress);
             }
-
-            machine.PokeMemory(endAddress, 0x0D);
 
             if (header.AutoStartLine < 32768)
             {
@@ -4547,17 +4551,22 @@ namespace Spectrum128kEmulator.Tap
             {
                 ushort programStart = BasicProgramStart;
                 ushort varsAddress = (ushort)(programStart + loadedProgramLength);
-                ushort endAddress = (ushort)(programStart + loadedDataLength);
+                ushort variablesEndAddress = (ushort)(programStart + loadedDataLength);
+                ushort editLineAddress = (ushort)(variablesEndAddress + 1);
+                ushort workspaceAddress = (ushort)(editLineAddress + 1);
+
+                machine.PokeMemory(variablesEndAddress, 0x80);
+                machine.PokeMemory(editLineAddress, 0x0D);
 
                 WriteWord(machine, ProgAddress, programStart);
                 WriteWord(machine, VarsAddress, varsAddress);
                 WriteWord(machine, NextLineAddress, programStart);
                 WriteWord(machine, DataAddress, programStart);
-                WriteWord(machine, EditLineAddress, endAddress);
-                WriteWord(machine, WorkspaceAddress, endAddress);
-                WriteWord(machine, StackBottomAddress, endAddress);
-                WriteWord(machine, StackEndAddress, endAddress);
-                InitializeInterpreterPointersForLoadedProgram(machine, endAddress);
+                WriteWord(machine, EditLineAddress, editLineAddress);
+                WriteWord(machine, WorkspaceAddress, workspaceAddress);
+                WriteWord(machine, StackBottomAddress, workspaceAddress);
+                WriteWord(machine, StackEndAddress, workspaceAddress);
+                InitializeInterpreterPointersForLoadedProgram(machine, editLineAddress);
             }
 
             private void RestoreInterpreterWorkspaceAfterImmediateProgram()
