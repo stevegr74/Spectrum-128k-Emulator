@@ -44,6 +44,7 @@ namespace Spectrum128kEmulator.Z80
         private int eiDelay = 0;
         private int interruptMode = 1;
         private byte qFlags = 0;
+        private bool flagsWrittenThisInstruction;
         private readonly Action[] opcodeTable = new Action[256];
         private readonly Action[] cbOpcodeTable = new Action[256];
         private readonly Action[] edOpcodeTable = new Action[256];
@@ -55,8 +56,6 @@ namespace Spectrum128kEmulator.Z80
         private const int RecentTraceCapacity = 256;
         private const int RecentInterruptEventCapacity = 8192;
         private bool instructionTraceCaptureEnabled;
-        private bool flagsChangedLastInstruction = false;
-        private byte lastFlagsBeforeInstruction = 0;
 
         private byte IXH
         {
@@ -137,6 +136,7 @@ namespace Spectrum128kEmulator.Z80
             eiDelay = 0;
             interruptMode = 1;
             qFlags = 0;
+            flagsWrittenThisInstruction = false;
 
             recentTrace.Clear();
             recentInterruptEvents.Clear();
@@ -144,8 +144,6 @@ namespace Spectrum128kEmulator.Z80
             InstructionFetchCount = 0;
             LastInterruptProgressTStates = 0;
 
-            flagsChangedLastInstruction = false;
-            lastFlagsBeforeInstruction = 0;
             ExecutionStopped = false;
         }
 
@@ -178,10 +176,9 @@ namespace Spectrum128kEmulator.Z80
             eiDelay = 0;
             interruptMode = 1;
             qFlags = 0;
+            flagsWrittenThisInstruction = false;
             LastInterruptProgressTStates = TStates;
 
-            flagsChangedLastInstruction = false;
-            lastFlagsBeforeInstruction = 0;
             ExecutionStopped = false;
         }
 
@@ -209,6 +206,7 @@ namespace Spectrum128kEmulator.Z80
                     LastInterruptProgressTStates = TStates;
                     InterruptPending = false;
                     halted = false;
+                    qFlags = 0;
 
                     IFF1 = false;
                     // Preserve IFF2 on maskable interrupt acknowledge.
@@ -275,6 +273,7 @@ namespace Spectrum128kEmulator.Z80
                     LastInterruptProgressTStates = TStates;
                     InterruptPending = false;
                     halted = false;
+                    qFlags = 0;
 
                     IFF1 = false;
 
@@ -318,7 +317,7 @@ namespace Spectrum128kEmulator.Z80
         public void Step()
         {
             ushort pcBefore = Regs.PC;
-            byte fBefore = Regs.F;
+            flagsWrittenThisInstruction = false;
 
             byte op = FetchOpcodeByte();
             RecordTrace(pcBefore, op);
@@ -335,6 +334,7 @@ namespace Spectrum128kEmulator.Z80
             }
             else if (op == 0xDD)
             {
+                qFlags = 0;
                 byte ddOp = FetchOpcodeByte();
                 if (ddOp == 0xCB)
                 {
@@ -349,6 +349,7 @@ namespace Spectrum128kEmulator.Z80
             }
             else if (op == 0xFD)
             {
+                qFlags = 0;
                 byte fdOp = FetchOpcodeByte();
                 if (fdOp == 0xCB)
                 {
@@ -378,9 +379,7 @@ namespace Spectrum128kEmulator.Z80
                 }
             }
 
-            lastFlagsBeforeInstruction = fBefore;
-            flagsChangedLastInstruction = Regs.F != fBefore;
-            qFlags = (Regs.F != fBefore) ? Regs.F : (byte)0;
+            qFlags = flagsWrittenThisInstruction ? Regs.F : (byte)0;
         }
 
         public string[] GetRecentTraceSnapshot() => recentTrace.ToArray();
@@ -431,9 +430,8 @@ namespace Spectrum128kEmulator.Z80
             TStates = 0;
             InstructionFetchCount = 0;
 
-            flagsChangedLastInstruction = false;
-            lastFlagsBeforeInstruction = 0;
             qFlags = 0;
+            flagsWrittenThisInstruction = false;
             LastInterruptProgressTStates = TStates;
 
         }

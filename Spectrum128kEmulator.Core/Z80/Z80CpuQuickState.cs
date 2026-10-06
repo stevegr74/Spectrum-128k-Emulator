@@ -32,8 +32,6 @@ namespace Spectrum128kEmulator.Z80
             internal int EiDelay;
             internal byte QFlags;
             internal ulong LastInterruptProgressTStates;
-            internal bool FlagsChangedLastInstruction;
-            internal byte LastFlagsBeforeInstruction;
         }
 
         public QuickState CaptureQuickState()
@@ -67,9 +65,7 @@ namespace Spectrum128kEmulator.Z80
                 InterruptMode = interruptMode,
                 EiDelay = eiDelay,
                 QFlags = qFlags,
-                LastInterruptProgressTStates = LastInterruptProgressTStates,
-                FlagsChangedLastInstruction = flagsChangedLastInstruction,
-                LastFlagsBeforeInstruction = lastFlagsBeforeInstruction
+                LastInterruptProgressTStates = LastInterruptProgressTStates
             };
         }
 
@@ -104,9 +100,8 @@ namespace Spectrum128kEmulator.Z80
             interruptMode = state.InterruptMode;
             eiDelay = state.EiDelay;
             qFlags = state.QFlags;
+            flagsWrittenThisInstruction = false;
             LastInterruptProgressTStates = state.LastInterruptProgressTStates;
-            flagsChangedLastInstruction = state.FlagsChangedLastInstruction;
-            lastFlagsBeforeInstruction = state.LastFlagsBeforeInstruction;
             ExecutionStopped = false;
 
             recentTrace.Clear();

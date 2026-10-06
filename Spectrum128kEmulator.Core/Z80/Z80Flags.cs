@@ -30,10 +30,17 @@ namespace Spectrum128kEmulator.Z80
 
         private void SetFlag(Flag f, bool set)
         {
+            flagsWrittenThisInstruction = true;
             if (set)
                 Regs.F |= (byte)(1 << (int)f);
             else
                 Regs.F &= (byte)~(1 << (int)f);
+        }
+
+        private void WriteFlags(byte value)
+        {
+            flagsWrittenThisInstruction = true;
+            Regs.F = value;
         }
 
         private void CopyUndocumentedFlagsFrom(byte value)
@@ -45,7 +52,7 @@ namespace Spectrum128kEmulator.Z80
         private void ApplyScfCcfUndocumentedFlags()
         {
             byte f3f5 = (byte)(((qFlags ^ Regs.F) | Regs.A) & 0x28);
-            Regs.F = (byte)((Regs.F & 0xD7) | f3f5);
+            WriteFlags((byte)((Regs.F & 0xD7) | f3f5));
         }
     }
 }
