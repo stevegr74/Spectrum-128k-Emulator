@@ -319,10 +319,14 @@ namespace Spectrum128kEmulator.Tap
                     }
 
                     case 0x20:
+                    {
                         EnsureAvailable(fileData, offset, 2);
-                        blocks.Add(RawTzxBlock.FromTapeBlock(TapeBlock.CreatePause(ReadWord(fileData, offset))));
+                        ushort pauseMs = ReadWord(fileData, offset);
+                        blocks.Add(RawTzxBlock.FromTapeBlock(
+                            pauseMs == 0 ? TapeBlock.CreateStopTape() : TapeBlock.CreatePause(pauseMs)));
                         offset += 2;
                         break;
+                    }
 
                     case 0x21:
                         EnsureAvailable(fileData, offset, 1);

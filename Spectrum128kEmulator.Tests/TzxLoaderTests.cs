@@ -48,6 +48,18 @@ namespace Spectrum128kEmulator.Tests
         }
 
         [Fact]
+        public void ParseBlocks_ZeroDurationPause_IsStopTapeMarker()
+        {
+            var blocks = Tap.TzxLoader.ParseBlocks(BuildTzx(
+                BuildPauseBlock(1000),
+                BuildPauseBlock(0)));
+
+            Assert.Equal(Tap.TapeBlockKind.Pause, blocks[0].Kind);
+            Assert.Equal(1000, blocks[0].PauseAfterBlockMs);
+            Assert.Equal(Tap.TapeBlockKind.StopTape, blocks[1].Kind);
+        }
+
+        [Fact]
         public void ParseBlocks_TurboData_OnlyEnablesRomTrap_ForExactRomTimings()
         {
             byte[] stream = new byte[] { 0xFF, 0x42, 0xBD };
@@ -1185,6 +1197,11 @@ namespace Spectrum128kEmulator.Tests
             foreach (byte[] block in blocks)
                 ms.Write(block, 0, block.Length);
             return ms.ToArray();
+        }
+
+        private static byte[] BuildPauseBlock(ushort pauseMs)
+        {
+            return new byte[] { 0x20, (byte)(pauseMs & 0xFF), (byte)(pauseMs >> 8) };
         }
 
         private static object GetPrivateField(object target, string name)
