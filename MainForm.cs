@@ -987,7 +987,7 @@ namespace Spectrum128kEmulator
                 });
                 fpsLabel.Text = $"Loaded: {Path.GetFileName(dialog.FileName)}";
                 SuppressSpectrumHostInputForMilliseconds(PostLoadInputSuppressionMilliseconds);
-                PresentCurrentMachineFrame(frameClock.ElapsedTicks + PresentationIntervalTicks);
+                PresentCurrentMachineFrame(frameClock.ElapsedTicks, force: true);
                 screenBox.Focus();
             }
             catch (Exception ex)
@@ -1052,7 +1052,7 @@ namespace Spectrum128kEmulator
                 });
                 SuppressSpectrumHostInputForMilliseconds(PostLoadInputSuppressionMilliseconds);
                 ShowMountedTapeTransportFeedback();
-                PresentCurrentMachineFrame(frameClock.ElapsedTicks + PresentationIntervalTicks);
+                PresentCurrentMachineFrame(frameClock.ElapsedTicks, force: true);
                 screenBox.Focus();
             }
             catch (Exception ex)
@@ -1131,7 +1131,7 @@ namespace Spectrum128kEmulator
                     });
                 }
                 fpsLabel.Text = $"Loaded: {Path.GetFileName(dialog.FileName)}";
-                PresentCurrentMachineFrame(frameClock.ElapsedTicks + PresentationIntervalTicks);
+                PresentCurrentMachineFrame(frameClock.ElapsedTicks, force: true);
                 screenBox.Focus();
             }
             catch (Exception ex)
@@ -1458,9 +1458,11 @@ namespace Spectrum128kEmulator
             }
         }
 
-        private void PresentCurrentMachineFrame(long now)
+        private void PresentCurrentMachineFrame(long now, bool force = false)
         {
-            if (!ShouldPresentFrame(now))
+            if (force)
+                lastPresentationTicks = now;
+            else if (!ShouldPresentFrame(now))
                 return;
 
             byte[] screenBankCopy = new byte[latestScreenBankData.Length];
