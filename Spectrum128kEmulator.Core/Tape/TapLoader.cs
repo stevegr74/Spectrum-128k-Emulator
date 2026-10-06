@@ -473,6 +473,12 @@ namespace Spectrum128kEmulator.Tap
 
             bool success = false;
             ushort? romDrivenBasicAutoStartLine = null;
+            byte expectedFlag = cpu.Regs.A;
+            bool isLoad = (cpu.Regs.F & FlagCarry) != 0;
+
+            ushort expectedLength = cpu.Regs.DE;
+            ushort destination = cpu.Regs.IX;
+            ushort callerReturnAddress = PeekWord(machine, cpu.Regs.SP);
             ushort trapReturnAddress = GetRomTrapReturnAddress(
                 machine,
                 cpu,
@@ -487,13 +493,40 @@ namespace Spectrum128kEmulator.Tap
                 }
 
                 int playbackTrapBlockIndex = GetActiveRomTrapPlaybackBlockIndex();
-                bool usingPlaybackTrapBlock = playbackTrapBlockIndex > nextBlockIndex;
+                ResolveExpectedRomFlag(
+                    cpu,
+                    playbackTrapBlockIndex,
+                    ref expectedFlag,
+                    ref isLoad);
+                machine.Trace?.Invoke(
+                    $"[RomTrap] request pc=0x{cpu.Regs.PC:X4} next={nextBlockIndex} active={playbackTrapBlockIndex} " +
+                    $"AF=0x{cpu.Regs.AF:X4} A'F'=0x{cpu.Regs.A_:X2}{cpu.Regs.F_:X2} selected=0x{expectedFlag:X2} " +
+                    $"DE={expectedLength} IX=0x{destination:X4} load={(isLoad ? 1 : 0)} " +
+                    $"return=0x{callerReturnAddress:X4}/0x{PeekWord(machine, (ushort)(cpu.Regs.SP + 2)):X4}");
+                bool reclaimActivePlaybackBlock =
+                    playbackTrapBlockIndex >= 0 &&
+                    playbackTrapBlockIndex < nextBlockIndex &&
+                    (RomBlockMatchesRequest(
+                         blocks[playbackTrapBlockIndex],
+                         expectedFlag,
+                         expectedLength) ||
+                     RomBlockMatchesLength(blocks[playbackTrapBlockIndex], expectedLength));
+                bool usingPlaybackTrapBlock =
+                    playbackTrapBlockIndex > nextBlockIndex || reclaimActivePlaybackBlock;
                 if (usingPlaybackTrapBlock)
                 {
-                    while (nextBlockIndex < playbackTrapBlockIndex)
-                        AdvanceBlockState(blocks[nextBlockIndex]);
+                    if (reclaimActivePlaybackBlock)
+                    {
+                        nextBlockIndex = playbackTrapBlockIndex;
+                        state = TapeState.ExpectData;
+                    }
+                    else
+                    {
+                        while (nextBlockIndex < playbackTrapBlockIndex)
+                            AdvanceBlockState(blocks[nextBlockIndex]);
+                        state = TapeState.Idle;
+                    }
 
-                    state = TapeState.Idle;
                     expectedDataLength = null;
                     pendingHeaderName = null;
                     pendingHeaderInfo = null;
@@ -517,19 +550,6 @@ namespace Spectrum128kEmulator.Tap
                 }
 
                 TapeBlock block = blocks[nextBlockIndex];
-                byte expectedFlag = cpu.Regs.A;
-                bool isLoad = (cpu.Regs.F & FlagCarry) != 0;
-                if (expectedFlag != HeaderFlag &&
-                    expectedFlag != DataFlag &&
-                    (cpu.Regs.A_ == HeaderFlag || cpu.Regs.A_ == DataFlag))
-                {
-                    expectedFlag = cpu.Regs.A_;
-                    isLoad = (cpu.Regs.F_ & FlagCarry) != 0;
-                }
-
-                ushort expectedLength = cpu.Regs.DE;
-                ushort destination = cpu.Regs.IX;
-                ushort callerReturnAddress = PeekWord(machine, cpu.Regs.SP);
 
                 if (IsRomTrapByteStreamBlock(block))
                 {
@@ -575,7 +595,6 @@ namespace Spectrum128kEmulator.Tap
                 bool hasUnstructuredStandardRomLoadContext =
                     state == TapeState.ExpectData &&
                     !hasStructuredDataContext &&
-                    machine.HasPendingMountedLoadUsrContinuation &&
                     block.IsLoadableRomBlock &&
                     !IsHeaderBlock(block);
                 trapReturnAddress = GetRomTrapReturnAddress(
@@ -921,6 +940,66 @@ namespace Spectrum128kEmulator.Tap
             block.Kind == TapeBlockKind.Data &&
             block.CanUseRomLoadTrap &&
             block.Payload != null;
+
+        private static bool RomBlockMatchesRequest(
+            TapeBlock block,
+            byte expectedFlag,
+            ushort expectedLength) =>
+            CanUseRomLoadTrap(block) &&
+            block.Flag == expectedFlag &&
+            block.Payload!.Length == expectedLength;
+
+        private static bool RomBlockMatchesLength(TapeBlock block, ushort expectedLength) =>
+            CanUseRomLoadTrap(block) &&
+            block.Payload!.Length == expectedLength;
+
+        private void ResolveExpectedRomFlag(
+            Z80Cpu cpu,
+            int playbackTrapBlockIndex,
+            ref byte expectedFlag,
+            ref bool isLoad)
+        {
+            if (TryResolveExpectedRomFlagFromBlock(nextBlockIndex, cpu, ref expectedFlag, ref isLoad))
+                return;
+
+            if (playbackTrapBlockIndex != nextBlockIndex &&
+                TryResolveExpectedRomFlagFromBlock(playbackTrapBlockIndex, cpu, ref expectedFlag, ref isLoad))
+            {
+                return;
+            }
+
+            if (expectedFlag != HeaderFlag &&
+                expectedFlag != DataFlag &&
+                (cpu.Regs.A_ == HeaderFlag || cpu.Regs.A_ == DataFlag))
+            {
+                expectedFlag = cpu.Regs.A_;
+                isLoad = (cpu.Regs.F_ & FlagCarry) != 0;
+            }
+        }
+
+        private bool TryResolveExpectedRomFlagFromBlock(
+            int blockIndex,
+            Z80Cpu cpu,
+            ref byte expectedFlag,
+            ref bool isLoad)
+        {
+            if (blockIndex < 0 ||
+                blockIndex >= blocks.Count ||
+                !CanUseRomLoadTrap(blocks[blockIndex]))
+            {
+                return false;
+            }
+
+            byte blockFlag = blocks[blockIndex].Flag;
+            if (cpu.Regs.A_ == blockFlag)
+            {
+                expectedFlag = cpu.Regs.A_;
+                isLoad = (cpu.Regs.F_ & FlagCarry) != 0;
+                return true;
+            }
+
+            return cpu.Regs.A == blockFlag;
+        }
 
         private static bool IsRomTrapByteStreamBlock(TapeBlock block) =>
             block.Kind == TapeBlockKind.Data &&

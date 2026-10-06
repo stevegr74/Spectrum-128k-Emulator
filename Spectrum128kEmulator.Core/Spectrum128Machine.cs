@@ -30,6 +30,8 @@ namespace Spectrum128kEmulator
         private const int DisplayAreaLineCount = 192;
         private const int Default48kFloatingBusDisplayStartAdjustTStates = 0;
         private const int Default48kFloatingBusSampleAdjustTStates = 1;
+        private const int TapeLoaderActivityReadsPerFrame = 64;
+        private const int TapeLoaderHandoffFramesBeforeStop = 3;
 
         private readonly Z80Cpu cpu = new Z80Cpu();
         private readonly byte[][] ramBanks = new byte[8][];
@@ -40,6 +42,12 @@ namespace Spectrum128kEmulator
             0xFF, 0xFF, 0xFF, 0xFF
         };
         private readonly ulong[] keyboardRowScanCounts = new ulong[8];
+        private ulong mountedTapePortReadCount;
+        private ulong mountedTapePortReadCountAtFrameStart;
+        private ulong mountedTapeKeyboardOnlyPortReadCount;
+        private ulong mountedTapeKeyboardOnlyPortReadCountAtFrameStart;
+        private bool mountedTapeLoaderActivityObserved;
+        private int mountedTapeHandoffFrames;
         
         // AY-3-8912
         private readonly Audio.Ay8912 ay = new Audio.Ay8912();
@@ -299,6 +307,7 @@ namespace Spectrum128kEmulator
             last7ffdValue = model == SpectrumMachineModel.Spectrum48K ? (byte)0x10 : (byte)0xFF;
             mountedTape = null;
             TapeTransportState = TapeTransportState.NoTape;
+            ResetMountedTapeActivityTracking();
             rzxPlayback = null;
             pendingMountedLoadUsrContinuationResolver = null;
             pendingMountedLoadUsrContinuationRequiresUsrReturnAddress = false;
@@ -506,6 +515,7 @@ namespace Spectrum128kEmulator
                 currentFrameExecutedTStates = 0;
                 CompleteFrameBorderCapture();
                 FrameCount++;
+                UpdateAutomaticTapeStopAtFrameBoundary();
                 completedFrames++;
             }
 
@@ -592,11 +602,12 @@ namespace Spectrum128kEmulator
             sb.AppendLine($"TapeTransport={TapeTransportState} MarkerStop={(IsTapeStoppedAtMarker ? 1 : 0)}");
             if (mountedTape != null)
                 sb.AppendLine($"TapeDebug={mountedTape.DebugPlaybackState}");
+            sb.AppendLine($"TapeActivityReads={mountedTapePortReadCount} KeyboardOnly={mountedTapeKeyboardOnlyPortReadCount} Observed={(mountedTapeLoaderActivityObserved ? 1 : 0)} HandoffFrames={mountedTapeHandoffFrames}");
             sb.AppendLine();
 
             sb.AppendLine("=== CPU STATE ===");
             sb.AppendLine($"TStates={cpu.TStates}");
-            sb.AppendLine($"PC={cpu.Regs.PC:X4} SP={cpu.Regs.SP:X4} AF={cpu.Regs.AF:X4} BC={cpu.Regs.BC:X4} DE={cpu.Regs.DE:X4} HL={cpu.Regs.HL:X4} IX={cpu.Regs.IX:X4} IY={cpu.Regs.IY:X4}");
+            sb.AppendLine($"PC={cpu.Regs.PC:X4} SP={cpu.Regs.SP:X4} AF={cpu.Regs.AF:X4} AF'={((cpu.Regs.A_ << 8) | cpu.Regs.F_):X4} BC={cpu.Regs.BC:X4} DE={cpu.Regs.DE:X4} HL={cpu.Regs.HL:X4} IX={cpu.Regs.IX:X4} IY={cpu.Regs.IY:X4}");
             sb.AppendLine($"I={cpu.Regs.I:X2} R={cpu.Regs.R:X2} IM={cpu.InterruptMode} IFF1={(cpu.IFF1 ? 1 : 0)} IFF2={(cpu.IFF2 ? 1 : 0)} HALT={(cpu.IsHalted ? 1 : 0)} INTP={(cpu.InterruptPending ? 1 : 0)}");
             sb.AppendLine();
 
@@ -622,7 +633,7 @@ namespace Spectrum128kEmulator
 
             sb.AppendLine("=== KEYBOARD MATRIX ===");
             for (int row = 0; row < keyboardMatrix.Length; row++)
-                sb.AppendLine($"Row{row}={keyboardMatrix[row]:X2}");
+                sb.AppendLine($"Row{row}={keyboardMatrix[row]:X2} Scans={keyboardRowScanCounts[row]}");
             sb.AppendLine();
 
             sb.AppendLine("=== RECENT CPU TRACE ===");
@@ -1017,6 +1028,7 @@ namespace Spectrum128kEmulator
         {
             mountedTape = tape ?? throw new ArgumentNullException(nameof(tape));
             mountedTape.Reset();
+            ResetMountedTapeActivityTracking();
             TapeTransportState = mountedTape.IsPlaybackPaused
                 ? TapeTransportState.Stopped
                 : TapeTransportState.Playing;
@@ -1030,6 +1042,7 @@ namespace Spectrum128kEmulator
             if (mountedTape.IsPlaybackPaused)
             {
                 mountedTape.ResumePlayback(cpu.TStates);
+                ResetMountedTapeActivityTracking();
                 TapeTransportState = mountedTape.HasCompletedPlayback
                     ? TapeTransportState.Ended
                     : mountedTape.IsPlaybackPaused
@@ -1039,6 +1052,7 @@ namespace Spectrum128kEmulator
             else
             {
                 mountedTape.PausePlayback(cpu.TStates);
+                ResetMountedTapeActivityTracking();
                 TapeTransportState = TapeTransportState.Stopped;
             }
 
@@ -1058,12 +1072,13 @@ namespace Spectrum128kEmulator
         public void EjectTape()
         {
             mountedTape = null;
+            ResetMountedTapeActivityTracking();
             TapeTransportState = TapeTransportState.NoTape;
         }
 
         public bool TryServiceTapeTrap()
         {
-            return mountedTape != null && mountedTape.TryHandleRomLoadTrap(this, cpu);
+            return TryHandleMountedTapeTrap(cpu);
         }
 
         public BootstrapTapeLoadResult TryConsumeBootstrapTapeLoad()
@@ -1306,7 +1321,7 @@ namespace Spectrum128kEmulator
                 focusedInstructionTrace.Enqueue(
                     $"F={FrameCount,4} T={z80.TStates,10} PC={z80.Regs.PC:X4} " +
                     $"OP={PeekMemory(z80.Regs.PC):X2} N={PeekMemory((ushort)(z80.Regs.PC + 1)):X2} {PeekMemory((ushort)(z80.Regs.PC + 2)):X2} " +
-                    $"SP={z80.Regs.SP:X4} AF={z80.Regs.AF:X4} BC={z80.Regs.BC:X4} DE={z80.Regs.DE:X4} HL={z80.Regs.HL:X4} " +
+                    $"SP={z80.Regs.SP:X4} AF={z80.Regs.AF:X4} AF'={((z80.Regs.A_ << 8) | z80.Regs.F_):X4} BC={z80.Regs.BC:X4} DE={z80.Regs.DE:X4} HL={z80.Regs.HL:X4} " +
                     $"IX={z80.Regs.IX:X4} IY={z80.Regs.IY:X4} I={z80.Regs.I:X2} R={z80.Regs.R:X2} " +
                     $"IFF1={(z80.IFF1 ? 1 : 0)} IFF2={(z80.IFF2 ? 1 : 0)} INTP={(z80.InterruptPending ? 1 : 0)}");
 
@@ -1319,7 +1334,18 @@ namespace Spectrum128kEmulator
             if (TryResumePendingMountedLoadUsrContinuation(z80))
                 return false;
 
-            return mountedTape != null && mountedTape.TryHandleRomLoadTrap(this, z80);
+            return TryHandleMountedTapeTrap(z80);
+        }
+
+        private bool TryHandleMountedTapeTrap(Z80Cpu z80)
+        {
+            MountedTape? activeTape = mountedTape;
+            if (activeTape == null || !activeTape.TryHandleRomLoadTrap(this, z80))
+                return false;
+
+            if (ReferenceEquals(mountedTape, activeTape))
+                mountedTapeLoaderActivityObserved = true;
+            return true;
         }
 
         private bool TryResumePendingMountedLoadUsrContinuation(Z80Cpu z80)
@@ -1751,6 +1777,13 @@ namespace Spectrum128kEmulator
                 }
             }
 
+            if (mountedTape != null)
+            {
+                mountedTapePortReadCount++;
+                if (IsKeyboardOnlyAccumulatorRead())
+                    mountedTapeKeyboardOnlyPortReadCount++;
+            }
+
             bool tapeEarHigh = mountedTape?.ReadEarBit(sampleTStates) ?? true;
             // On Issue 3-era Spectrum hardware the FE input bit follows the EAR/speaker
             // line, while MIC-only output does not read back as a stable high level.
@@ -1761,6 +1794,90 @@ namespace Spectrum128kEmulator
                 result = (byte)(result & ~0x40);
 
             return result;
+        }
+
+        private bool IsKeyboardOnlyAccumulatorRead()
+        {
+            ushort pc = cpu.Regs.PC;
+            bool inputTargetsAccumulator =
+                PeekMemory((ushort)(pc - 2)) == 0xDB ||
+                (PeekMemory((ushort)(pc - 2)) == 0xED &&
+                 PeekMemory((ushort)(pc - 1)) == 0x78);
+            if (!inputTargetsAccumulator)
+                return false;
+
+            byte nextOpcode = PeekMemory(pc);
+            if (nextOpcode == 0x2F) // CPL is commonly used before testing active-low keys.
+            {
+                pc++;
+                nextOpcode = PeekMemory(pc);
+            }
+
+            return nextOpcode == 0xE6 &&
+                   (PeekMemory((ushort)(pc + 1)) & 0x40) == 0;
+        }
+
+        private void UpdateAutomaticTapeStopAtFrameBoundary()
+        {
+            ulong readsThisFrame = mountedTapePortReadCount - mountedTapePortReadCountAtFrameStart;
+            mountedTapePortReadCountAtFrameStart = mountedTapePortReadCount;
+            ulong keyboardOnlyReadsThisFrame =
+                mountedTapeKeyboardOnlyPortReadCount - mountedTapeKeyboardOnlyPortReadCountAtFrameStart;
+            mountedTapeKeyboardOnlyPortReadCountAtFrameStart = mountedTapeKeyboardOnlyPortReadCount;
+            ulong earSensitiveReadsThisFrame = readsThisFrame >= keyboardOnlyReadsThisFrame
+                ? readsThisFrame - keyboardOnlyReadsThisFrame
+                : 0;
+
+            MountedTape? activeTape = mountedTape;
+            if (activeTape == null || activeTape.IsPlaybackPaused || activeTape.HasCompletedPlayback)
+            {
+                mountedTapeLoaderActivityObserved = false;
+                mountedTapeHandoffFrames = 0;
+                return;
+            }
+
+            if (earSensitiveReadsThisFrame > TapeLoaderActivityReadsPerFrame)
+            {
+                mountedTapeLoaderActivityObserved = true;
+                mountedTapeHandoffFrames = 0;
+                return;
+            }
+
+            bool sustainedKeyboardOnlyWait =
+                keyboardOnlyReadsThisFrame > TapeLoaderActivityReadsPerFrame &&
+                earSensitiveReadsThisFrame <= TapeLoaderActivityReadsPerFrame;
+            bool lowRateHaltLoop =
+                cpu.IsHalted &&
+                readsThisFrame <= TapeLoaderActivityReadsPerFrame;
+            bool loaderHasRelinquishedTape =
+                mountedTapeLoaderActivityObserved &&
+                (sustainedKeyboardOnlyWait || lowRateHaltLoop) &&
+                cpu.Regs.PC >= 0x4000 &&
+                activeTape.IsActivelyDrivingEarLine &&
+                !HasPendingMountedLoadUsrContinuation;
+            if (!loaderHasRelinquishedTape)
+            {
+                mountedTapeHandoffFrames = 0;
+                return;
+            }
+
+            mountedTapeHandoffFrames++;
+            if (mountedTapeHandoffFrames < TapeLoaderHandoffFramesBeforeStop)
+                return;
+
+            if (activeTape.PausePlayback(cpu.TStates))
+                TapeTransportState = TapeTransportState.Stopped;
+            mountedTapeHandoffFrames = 0;
+        }
+
+        private void ResetMountedTapeActivityTracking()
+        {
+            mountedTapePortReadCount = 0;
+            mountedTapePortReadCountAtFrameStart = 0;
+            mountedTapeKeyboardOnlyPortReadCount = 0;
+            mountedTapeKeyboardOnlyPortReadCountAtFrameStart = 0;
+            mountedTapeLoaderActivityObserved = false;
+            mountedTapeHandoffFrames = 0;
         }
 
         private byte ReadFloatingBus48(ulong sampleTStates)
