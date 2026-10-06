@@ -153,7 +153,8 @@ display exposes the same controls in function-key order.
 
 Tape changes show a top-left badge: full text for three seconds, then a compact
 playing icon; paused/auto-stopped icons hide after five seconds. The title bar
-retains the tape state. Quick State is complete but temporary: it includes CPU,
+retains active tape state, while its ended status clears with the ended badge.
+Quick State is complete but temporary: it includes CPU,
 RAM banks, paging, ULA/audio frame state, tape, and RZX position, survives media
 loads during the session, and is discarded on exit.
 

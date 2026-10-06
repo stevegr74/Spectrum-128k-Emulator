@@ -1648,7 +1648,10 @@ namespace Spectrum128kEmulator
 
             if (tapeTransportOverlayState == TapeTransportState.Ended &&
                 nowTicks >= tapeTransportIconExpiresAtTicks)
+            {
                 ClearTapeTransportOverlay();
+                UpdateTapeTransportTitle(state, markerStop);
+            }
         }
 
         private void ShowTapeTransportOverlay(TapeTransportState state, bool markerStop)
@@ -1763,7 +1766,7 @@ namespace Spectrum128kEmulator
                 TapeTransportState.Playing => "Playing",
                 TapeTransportState.Stopped when markerStop => "Auto-stopped",
                 TapeTransportState.Stopped => "Paused",
-                TapeTransportState.Ended => "Ended",
+                TapeTransportState.Ended when tapeTransportOverlayState == TapeTransportState.Ended => "Ended",
                 _ => null
             };
             Text = tapeStatus is null
