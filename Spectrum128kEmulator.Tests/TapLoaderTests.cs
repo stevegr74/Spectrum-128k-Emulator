@@ -36,6 +36,32 @@ namespace Spectrum128kEmulator.Tests
             Assert.False(tape.ReadEarBit(1100));
         }
 
+        [Theory]
+        [InlineData(SpectrumMachineModel.Spectrum48K, 2168)]
+        [InlineData(SpectrumMachineModel.Spectrum128K, 2197)]
+        public void Machine_MountedTape_Scales35MHzTapePulsesToModelClock(
+            SpectrumMachineModel model,
+            int expectedPulseTStates)
+        {
+            string tempFolder = CreateTempRoms();
+            try
+            {
+                var machine = new Spectrum128Machine(tempFolder);
+                machine.Reset(model);
+                var tape = new MountedTape(
+                    "clock-scaled.tzx",
+                    new[] { TapeBlock.CreatePureTone(pulseLength: 2168, pulseCount: 2) });
+
+                machine.MountTape(tape);
+
+                Assert.Equal(expectedPulseTStates, (int)GetPrivateField(tape, "earPulseLengthTStates"));
+            }
+            finally
+            {
+                Directory.Delete(tempFolder, true);
+            }
+        }
+
         [Fact]
         public void MountedTape_StopMarker_PausesUntilResumedAndKeepsFollowingBlocks()
         {
@@ -430,7 +456,7 @@ namespace Spectrum128kEmulator.Tests
 
                 Assert.Equal("Pause", GetPrivateField(tape, "earPlaybackState").ToString());
                 Assert.True((bool)GetPrivateField(tape, "earLevel"));
-                Assert.Equal(3500, (int)GetPrivateField(tape, "earPulseLengthTStates"));
+                Assert.Equal(3547, (int)GetPrivateField(tape, "earPulseLengthTStates"));
 
                 MethodInfo advanceEarPulse = typeof(MountedTape).GetMethod(
                     "AdvanceEarPulse",
@@ -439,7 +465,7 @@ namespace Spectrum128kEmulator.Tests
 
                 Assert.Equal("Pause", GetPrivateField(tape, "earPlaybackState").ToString());
                 Assert.False((bool)GetPrivateField(tape, "earLevel"));
-                Assert.Equal(3500, (int)GetPrivateField(tape, "earPulseLengthTStates"));
+                Assert.Equal(3547, (int)GetPrivateField(tape, "earPulseLengthTStates"));
 
                 advanceEarPulse.Invoke(tape, Array.Empty<object>());
 
@@ -473,7 +499,7 @@ namespace Spectrum128kEmulator.Tests
 
                 Assert.Equal("Pause", GetPrivateField(tape, "earPlaybackState").ToString());
                 Assert.False((bool)GetPrivateField(tape, "earLevel"));
-                Assert.Equal(7000, (int)GetPrivateField(tape, "earPulseLengthTStates"));
+                Assert.Equal(7094, (int)GetPrivateField(tape, "earPulseLengthTStates"));
 
                 MethodInfo advanceEarPulse = typeof(MountedTape).GetMethod(
                     "AdvanceEarPulse",
@@ -524,7 +550,7 @@ namespace Spectrum128kEmulator.Tests
 
                 MountedTape tape = Assert.IsType<MountedTape>(machine.MountedTape);
                 Assert.Equal("Pause", GetPrivateField(tape, "earPlaybackState").ToString());
-                Assert.Equal(2000 * 3500, (int)GetPrivateField(tape, "earPulseLengthTStates"));
+                Assert.Equal(7093800, (int)GetPrivateField(tape, "earPulseLengthTStates"));
                 Assert.False((bool)GetPrivateField(tape, "earLevel"));
             }
             finally
@@ -715,10 +741,10 @@ namespace Spectrum128kEmulator.Tests
                 _ = tape.ReadEarBit(2);
 
                 Assert.Equal("Pause", GetPrivateField(tape, "earPlaybackState").ToString());
-                Assert.Equal(3500, (int)GetPrivateField(tape, "earPulseLengthTStates"));
-                Assert.Equal(999 * 3500, (int)GetPrivateField(tape, "earPauseLowTailTStates"));
+                Assert.Equal(3547, (int)GetPrivateField(tape, "earPulseLengthTStates"));
+                Assert.Equal(3546900 - 3547, (int)GetPrivateField(tape, "earPauseLowTailTStates"));
 
-                _ = tape.ReadEarBit((ulong)(1000 * 3500 + 2));
+                _ = tape.ReadEarBit(3546902);
                 Assert.True(tape.HasCompletedPlayback);
 
                 machine.ExecuteTimeSlice(1);
@@ -1004,6 +1030,49 @@ namespace Spectrum128kEmulator.Tests
                 Assert.Equal((byte)0x33, machine.PeekMemory(0x8002));
                 Assert.Equal((byte)0x44, machine.PeekMemory(0x8003));
                 Assert.Equal(1, (int)GetPrivateField(tape, "nextBlockIndex"));
+            }
+            finally
+            {
+                Directory.Delete(tempFolder, true);
+            }
+        }
+
+        [Fact]
+        public void MountedTape_RomTrap_UnstructuredStandardBlock_ReturnsToDirectCaller()
+        {
+            string tempFolder = CreateTempRoms();
+
+            try
+            {
+                var machine = new Spectrum128Machine(tempFolder);
+                var tape = new MountedTape(
+                    "direct-rom-loader",
+                    new TapeBlock[]
+                    {
+                        TapeBlock.CreateData(
+                            BuildDataBlock(new byte[] { 0x11, 0x22, 0x33, 0x44 }),
+                            2168, 3223, 667, 735, 855, 1710, 8, 1000)
+                    },
+                    initialBlockIndex: 0,
+                    skipCustomHeaderForEarPlayback: false);
+                machine.MountTape(tape);
+
+                SetPrivateField(tape, "state", Enum.Parse(GetPrivateField(tape, "state").GetType(), "ExpectData"));
+                machine.Cpu.Regs.PC = 0x056B;
+                machine.Cpu.Regs.SP = 0x9000;
+                machine.PokeMemory(0x9000, 0xF7);
+                machine.PokeMemory(0x9001, 0x5D);
+                machine.Cpu.Regs.IX = 0x8000;
+                machine.Cpu.Regs.DE = 4;
+                machine.Cpu.Regs.A = 0xFF;
+                machine.Cpu.Regs.F = 0x01;
+
+                bool handled = tape.TryHandleRomLoadTrap(machine, machine.Cpu);
+
+                Assert.True(handled);
+                Assert.Equal((ushort)0x5DF7, machine.Cpu.Regs.PC);
+                Assert.Equal((byte)0x11, machine.PeekMemory(0x8000));
+                Assert.Equal((byte)0x44, machine.PeekMemory(0x8003));
             }
             finally
             {
@@ -2498,7 +2567,7 @@ namespace Spectrum128kEmulator.Tests
                 Assert.Equal((byte)0, machine.PeekMemory(23620));
                 object mountedTape = GetPrivateField(machine, "mountedTape");
                 Assert.Equal("Pause", GetPrivateField(mountedTape, "earPlaybackState").ToString());
-                Assert.Equal(1000 * 3500, (int)GetPrivateField(mountedTape, "earPulseLengthTStates"));
+                Assert.Equal(3546900, (int)GetPrivateField(mountedTape, "earPulseLengthTStates"));
                 Assert.Equal(2, (int)GetPrivateField(mountedTape, "earPlaybackBlockIndex"));
             }
             finally

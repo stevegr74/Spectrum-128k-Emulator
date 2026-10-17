@@ -971,6 +971,7 @@ namespace Spectrum128kEmulator
         public void MountTape(MountedTape tape)
         {
             mountedTape = tape ?? throw new ArgumentNullException(nameof(tape));
+            mountedTape.ConfigurePlaybackClock(CurrentCpuClockHz);
             mountedTape.Reset();
             ResetMountedTapeActivityTracking();
             TapeTransportState = mountedTape.IsPlaybackPaused

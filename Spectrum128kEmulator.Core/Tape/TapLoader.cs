@@ -142,6 +142,7 @@ namespace Spectrum128kEmulator.Tap
         private const int ZeroBitPulseLengthTStates = 855;
         private const int OneBitPulseLengthTStates = 1710;
         private const int PauseLevelSettlingTStates = 3500;
+        private const int TapeTimingClockHz = 3500000;
         private const int MaximumTerminalPauseMs = 1000;
         private readonly IReadOnlyList<TapeBlock> blocks;
         private readonly bool skipCustomHeaderForEarPlayback;
@@ -150,6 +151,7 @@ namespace Spectrum128kEmulator.Tap
         private readonly int nonRomTimingDivisor;
         private readonly int loadableTimingDivisor;
         private readonly bool initialEarLevelHigh;
+        private int playbackClockHz = TapeTimingClockHz;
         private int nextBlockIndex;
         private int earPlaybackBlockIndex;
         private int earStreamByteIndex;
@@ -279,7 +281,7 @@ namespace Spectrum128kEmulator.Tap
             earPulseSequenceIndex = 0;
             earNextBlockIndexAfterPause = 0;
             earPauseLowTailTStates = 0;
-            pendingPrePlaybackPauseTStates = initialPrePlaybackPauseTStates;
+            pendingPrePlaybackPauseTStates = ScaleToPlaybackClock(initialPrePlaybackPauseTStates);
             romStreamTrapBlockIndex = -1;
             romStreamTrapByteIndex = 0;
             lastEarSampleTStates = 0;
@@ -308,6 +310,14 @@ namespace Spectrum128kEmulator.Tap
                 : IsHeaderBlock(blocks[firstLoadableBlockIndex]) ? TapeState.ExpectHeader : TapeState.ExpectData;
             int playbackStartBlockIndex = GetEarPlaybackStartBlockIndex(initialBlockIndex);
             StartEarPlaybackBlock(playbackStartBlockIndex, preserveSignalPhase: false);
+        }
+
+        internal void ConfigurePlaybackClock(int clockHz)
+        {
+            if (clockHz <= 0)
+                throw new ArgumentOutOfRangeException(nameof(clockHz));
+
+            playbackClockHz = clockHz;
         }
 
         public bool ReadEarBit(ulong currentTStates)
@@ -795,6 +805,9 @@ namespace Spectrum128kEmulator.Tap
                 return PeekWord(machine, cpu.Regs.SP);
             }
 
+            if (hasUnstructuredStandardRomLoadContext)
+                return PeekWord(machine, cpu.Regs.SP);
+
             return machine.RomProfile.TapeReturnAddress;
         }
 
@@ -1139,7 +1152,7 @@ namespace Spectrum128kEmulator.Tap
                 romStreamTrapBlockIndex = -1;
                 romStreamTrapByteIndex = 0;
                 SetLogicalPositionAfterByteStreamBlock(blockIndex);
-                pendingPrePlaybackPauseTStates = block.PauseAfterBlockMs * 3500;
+                pendingPrePlaybackPauseTStates = ScaleMillisecondsToPlaybackClock(block.PauseAfterBlockMs);
                 StartEarPlaybackBlock(blockIndex + 1, preserveSignalPhase: false);
             }
 
@@ -1368,7 +1381,7 @@ namespace Spectrum128kEmulator.Tap
                 return;
             }
 
-            pendingPrePlaybackPauseTStates = consumedBlockPauseMs * 3500;
+            pendingPrePlaybackPauseTStates = ScaleMillisecondsToPlaybackClock(consumedBlockPauseMs);
             StartEarPlaybackBlock(desiredBlockIndex, preserveSignalPhase: false);
         }
 
@@ -1492,7 +1505,9 @@ namespace Spectrum128kEmulator.Tap
             if (earLevel)
             {
                 // Finish the last edge at its current level before TZX silence settles low.
-                int terminatingPulseTStates = Math.Min(PauseLevelSettlingTStates, pauseTStates);
+                int terminatingPulseTStates = Math.Min(
+                    ScaleToPlaybackClock(PauseLevelSettlingTStates),
+                    pauseTStates);
                 earPulseLengthTStates = terminatingPulseTStates;
                 earPauseLowTailTStates = pauseTStates - terminatingPulseTStates;
                 return;
@@ -1706,7 +1721,7 @@ namespace Spectrum128kEmulator.Tap
 
         private int ScaleBlockTiming(int tStates, TapeBlock block)
         {
-            int clamped = Math.Max(1, tStates);
+            int clamped = Math.Max(1, ScaleToPlaybackClock(tStates));
             if (block.IsLoadableRomBlock)
             {
                 if (loadableTimingDivisor <= 1)
@@ -1727,7 +1742,7 @@ namespace Spectrum128kEmulator.Tap
             if (GetEarPlaybackStartBlockIndex(nextBlockIndex) >= blocks.Count)
                 pauseMs = Math.Min(pauseMs, MaximumTerminalPauseMs);
 
-            int basePauseTStates = Math.Max(1, pauseMs * 3500);
+            int basePauseTStates = ScaleMillisecondsToPlaybackClock(pauseMs);
             if (block.PauseAfterBlockMs <= 2)
                 return basePauseTStates;
 
@@ -1743,6 +1758,27 @@ namespace Spectrum128kEmulator.Tap
                 return basePauseTStates;
 
             return Math.Max(1, basePauseTStates / nonRomTimingDivisor);
+        }
+
+        private int ScaleMillisecondsToPlaybackClock(int milliseconds)
+        {
+            if (milliseconds <= 0)
+                return 0;
+
+            return checked((int)Math.Max(
+                1L,
+                ((long)milliseconds * playbackClockHz + 500L) / 1000L));
+        }
+
+        private int ScaleToPlaybackClock(int tapeTStates)
+        {
+            if (tapeTStates <= 0)
+                return 0;
+
+            return checked((int)Math.Max(
+                1L,
+                ((long)tapeTStates * playbackClockHz + (TapeTimingClockHz / 2L)) /
+                TapeTimingClockHz));
         }
 
         private void BeginEndOfStreamIdleTransition(bool preserveSignalPhase)
@@ -2190,6 +2226,13 @@ namespace Spectrum128kEmulator.Tap
                     "All blocks are standard header/data pairs and can be fully fake-loaded.");
             }
 
+            if (HasTwoStageBasicPrefixBeforeElectricallyDecodedProtectedStream(blocks))
+            {
+                return new TapeLoadPlan(
+                    TapeLoadStrategy.RomBootstrapMounted,
+                    "Tape has a two-stage BASIC prefix whose protected continuation depends on real ROM loader state.");
+            }
+
             if (RequiresLeadingStandardBasicChainFakeLoad(machine, blocks))
             {
                 return new TapeLoadPlan(
@@ -2236,6 +2279,47 @@ namespace Spectrum128kEmulator.Tap
             }
 
             return new TapeLoadPlan(TapeLoadStrategy.MountedRealtime, "Tape does not have a safe fake-load bootstrap path.");
+        }
+
+        private static bool HasTwoStageBasicPrefixBeforeElectricallyDecodedProtectedStream(
+            IReadOnlyList<TapeBlock> blocks)
+        {
+            int index = 0;
+            int programCount = 0;
+            while (index < blocks.Count)
+            {
+                while (index < blocks.Count && blocks[index].Kind == TapeBlockKind.Metadata)
+                    index++;
+
+                if (index + 1 >= blocks.Count ||
+                    !IsStandardHeaderBlock(blocks[index]) ||
+                    blocks[index + 1].Flag != DataFlag)
+                {
+                    break;
+                }
+
+                TapHeaderInfo header = ParseHeaderInfo(blocks[index]);
+                if (header.Type != ProgramType)
+                    break;
+
+                programCount++;
+                index += 2;
+            }
+
+            if (programCount != 2)
+                return false;
+
+            for (; index < blocks.Count; index++)
+            {
+                TapeBlock block = blocks[index];
+                if (!block.CanUseRomLoadTrap &&
+                    block.Kind is TapeBlockKind.Data or TapeBlockKind.DirectRecording)
+                {
+                    return true;
+                }
+            }
+
+            return false;
         }
 
         private static bool StartsProtectedRemainderImmediatelyAfterLeadingBasic(IReadOnlyList<TapeBlock> blocks)
