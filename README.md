@@ -45,6 +45,7 @@ Current limitations and active work:
 - Fast tape bootstrap is capability-gated. Unsupported initial or chained BASIC control flow, including protected handoff directly into raw pulses, falls back to a clean real-ROM autorun path with the remaining tape mounted.
 - Address-based ROM tape services are enabled only for the fingerprinted bundled ROM pair; an unknown ROM pair uses real-time mounted pulse/EAR playback instead of assuming compatible internal addresses.
 - ROM-driven tape handoffs preserve consumed-block pauses, exact TZX pause signal transitions, and zero-duration stop markers.
+- TZX pulse and pause timings use their 3.5 MHz tape-time basis and are scaled to the selected machine clock; unstructured ROM loads return to their actual caller so banked multiload stages can continue safely.
 - Mounted playback detects stable keyboard/HALT handoffs, pauses at multiload boundaries, and preserves custom ROM flag and LOAD/VERIFY state across accelerated blocks.
 - Protected playback and Quick State preserve precise tape pulse, EAR, loader-continuation and replay positions.
 - Mounted-loader continuation state, BASIC workspace preservation, resume gating, and Quick State capture are isolated from the machine in a dedicated controller.
@@ -240,7 +241,7 @@ dotnet run --project Spectrum128kEmulator.ManualHarness
 
 This runs the emulator without UI and logs state.
 
-Its generic diagnostics accept `frames=`, `quiet=1`, `dumpblocks=1`, `strategy=`,
+Its generic diagnostics accept `frames=`, `model=48|128`, `quiet=1`, `dumpblocks=1`, `strategy=`,
 scheduled key/register/memory events, memory-write watches, instruction traces, and
 execution breakpoints. It writes a machine dump and frame image only for the run being
 investigated; game-specific probes are deliberately kept out of the harness.

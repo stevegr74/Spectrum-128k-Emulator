@@ -424,7 +424,7 @@ namespace Spectrum128kEmulator.Tests
 
                 var protectedHybridMachine = new Spectrum128Machine(romFolder, SpectrumRomProfile.SyntheticTest);
                 var protectedHybridResult = Tap.TzxLoader.LoadWithPolicy(protectedHybridMachine, protectedHybridPath);
-                Assert.Equal("LeadingStandardChainFakeLoad", protectedHybridResult.Strategy.ToString());
+                Assert.Equal("RomBootstrapMounted", protectedHybridResult.Strategy.ToString());
             }
             finally
             {
@@ -695,6 +695,49 @@ namespace Spectrum128kEmulator.Tests
                 Assert.Equal((byte)77, machine.PeekMemory(23662));
                 Assert.Equal((byte)88, machine.PeekMemory(23663));
                 Assert.Equal((byte)99, machine.PeekMemory(23664));
+            }
+            finally
+            {
+                Directory.Delete(romFolder, true);
+            }
+        }
+
+        [Fact]
+        public void LoadWithPolicy_TwoStageBasicPrefixBeforeElectricalProtection_Uses_RomBootstrap()
+        {
+            string romFolder = CreateTempRoms();
+            string tapePath = Path.Combine(romFolder, "two-stage-speedlock-shape.tzx");
+
+            try
+            {
+                byte[] firstBasicStage = BuildBasicProgram(
+                    BuildBasicLine(10, Token(239)));
+                byte[] secondBasicStage = BuildBasicProgram(
+                    BuildBasicLine(0,
+                        Token(244), Ascii("23624"), NumberMarker(23624), Ascii(","), Ascii("0"), NumberMarker(0),
+                        Ascii(":"), Token(239)));
+
+                File.WriteAllBytes(
+                    tapePath,
+                    BuildTzx(
+                        BuildArchiveInfoBlock(),
+                        BuildStandardSpeedDataBlock(BuildSpectrumHeaderBlock(type: 0, fileName: "BOOT", dataLength: (ushort)firstBasicStage.Length, parameter1: 10, parameter2: (ushort)firstBasicStage.Length), pauseMs: 1000),
+                        BuildStandardSpeedDataBlock(BuildSpectrumDataBlock(firstBasicStage), pauseMs: 1000),
+                        BuildStandardSpeedDataBlock(BuildSpectrumHeaderBlock(type: 0, fileName: "LOADER", dataLength: (ushort)secondBasicStage.Length, parameter1: 0, parameter2: (ushort)secondBasicStage.Length), pauseMs: 1000),
+                        BuildStandardSpeedDataBlock(BuildSpectrumDataBlock(secondBasicStage), pauseMs: 1000),
+                        BuildPureToneBlock(2168, 32),
+                        BuildPulseSequenceBlock(667, 735),
+                        BuildPureDataBlock(new byte[] { 0xAA, 0x55, 0xF0 }, usedBitsInLastByte: 8, pauseMs: 250)));
+
+                var machine = new Spectrum128Machine(romFolder);
+                MethodInfo createExecutionPlan = typeof(Tap.TapLoader).GetMethod(
+                    "CreateExecutionPlan",
+                    BindingFlags.Static | BindingFlags.NonPublic)!;
+                IReadOnlyList<Tap.TapeBlock> blocks = Tap.TzxLoader.ParseBlocks(File.ReadAllBytes(tapePath));
+                object plan = createExecutionPlan.Invoke(null, new object[] { machine, blocks })!;
+                string strategy = plan.GetType().GetProperty("Strategy")!.GetValue(plan)!.ToString()!;
+
+                Assert.Equal("RomBootstrapMounted", strategy);
             }
             finally
             {

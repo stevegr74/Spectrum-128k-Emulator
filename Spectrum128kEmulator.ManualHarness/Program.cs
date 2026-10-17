@@ -26,6 +26,7 @@ if (args.Length > 0)
     bool dumpTapeBlocks = false;
     bool enableMachineTrace = false;
     TapeLoadStrategy? forcedTapeStrategy = null;
+    SpectrumMachineModel? forcedMachineModel = null;
     (ushort Start, ushort End)? focusedTraceRange = null;
     int focusedTraceStartFrame = 0;
     int focusedTraceFrameLimit = 0;
@@ -108,6 +109,15 @@ if (args.Length > 0)
         {
             forcedTapeStrategy = ParseTapeStrategy(arg["strategy=".Length..]);
         }
+        else if (arg.StartsWith("model=", StringComparison.OrdinalIgnoreCase))
+        {
+            forcedMachineModel = arg["model=".Length..].Trim() switch
+            {
+                "48" or "48k" => SpectrumMachineModel.Spectrum48K,
+                "128" or "128k" => SpectrumMachineModel.Spectrum128K,
+                _ => throw new InvalidOperationException($"Unsupported machine model '{arg}'.")
+            };
+        }
         else if (arg.StartsWith("pc=", StringComparison.OrdinalIgnoreCase))
         {
             scheduledPcEvents.Add(ParsePcEvent(arg["pc=".Length..]));
@@ -163,6 +173,12 @@ if (args.Length > 0)
     }
 
     Console.WriteLine($"Loading image: {snapshotPath}");
+
+    if (forcedMachineModel.HasValue)
+    {
+        machine.Reset(forcedMachineModel.Value);
+        Console.WriteLine($"Machine model: {forcedMachineModel.Value}");
+    }
 
     if (enableMachineTrace)
     {
