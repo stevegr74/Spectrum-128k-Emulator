@@ -79,6 +79,7 @@ Spectrum128kEmulator/
 |   |   `-- MountedLoadContinuationController.cs  ROM-profile-aware loader resume policy
 |   |-- Z80/                               CPU execution plus side-effect-free instruction decoding
 |   |-- Spectrum128Machine.cs              machine orchestration, memory, paging, ULA timing, and input
+|   |-- Spectrum128Machine.Diagnostics.cs  trace capture, watches, and diagnostic dumps
 |   |-- SpectrumRomProfile.cs              fingerprinted ROM capabilities and internal entry points
 |   |-- SpectrumFrameBuffer.cs             platform-neutral ARGB frame buffer
 |   |-- BorderFrame.cs                     timestamped border events
