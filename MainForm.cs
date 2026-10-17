@@ -72,16 +72,11 @@ namespace Spectrum128kEmulator
         private Spectrum128Machine machine;
         private readonly object machineLock = new();
         private readonly object inputStateLock = new();
-        private readonly object presentationStateLock = new();
         private readonly object audioPipelineLock = new();
         private readonly HashSet<Keys> pressedSpectrumKeys = new();
         private readonly Queue<SpectrumHostKeyEvent> pendingSpectrumHostKeyEvents = new();
         private readonly SpectrumKeyInputBridge spectrumKeyInputBridge = new(8, 40, 90);
-        private readonly CancellationTokenSource emulationLoopCts = new();
-        private readonly EmulationPauseLeaseManager emulationPauseLeases = new();
-        private Task? emulationLoopTask;
-        private volatile bool pauseEmulationRequested;
-        private volatile bool emulationLoopPaused;
+        private readonly EmulationLoopController emulationLoop = new();
         private AudioPipeline audioPipeline;
         private int inputBridgeTick;
         private readonly object inputDiagnosticsLock = new();
@@ -98,12 +93,8 @@ namespace Spectrum128kEmulator
         private double performanceRenderMilliseconds;
         private double performancePresentMilliseconds;
         private readonly TapeTurboPlaybackPolicy tapeTurboPlaybackPolicy = new();
-        private readonly byte[] latestScreenBankData = new byte[0x4000];
-        private int latestBorderColor;
-        private BorderFrame? latestBorderFrame;
-        private bool latestFlashPhase;
+        private readonly EmulationPresentationState presentationState = new();
         private int totalPresentedFrameCount;
-        private bool hasPresentationState;
         private long suppressSpectrumHostInputUntilTicks;
         private SpectrumDisplayMode displayMode = SpectrumDisplayMode.Enhanced2x;
         private SpectrumMachineModel selectedMachineModel = SpectrumMachineModel.Spectrum128K;
@@ -156,7 +147,7 @@ namespace Spectrum128kEmulator
             lastPresentationTicks = now;
             accumulatedEmulationTStates = 0;
             PublishPresentationState();
-            emulationLoopTask = Task.Run(() => EmulationLoop(emulationLoopCts.Token));
+            emulationLoop.Start(EmulationLoop);
             frameTimer.Tick += FrameTimer_Tick;
             frameTimer.Start();
             lastStatsTicks = now;
@@ -1255,14 +1246,8 @@ namespace Spectrum128kEmulator
             {
                 while (!cancellationToken.IsCancellationRequested)
                 {
-                    if (pauseEmulationRequested)
-                    {
-                        emulationLoopPaused = true;
-                        Thread.Sleep(1);
+                    if (emulationLoop.WaitWhilePaused(cancellationToken))
                         continue;
-                    }
-
-                    emulationLoopPaused = false;
                     long tickStartTicks = frameClock.ElapsedTicks;
                     List<AudioFrame>? completedFramesToSubmit = null;
                     string? autoReason = null;
@@ -1359,7 +1344,7 @@ namespace Spectrum128kEmulator
                         hasAutoDebugDump = activeMachine.TryConsumeAutoDebugDump(out autoReason!, out autoDump!);
                     }
 
-                    if (completedFrames > 0 || !hasPresentationState)
+                    if (completedFrames > 0 || !presentationState.HasValue)
                         PublishPresentationState(activeMachine);
 
                     UpdateTurboTapeLoadFactor(activeMachine, tickStartTicks, frameClock.ElapsedTicks);
@@ -1415,10 +1400,9 @@ namespace Spectrum128kEmulator
 
         private IDisposable AcquireEmulationPauseLease()
         {
-            IDisposable pauseLease = emulationPauseLeases.Acquire(
+            return emulationLoop.AcquirePause(
                 () =>
                 {
-                    pauseEmulationRequested = true;
                     frameTimer.Stop();
                 },
                 () =>
@@ -1426,16 +1410,9 @@ namespace Spectrum128kEmulator
                     long now = frameClock.ElapsedTicks;
                     lastSchedulerTicks = now;
                     lastPresentationTicks = now;
-                    pauseEmulationRequested = false;
                     if (!IsDisposed)
                         frameTimer.Start();
                 });
-
-            SpinWait spinner = new SpinWait();
-            while (!emulationLoopPaused && !emulationLoopCts.IsCancellationRequested)
-                spinner.SpinOnce();
-
-            return pauseLease;
         }
 
         private void ClearHostAndSpectrumInputState()
@@ -1456,15 +1433,7 @@ namespace Spectrum128kEmulator
 
         private void PublishPresentationState(Spectrum128Machine sourceMachine)
         {
-            byte[] screenBankData = sourceMachine.GetScreenBankData();
-            lock (presentationStateLock)
-            {
-                Buffer.BlockCopy(screenBankData, 0, latestScreenBankData, 0, latestScreenBankData.Length);
-                latestBorderColor = sourceMachine.BorderColor;
-                latestBorderFrame = sourceMachine.LastCompletedBorderFrame;
-                latestFlashPhase = sourceMachine.FlashPhase;
-                hasPresentationState = true;
-            }
+            presentationState.Publish(sourceMachine);
         }
 
         private void PresentCurrentMachineFrame(long now, bool force = false)
@@ -1474,20 +1443,13 @@ namespace Spectrum128kEmulator
             else if (!ShouldPresentFrame(now))
                 return;
 
-            byte[] screenBankCopy = new byte[latestScreenBankData.Length];
-            int borderColor;
-            BorderFrame? borderFrame;
-            bool flashPhase;
-            lock (presentationStateLock)
-            {
-                if (!hasPresentationState)
-                    return;
+            if (!presentationState.TryCapture(out EmulationPresentationSnapshot snapshot))
+                return;
 
-                Buffer.BlockCopy(latestScreenBankData, 0, screenBankCopy, 0, latestScreenBankData.Length);
-                borderColor = latestBorderColor;
-                borderFrame = latestBorderFrame;
-                flashPhase = latestFlashPhase;
-            }
+            byte[] screenBankCopy = snapshot.ScreenBankData;
+            int borderColor = snapshot.BorderColor;
+            BorderFrame? borderFrame = snapshot.BorderFrame;
+            bool flashPhase = snapshot.FlashPhase;
 
             long renderStartTicks = frameClock.ElapsedTicks;
             if (borderFrame == null)
@@ -1858,14 +1820,7 @@ namespace Spectrum128kEmulator
         {
             if (disposing)
             {
-                emulationLoopCts.Cancel();
-                try
-                {
-                    emulationLoopTask?.Wait(1000);
-                }
-                catch
-                {
-                }
+                emulationLoop.Dispose();
                 lock (inputDiagnosticsLock)
                 {
                     inputDiagnosticsWriter?.Dispose();
@@ -1883,7 +1838,6 @@ namespace Spectrum128kEmulator
                 enhanced3xBitmap.Dispose();
                 displayContextMenu.Dispose();
                 frameTimer.Dispose();
-                emulationLoopCts.Dispose();
             }
 
             base.Dispose(disposing);
