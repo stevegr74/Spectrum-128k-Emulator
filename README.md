@@ -90,7 +90,7 @@ Spectrum128kEmulator/
 |
 |-- Audio/                                 Windows audio pipeline and output adapters
 |-- Disassembly/                           read-only debugger capture, navigation, search, and export
-|-- Emulation/                             background loop, pause ownership, and UI snapshots
+|-- Host/                                  background loop, pause ownership, and UI snapshots
 |-- Forms/                                 main window partials and shortcut-reference dialog
 |-- Input/                                 WinForms-to-Spectrum keyboard bridge
 |-- Video/                                 display modes, pixel-art scaling, and presentation adapter
