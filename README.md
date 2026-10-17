@@ -88,6 +88,8 @@ Spectrum128kEmulator/
 |   `-- RzxPlaybackSession.cs              RZX playback orchestration
 |
 |-- Audio/                                 Windows frontend audio pipeline and output adapters
+|-- EmulationLoopController.cs             background-loop lifetime and nested pause coordination
+|-- EmulationPresentationState.cs          synchronized immutable UI frame snapshots
 |-- DisassemblerForm.cs                    read-only Z80 disassembly window
 |-- DisassemblySnapshot.cs                 immutable mapped-memory capture and address parser
 |-- DisassemblyNavigationHistory.cs        deterministic back/forward address history
