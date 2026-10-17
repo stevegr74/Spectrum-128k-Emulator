@@ -1,10 +1,9 @@
 using System;
 using System.Collections.Generic;
-using System.Drawing;
-using System.Drawing.Imaging;
 using System.IO;
 using Spectrum128kEmulator.Tap;
 using Spectrum128kEmulator;
+using Spectrum128kEmulator.ManualHarness;
 using System.Reflection;
 
 string romFolder = Path.Combine(AppContext.BaseDirectory, "ROMs");
@@ -831,10 +830,10 @@ static void WriteHarnessArtifacts(Spectrum128Machine machine, string dump, strin
     string dumpPath = Path.Combine(debugFolder, $"harness-{tag}-{stamp}.txt");
     File.WriteAllText(dumpPath, dump);
 
-    string imagePath = Path.Combine(debugFolder, $"harness-{tag}-{stamp}.png");
-    using var bitmap = new Bitmap(Spectrum128Machine.ScreenWidth, Spectrum128Machine.ScreenHeight, PixelFormat.Format32bppArgb);
-    SpectrumRenderer.RenderToBitmap(bitmap, machine.GetScreenBankData(), machine.BorderColor, machine.FlashPhase);
-    bitmap.Save(imagePath, ImageFormat.Png);
+    string imagePath = Path.Combine(debugFolder, $"harness-{tag}-{stamp}.bmp");
+    var frameBuffer = new SpectrumFrameBuffer();
+    frameBuffer.Render(machine.GetScreenBankData(), machine.BorderColor, machine.FlashPhase);
+    DiagnosticBitmapWriter.Write(imagePath, frameBuffer.Pixels.Span, SpectrumFrameBuffer.Width, SpectrumFrameBuffer.Height);
 
     Console.WriteLine($"Harness artifacts: {dumpPath}");
     Console.WriteLine($"Harness frame image: {imagePath}");

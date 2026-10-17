@@ -107,8 +107,9 @@ Spectrum128kEmulator/
 |-- Spectrum128kEmulator.csproj            net10.0-windows frontend project
 |-- VERIFIED_GAMES.md                      manual media compatibility record
 |
-|-- Spectrum128kEmulator.Tests/            xUnit unit and regression tests
-|-- Spectrum128kEmulator.ManualHarness/    repeatable diagnostic and capture tool
+|-- Spectrum128kEmulator.Tests/            net8.0 Core unit and regression tests
+|-- Spectrum128kEmulator.Windows.Tests/    Windows presentation and host tests
+|-- Spectrum128kEmulator.ManualHarness/    net8.0 Core-only diagnostic and capture tool
 |-- Spectrum128kEmulator.Z80Compliance/    net8.0 ZEXDOC/ZEXALL compliance runner
 |-- ROMs/                                  required 128K ROM images
 |-- test-assets/                           checked-in test programs and fixtures
@@ -119,7 +120,8 @@ Spectrum128kEmulator/
 audio-device dependency. The `net10.0-windows` frontend consumes Core for
 emulation state and produces Windows-specific video and audio output. The
 compliance runner depends only on Core, while the test and manual-harness
-projects may reference the frontend when they need to validate its adapters.
+projects also depend only on Core. Windows presentation and host behavior is
+isolated in `Spectrum128kEmulator.Windows.Tests`.
 
 ---
 
@@ -249,7 +251,7 @@ This runs the emulator without UI and logs state.
 
 Its generic diagnostics accept `frames=`, `model=48|128`, `quiet=1`, `dumpblocks=1`, `strategy=`,
 scheduled key/register/memory events, memory-write watches, instruction traces, and
-execution breakpoints. It writes a machine dump and frame image only for the run being
+execution breakpoints. It writes a machine dump and BMP frame image only for the run being
 investigated; game-specific probes are deliberately kept out of the harness.
 
 > Intended for debugging, not performance measurement.
