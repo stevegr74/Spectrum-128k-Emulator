@@ -99,7 +99,10 @@ Spectrum128kEmulator/
 |-- DisassemblerWindowSettings.cs          resilient per-user disassembler layout persistence
 |-- EmulatorHelpForm.cs                    WinForms shortcut-reference dialog
 |-- EmulationPauseLeaseManager.cs          nested-safe UI pause ownership
-|-- MainForm.cs                            WinForms menus, host input, and presentation scheduling
+|-- MainForm.cs                            WinForms menus and presentation scheduling
+|-- MainForm.Input.cs                      host-key lifecycle and Spectrum keyboard mapping
+|-- MainForm.Media.cs                      snapshot, replay, and tape loading commands
+|-- MainForm.Diagnostics.cs                crash reports and optional host diagnostics
 |-- SpectrumDisplayMode.cs                 fixed display-mode dimensions and cycling policy
 |-- SpectrumDisplayScaler.cs               deterministic Scale2x/Scale3x pixel-art scaler
 |-- SpectrumKeyInputBridge.cs              WinForms-to-Spectrum keyboard bridge
