@@ -72,6 +72,10 @@ Spectrum128kEmulator/
 |-- Spectrum128kEmulator.Core/             net8.0 platform-neutral emulator
 |   |-- Audio/                             AY/beeper synthesis and sample clock
 |   |-- Tape/                              TAP/TZX parsing, transport, and bootstrap policy
+|   |   |-- MountedTape.cs                 pulse/EAR playback and ROM-load traps
+|   |   |-- TapLoader.cs                   TAP orchestration and load-strategy planning
+|   |   |-- TapLoader.BasicBootstrap.cs    BASIC bootstrap analysis and execution
+|   |   |-- TapeLoadContracts.cs           load plans, results, and transport state
 |   |   `-- MountedLoadContinuationController.cs  ROM-profile-aware loader resume policy
 |   |-- Z80/                               CPU execution plus side-effect-free instruction decoding
 |   |-- Spectrum128Machine.cs              machine orchestration, memory, paging, ULA timing, and input
