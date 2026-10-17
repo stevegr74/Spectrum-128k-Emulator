@@ -88,25 +88,12 @@ Spectrum128kEmulator/
 |   |-- RzxLoader.cs                       RZX replay loading
 |   `-- RzxPlaybackSession.cs              RZX playback orchestration
 |
-|-- Audio/                                 Windows frontend audio pipeline and output adapters
-|-- EmulationLoopController.cs             background-loop lifetime and nested pause coordination
-|-- EmulationPresentationState.cs          synchronized immutable UI frame snapshots
-|-- DisassemblerForm.cs                    read-only Z80 disassembly window
-|-- DisassemblySnapshot.cs                 immutable mapped-memory capture and address parser
-|-- DisassemblyNavigationHistory.cs        deterministic back/forward address history
-|-- DisassemblySearch.cs                   address, byte-sequence, and mnemonic capture search
-|-- DisassemblyListingFormatter.cs         metadata-rich copy and complete-listing export
-|-- DisassemblerWindowSettings.cs          resilient per-user disassembler layout persistence
-|-- EmulatorHelpForm.cs                    WinForms shortcut-reference dialog
-|-- EmulationPauseLeaseManager.cs          nested-safe UI pause ownership
-|-- MainForm.cs                            WinForms menus and presentation scheduling
-|-- MainForm.Input.cs                      host-key lifecycle and Spectrum keyboard mapping
-|-- MainForm.Media.cs                      snapshot, replay, and tape loading commands
-|-- MainForm.Diagnostics.cs                crash reports and optional host diagnostics
-|-- SpectrumDisplayMode.cs                 fixed display-mode dimensions and cycling policy
-|-- SpectrumDisplayScaler.cs               deterministic Scale2x/Scale3x pixel-art scaler
-|-- SpectrumKeyInputBridge.cs              WinForms-to-Spectrum keyboard bridge
-|-- SpectrumRenderer.cs                    System.Drawing presentation adapter
+|-- Audio/                                 Windows audio pipeline and output adapters
+|-- Disassembly/                           read-only debugger capture, navigation, search, and export
+|-- Emulation/                             background loop, pause ownership, and UI snapshots
+|-- Forms/                                 main window partials and shortcut-reference dialog
+|-- Input/                                 WinForms-to-Spectrum keyboard bridge
+|-- Video/                                 display modes, pixel-art scaling, and presentation adapter
 |-- Program.cs                             Windows application entry point
 |-- Spectrum128kEmulator.csproj            net10.0-windows frontend project
 |-- VERIFIED_GAMES.md                      manual media compatibility record
