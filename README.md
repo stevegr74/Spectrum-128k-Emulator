@@ -35,7 +35,7 @@ Manually tested titles, formats, and reached checkpoints are tracked in
 
 Current limitations and active work:
 
-- opcode/immediate fetches, port I/O, border, and floating-bus timing now use model-specific machine-cycle positions; broader data/stack memory bus-cycle conformance remains active Milestone 16 work
+- opcode/immediate fetches, ordinary/indexed/block/stack memory accesses, port I/O, border, and floating-bus timing now use model-specific machine-cycle positions; published external diagnostic validation remains active Milestone 16 work
 - active-screen rendering is frame-snapshot based rather than beam-aware; Milestone 17 addresses this
 - exact audio timing and turbo-to-real-time tape handoff still need polish in some titles
 - broader protected/custom TZX compatibility remains ongoing
@@ -202,7 +202,7 @@ Test coverage includes:
 - complete 48K/128K contention phases, boundaries, I/O cases, and contended-bank behavior
 - 48K/128K floating-bus fetches, including 128K shadow-screen bank selection
 - exact port event timestamps, block-I/O timing, and border latch/raster mapping
-- timed opcode, prefix, and immediate fetch contention plus indexed-instruction timing regressions
+- timed opcode, prefix, immediate, ordinary, indexed, block, stack, and interrupt-vector memory cycles
 - AY register write and selected-register port-read behaviour
 - Audio sample generation
 - Audio pipeline behaviour
@@ -296,12 +296,12 @@ compatibility and polish; completed milestones remain regression baselines.
 | 13 | Complete | Paused read-only mapped-64K disassembler window |
 | 14 | Complete | Deterministic temporary in-memory Quick State |
 | 15 | Complete | Disassembler history, search, navigation, persistence, copy, and export |
-| 16 | In progress | Central ULA profiles, contention conformance, 128K floating bus, exact port events, border-latch mapping, and timed opcode/immediate fetches implemented; data/stack bus-cycle conformance remains |
+| 16 | In progress | Central ULA profiles, contention conformance, 128K floating bus, exact port events, border-latch mapping, and timed CPU bus cycles implemented; published diagnostic validation remains |
 
 ### Milestone 16 - ULA Timing Conformance And Port Accuracy In Progress
 - Implemented one model-specific timing profile for frame length, scanline length, contention start, display fetches, visible raster mapping, and the documented timing convention
 - Added table-driven contention coverage across complete 48K and original 128K display phases, line/frame boundaries, contended memory banks, and all four I/O contention cases
-- Timestamped opcode/immediate fetches and port reads/writes at their machine-cycle positions, including contended I/O and the distinct block-I/O repeat tail; broader data/stack memory machine-cycle conformance remains
+- Timestamped opcode/immediate fetches, ordinary/indexed/block/stack memory accesses, interrupt-vector reads, and port reads/writes at their machine-cycle positions, including contended I/O and the distinct block-I/O repeat tail
 - Generalized the floating-bus model for the original Spectrum 128K and grey +2, including normal bank 5 and shadow bank 7 screen selection
 - Decoded attached input devices before the floating-bus fallback, including `IN (0xFFFD)` reading the selected AY register
 - Corrected and tested border, beeper, and AY write timestamps plus eight-pixel border-latch and visible pixel/T-state mapping without claiming +2A/+3 behavior

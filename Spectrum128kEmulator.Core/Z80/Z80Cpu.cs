@@ -13,6 +13,7 @@ namespace Spectrum128kEmulator.Z80
         public Func<ushort, byte> ReadMemory { get; set; } = _ => 0xFF;
         public Func<ushort, int, byte>? ReadMemoryTimed { get; set; }
         public Action<ushort, byte> WriteMemory { get; set; } = (_, _) => { };
+        public Action<ushort, byte, int>? WriteMemoryTimed { get; set; }
         public Func<ushort, byte> ReadPort { get; set; } = _ => 0xFF;
         public Func<ushort, int, byte>? ReadPortTimed { get; set; }
         public Action<ushort, byte> WritePort { get; set; } = (_, _) => { };
@@ -229,7 +230,9 @@ namespace Spectrum128kEmulator.Z80
                         case 2:
                             ushort vector = (ushort)((Regs.I << 8) | 0xFF);
                             byte low = ReadMemory(vector);
+                            TStates += 3;
                             byte high = ReadMemory((ushort)(vector + 1));
+                            TStates += 3;
                             Regs.PC = (ushort)(low | (high << 8));
                             RecordInterruptEvent($"INT_VECTOR target={Regs.PC:X4}");
                             break;
@@ -294,7 +297,9 @@ namespace Spectrum128kEmulator.Z80
                         case 2:
                             ushort vector = (ushort)((Regs.I << 8) | 0xFF);
                             byte low = ReadMemory(vector);
+                            TStates += 3;
                             byte high = ReadMemory((ushort)(vector + 1));
+                            TStates += 3;
                             Regs.PC = (ushort)(low | (high << 8));
                             RecordInterruptEvent($"INT_VECTOR target={Regs.PC:X4}");
                             break;
@@ -342,7 +347,7 @@ namespace Spectrum128kEmulator.Z80
                 if (ddOp == 0xCB)
                 {
                     sbyte disp = (sbyte)FetchByte();
-                    byte cbOp = FetchOpcodeByte();
+                    byte cbOp = FetchByte();
                     ExecuteIndexedCB(Regs.IX, disp, cbOp);
                 }
                 else
@@ -357,7 +362,7 @@ namespace Spectrum128kEmulator.Z80
                 if (fdOp == 0xCB)
                 {
                     sbyte disp = (sbyte)FetchByte();
-                    byte cbOp = FetchOpcodeByte();
+                    byte cbOp = FetchByte();
                     ExecuteIndexedCB(Regs.IY, disp, cbOp);
                 }
                 else

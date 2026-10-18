@@ -648,6 +648,33 @@ namespace Spectrum128kEmulator.Tests
             }
         }
 
+        [Fact]
+        public void DataReadContention_UsesTheMemoryMachineCycleOffset()
+        {
+            string romFolder = CreateTempRoms();
+            try
+            {
+                var machine = new Spectrum128Machine(romFolder);
+                machine.ConfigureFor48kSnapshot(borderColor: 0);
+                machine.PokeMemory(0x8000, 0x7E); // LD A,(HL)
+                machine.PokeMemory(0x4000, 0xA5);
+                machine.Cpu.Regs.PC = 0x8000;
+                machine.Cpu.Regs.HL = 0x4000;
+                machine.SetSnapshotResumeFramePhase(
+                    UlaTimingProfile.Spectrum48K.ContentionStartTState - 4);
+
+                ulong before = machine.Cpu.TStates;
+                machine.ExecuteTimeSlice(1, out _);
+
+                Assert.Equal((byte)0xA5, machine.Cpu.Regs.A);
+                Assert.Equal(13UL, machine.Cpu.TStates - before);
+            }
+            finally
+            {
+                Directory.Delete(romFolder, true);
+            }
+        }
+
         private static void AssertTimingProfile(
             UlaTimingProfile profile,
             SpectrumMachineModel model,

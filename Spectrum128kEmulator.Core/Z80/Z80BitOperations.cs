@@ -20,14 +20,14 @@ namespace Spectrum128kEmulator.Z80
             {
                 int rr = r;
 
-                cbOpcodeTable[0x00 + r] = () => { byte v = GetReg((byte)rr); bool c = (v & 0x80) != 0; byte res = (byte)((v << 1) | (c ? 1 : 0)); SetReg((byte)rr, res); SetShiftRotateFlags(res, c); TStates += (rr == 6 ? 15UL : 8UL); };
-                cbOpcodeTable[0x08 + r] = () => { byte v = GetReg((byte)rr); bool c = (v & 0x01) != 0; byte res = (byte)((v >> 1) | (c ? 0x80 : 0)); SetReg((byte)rr, res); SetShiftRotateFlags(res, c); TStates += (rr == 6 ? 15UL : 8UL); };
-                cbOpcodeTable[0x10 + r] = () => { byte v = GetReg((byte)rr); bool oldC = (Regs.F & 0x01) != 0; bool c = (v & 0x80) != 0; byte res = (byte)((v << 1) | (oldC ? 1 : 0)); SetReg((byte)rr, res); SetShiftRotateFlags(res, c); TStates += (rr == 6 ? 15UL : 8UL); };
-                cbOpcodeTable[0x18 + r] = () => { byte v = GetReg((byte)rr); bool oldC = (Regs.F & 0x01) != 0; bool c = (v & 0x01) != 0; byte res = (byte)((v >> 1) | (oldC ? 0x80 : 0)); SetReg((byte)rr, res); SetShiftRotateFlags(res, c); TStates += (rr == 6 ? 15UL : 8UL); };
-                cbOpcodeTable[0x20 + r] = () => { byte v = GetReg((byte)rr); bool c = (v & 0x80) != 0; byte res = (byte)(v << 1); SetReg((byte)rr, res); SetShiftRotateFlags(res, c); TStates += (rr == 6 ? 15UL : 8UL); };
-                cbOpcodeTable[0x28 + r] = () => { byte v = GetReg((byte)rr); bool c = (v & 0x01) != 0; byte res = (byte)((v >> 1) | (v & 0x80)); SetReg((byte)rr, res); SetShiftRotateFlags(res, c); TStates += (rr == 6 ? 15UL : 8UL); };
-                cbOpcodeTable[0x30 + r] = () => { byte v = GetReg((byte)rr); bool c = (v & 0x80) != 0; byte res = (byte)((v << 1) | 0x01); SetReg((byte)rr, res); SetShiftRotateFlags(res, c); TStates += (rr == 6 ? 15UL : 8UL); };
-                cbOpcodeTable[0x38 + r] = () => { byte v = GetReg((byte)rr); bool c = (v & 0x01) != 0; byte res = (byte)(v >> 1); SetReg((byte)rr, res); SetShiftRotateFlags(res, c); TStates += (rr == 6 ? 15UL : 8UL); };
+                cbOpcodeTable[0x00 + r] = () => { byte v = GetReg((byte)rr); bool c = (v & 0x80) != 0; byte res = (byte)((v << 1) | (c ? 1 : 0)); PrepareCbMemoryWrite(rr); SetReg((byte)rr, res); SetShiftRotateFlags(res, c); TStates += (rr == 6 ? 15UL : 8UL); };
+                cbOpcodeTable[0x08 + r] = () => { byte v = GetReg((byte)rr); bool c = (v & 0x01) != 0; byte res = (byte)((v >> 1) | (c ? 0x80 : 0)); PrepareCbMemoryWrite(rr); SetReg((byte)rr, res); SetShiftRotateFlags(res, c); TStates += (rr == 6 ? 15UL : 8UL); };
+                cbOpcodeTable[0x10 + r] = () => { byte v = GetReg((byte)rr); bool oldC = (Regs.F & 0x01) != 0; bool c = (v & 0x80) != 0; byte res = (byte)((v << 1) | (oldC ? 1 : 0)); PrepareCbMemoryWrite(rr); SetReg((byte)rr, res); SetShiftRotateFlags(res, c); TStates += (rr == 6 ? 15UL : 8UL); };
+                cbOpcodeTable[0x18 + r] = () => { byte v = GetReg((byte)rr); bool oldC = (Regs.F & 0x01) != 0; bool c = (v & 0x01) != 0; byte res = (byte)((v >> 1) | (oldC ? 0x80 : 0)); PrepareCbMemoryWrite(rr); SetReg((byte)rr, res); SetShiftRotateFlags(res, c); TStates += (rr == 6 ? 15UL : 8UL); };
+                cbOpcodeTable[0x20 + r] = () => { byte v = GetReg((byte)rr); bool c = (v & 0x80) != 0; byte res = (byte)(v << 1); PrepareCbMemoryWrite(rr); SetReg((byte)rr, res); SetShiftRotateFlags(res, c); TStates += (rr == 6 ? 15UL : 8UL); };
+                cbOpcodeTable[0x28 + r] = () => { byte v = GetReg((byte)rr); bool c = (v & 0x01) != 0; byte res = (byte)((v >> 1) | (v & 0x80)); PrepareCbMemoryWrite(rr); SetReg((byte)rr, res); SetShiftRotateFlags(res, c); TStates += (rr == 6 ? 15UL : 8UL); };
+                cbOpcodeTable[0x30 + r] = () => { byte v = GetReg((byte)rr); bool c = (v & 0x80) != 0; byte res = (byte)((v << 1) | 0x01); PrepareCbMemoryWrite(rr); SetReg((byte)rr, res); SetShiftRotateFlags(res, c); TStates += (rr == 6 ? 15UL : 8UL); };
+                cbOpcodeTable[0x38 + r] = () => { byte v = GetReg((byte)rr); bool c = (v & 0x01) != 0; byte res = (byte)(v >> 1); PrepareCbMemoryWrite(rr); SetReg((byte)rr, res); SetShiftRotateFlags(res, c); TStates += (rr == 6 ? 15UL : 8UL); };
             }
 
             for (int bit = 0; bit < 8; bit++)
@@ -71,6 +71,7 @@ namespace Spectrum128kEmulator.Z80
                 cbOpcodeTable[op] = () =>
                 {
                     byte val = GetReg((byte)r);
+                    PrepareCbMemoryWrite(r);
                     SetReg((byte)r, (byte)(val & ~(1 << b)));
                     TStates += (r == 6 ? 15UL : 8UL);
                 };
@@ -86,6 +87,7 @@ namespace Spectrum128kEmulator.Z80
                 cbOpcodeTable[op] = () =>
                 {
                     byte val = GetReg((byte)r);
+                    PrepareCbMemoryWrite(r);
                     SetReg((byte)r, (byte)(val | (1 << b)));
                     TStates += (r == 6 ? 15UL : 8UL);
                 };
@@ -95,7 +97,7 @@ namespace Spectrum128kEmulator.Z80
         private void ExecuteIndexedCB(ushort indexReg, sbyte disp, byte cbOp)
         {
             ushort addr = (ushort)(indexReg + disp);
-            byte value = ReadMemory(addr);
+            byte value = ReadDataMemory(addr, 2);
             int group = (cbOp >> 6) & 0x03;
             int y = (cbOp >> 3) & 0x07;
             int z = cbOp & 0x07;
@@ -130,7 +132,7 @@ namespace Spectrum128kEmulator.Z80
                         case 7: carry = (value & 0x01) != 0; result = (byte)(value >> 1); break; // SRL
                     }
 
-                    WriteMemory(addr, result);
+                    WriteDataMemory(addr, result, 1);
                     SetShiftRotateFlags(result, carry);
 
                     if (z != 6)
@@ -157,7 +159,7 @@ namespace Spectrum128kEmulator.Z80
                 case 2: // RES
                 {
                     byte result = (byte)(value & ~(1 << y));
-                    WriteMemory(addr, result);
+                    WriteDataMemory(addr, result, 1);
                     if (z != 6)
                         SetReg((byte)z, result);
                     TStates += 23;
@@ -167,7 +169,7 @@ namespace Spectrum128kEmulator.Z80
                 case 3: // SET
                 {
                     byte result = (byte)(value | (1 << y));
-                    WriteMemory(addr, result);
+                    WriteDataMemory(addr, result, 1);
                     if (z != 6)
                         SetReg((byte)z, result);
                     TStates += 23;
@@ -184,6 +186,12 @@ namespace Spectrum128kEmulator.Z80
             if (Parity(result)) flags |= 0x04;
             if (carry) flags |= 0x01;
             WriteFlags(flags);
+        }
+
+        private void PrepareCbMemoryWrite(int registerIndex)
+        {
+            if (registerIndex == 6)
+                AdvanceMemoryAccessOffset(1);
         }
     }
 }

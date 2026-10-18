@@ -24,8 +24,8 @@ namespace Spectrum128kEmulator.Z80
             ddOpcodeTable[0x22] = () =>
             {
                 ushort addr = FetchWord();
-                WriteMemory(addr, (byte)(Regs.IX & 0xFF));
-                WriteMemory((ushort)(addr + 1), (byte)(Regs.IX >> 8));
+                WriteDataMemory(addr, (byte)(Regs.IX & 0xFF));
+                WriteDataMemory((ushort)(addr + 1), (byte)(Regs.IX >> 8));
                 TStates += 20;
             };
             ddOpcodeTable[0x23] = () => { Regs.IX++; TStates += 10; };
@@ -36,8 +36,8 @@ namespace Spectrum128kEmulator.Z80
             ddOpcodeTable[0x2A] = () =>
             {
                 ushort addr = FetchWord();
-                byte low = ReadMemory(addr);
-                byte high = ReadMemory((ushort)(addr + 1));
+                byte low = ReadDataMemory(addr);
+                byte high = ReadDataMemory((ushort)(addr + 1));
                 Regs.IX = (ushort)(low | (high << 8));
                 TStates += 20;
             };
@@ -49,25 +49,25 @@ namespace Spectrum128kEmulator.Z80
             {
                 sbyte d = (sbyte)FetchByte();
                 ushort addr = (ushort)(Regs.IX + d);
-                byte old = ReadMemory(addr);
+                byte old = ReadDataMemory(addr, 5);
                 byte value = Inc8(old);
-                WriteMemory(addr, value);
+                WriteDataMemory(addr, value, 1);
                 TStates += 23;
             };
             ddOpcodeTable[0x35] = () =>
             {
                 sbyte d = (sbyte)FetchByte();
                 ushort addr = (ushort)(Regs.IX + d);
-                byte old = ReadMemory(addr);
+                byte old = ReadDataMemory(addr, 5);
                 byte value = Dec8(old);
-                WriteMemory(addr, value);
+                WriteDataMemory(addr, value, 1);
                 TStates += 23;
             };
             ddOpcodeTable[0x36] = () =>
             {
                 sbyte d = (sbyte)FetchByte();
                 byte n = FetchByte();
-                WriteMemory((ushort)(Regs.IX + d), n);
+                WriteDataMemory((ushort)(Regs.IX + d), n, 2);
                 TStates += 19;
             };
             ddOpcodeTable[0x39] = () => { Regs.IX = Add16(Regs.IX, Regs.SP); TStates += 15; };
@@ -75,19 +75,19 @@ namespace Spectrum128kEmulator.Z80
             // LD r, IXH/IXL/(IX+d)
             ddOpcodeTable[0x44] = () => { Regs.B = IXH; TStates += 8; };
             ddOpcodeTable[0x45] = () => { Regs.B = IXL; TStates += 8; };
-            ddOpcodeTable[0x46] = () => { sbyte d = (sbyte)FetchByte(); Regs.B = ReadMemory((ushort)(Regs.IX + d)); TStates += 19; };
+            ddOpcodeTable[0x46] = () => { sbyte d = (sbyte)FetchByte(); Regs.B = ReadDataMemory((ushort)(Regs.IX + d), 5); TStates += 19; };
 
             ddOpcodeTable[0x4C] = () => { Regs.C = IXH; TStates += 8; };
             ddOpcodeTable[0x4D] = () => { Regs.C = IXL; TStates += 8; };
-            ddOpcodeTable[0x4E] = () => { sbyte d = (sbyte)FetchByte(); Regs.C = ReadMemory((ushort)(Regs.IX + d)); TStates += 19; };
+            ddOpcodeTable[0x4E] = () => { sbyte d = (sbyte)FetchByte(); Regs.C = ReadDataMemory((ushort)(Regs.IX + d), 5); TStates += 19; };
 
             ddOpcodeTable[0x54] = () => { Regs.D = IXH; TStates += 8; };
             ddOpcodeTable[0x55] = () => { Regs.D = IXL; TStates += 8; };
-            ddOpcodeTable[0x56] = () => { sbyte d = (sbyte)FetchByte(); Regs.D = ReadMemory((ushort)(Regs.IX + d)); TStates += 19; };
+            ddOpcodeTable[0x56] = () => { sbyte d = (sbyte)FetchByte(); Regs.D = ReadDataMemory((ushort)(Regs.IX + d), 5); TStates += 19; };
 
             ddOpcodeTable[0x5C] = () => { Regs.E = IXH; TStates += 8; };
             ddOpcodeTable[0x5D] = () => { Regs.E = IXL; TStates += 8; };
-            ddOpcodeTable[0x5E] = () => { sbyte d = (sbyte)FetchByte(); Regs.E = ReadMemory((ushort)(Regs.IX + d)); TStates += 19; };
+            ddOpcodeTable[0x5E] = () => { sbyte d = (sbyte)FetchByte(); Regs.E = ReadDataMemory((ushort)(Regs.IX + d), 5); TStates += 19; };
 
             // LD IXH/IXL, r
             ddOpcodeTable[0x60] = () => { IXH = Regs.B; TStates += 8; };
@@ -106,8 +106,8 @@ namespace Spectrum128kEmulator.Z80
             ddOpcodeTable[0x6A] = () => { IXL = Regs.D; TStates += 8; };
             ddOpcodeTable[0x6B] = () => { IXL = Regs.E; TStates += 8; };
 
-            ddOpcodeTable[0x66] = () => { sbyte d = (sbyte)FetchByte(); Regs.H = ReadMemory((ushort)(Regs.IX + d)); TStates += 19; };
-            ddOpcodeTable[0x6E] = () => { sbyte d = (sbyte)FetchByte(); Regs.L = ReadMemory((ushort)(Regs.IX + d)); TStates += 19; };
+            ddOpcodeTable[0x66] = () => { sbyte d = (sbyte)FetchByte(); Regs.H = ReadDataMemory((ushort)(Regs.IX + d), 5); TStates += 19; };
+            ddOpcodeTable[0x6E] = () => { sbyte d = (sbyte)FetchByte(); Regs.L = ReadDataMemory((ushort)(Regs.IX + d), 5); TStates += 19; };
             ddOpcodeTable[0x6F] = () => { IXL = Regs.A; TStates += 8; };
 
             // LD (IX+d), r
@@ -130,53 +130,54 @@ namespace Spectrum128kEmulator.Z80
                         7 => Regs.A,
                         _ => 0
                     };
-                    WriteMemory(addr, value);
+                    WriteDataMemory(addr, value, 5);
                     TStates += 19;
                 };
             }
 
             ddOpcodeTable[0x7C] = () => { Regs.A = IXH; TStates += 8; };
             ddOpcodeTable[0x7D] = () => { Regs.A = IXL; TStates += 8; };
-            ddOpcodeTable[0x7E] = () => { sbyte d = (sbyte)FetchByte(); Regs.A = ReadMemory((ushort)(Regs.IX + d)); TStates += 19; };
+            ddOpcodeTable[0x7E] = () => { sbyte d = (sbyte)FetchByte(); Regs.A = ReadDataMemory((ushort)(Regs.IX + d), 5); TStates += 19; };
 
             // ALU IXH/IXL/(IX+d)
             ddOpcodeTable[0x84] = () => AddA(IXH, false, 8);
             ddOpcodeTable[0x85] = () => AddA(IXL, false, 8);
-            ddOpcodeTable[0x86] = () => { sbyte d = (sbyte)FetchByte(); AddA(ReadMemory((ushort)(Regs.IX + d)), false, 19); };
+            ddOpcodeTable[0x86] = () => { sbyte d = (sbyte)FetchByte(); AddA(ReadDataMemory((ushort)(Regs.IX + d), 5), false, 19); };
             ddOpcodeTable[0x8C] = () => AddA(IXH, true, 8);
             ddOpcodeTable[0x8D] = () => AddA(IXL, true, 8);
-            ddOpcodeTable[0x8E] = () => { sbyte d = (sbyte)FetchByte(); AddA(ReadMemory((ushort)(Regs.IX + d)), true, 19); };
+            ddOpcodeTable[0x8E] = () => { sbyte d = (sbyte)FetchByte(); AddA(ReadDataMemory((ushort)(Regs.IX + d), 5), true, 19); };
 
             ddOpcodeTable[0x94] = () => SubA(IXH, false, 8);
             ddOpcodeTable[0x95] = () => SubA(IXL, false, 8);
-            ddOpcodeTable[0x96] = () => { sbyte d = (sbyte)FetchByte(); SubA(ReadMemory((ushort)(Regs.IX + d)), false, 19); };
+            ddOpcodeTable[0x96] = () => { sbyte d = (sbyte)FetchByte(); SubA(ReadDataMemory((ushort)(Regs.IX + d), 5), false, 19); };
             ddOpcodeTable[0x9C] = () => SubA(IXH, true, 8);
             ddOpcodeTable[0x9D] = () => SubA(IXL, true, 8);
-            ddOpcodeTable[0x9E] = () => { sbyte d = (sbyte)FetchByte(); SubA(ReadMemory((ushort)(Regs.IX + d)), true, 19); };
+            ddOpcodeTable[0x9E] = () => { sbyte d = (sbyte)FetchByte(); SubA(ReadDataMemory((ushort)(Regs.IX + d), 5), true, 19); };
 
             ddOpcodeTable[0xA4] = () => AndA(IXH, 8);
             ddOpcodeTable[0xA5] = () => AndA(IXL, 8);
-            ddOpcodeTable[0xA6] = () => { sbyte d = (sbyte)FetchByte(); AndA(ReadMemory((ushort)(Regs.IX + d)), 19); };
+            ddOpcodeTable[0xA6] = () => { sbyte d = (sbyte)FetchByte(); AndA(ReadDataMemory((ushort)(Regs.IX + d), 5), 19); };
 
             ddOpcodeTable[0xAC] = () => XorA(IXH, 8);
             ddOpcodeTable[0xAD] = () => XorA(IXL, 8);
-            ddOpcodeTable[0xAE] = () => { sbyte d = (sbyte)FetchByte(); XorA(ReadMemory((ushort)(Regs.IX + d)), 19); };
+            ddOpcodeTable[0xAE] = () => { sbyte d = (sbyte)FetchByte(); XorA(ReadDataMemory((ushort)(Regs.IX + d), 5), 19); };
 
             ddOpcodeTable[0xB4] = () => OrA(IXH, 8);
             ddOpcodeTable[0xB5] = () => OrA(IXL, 8);
-            ddOpcodeTable[0xB6] = () => { sbyte d = (sbyte)FetchByte(); OrA(ReadMemory((ushort)(Regs.IX + d)), 19); };
+            ddOpcodeTable[0xB6] = () => { sbyte d = (sbyte)FetchByte(); OrA(ReadDataMemory((ushort)(Regs.IX + d), 5), 19); };
 
             ddOpcodeTable[0xBC] = () => CpA(IXH, 8);
             ddOpcodeTable[0xBD] = () => CpA(IXL, 8);
-            ddOpcodeTable[0xBE] = () => { sbyte d = (sbyte)FetchByte(); CpA(ReadMemory((ushort)(Regs.IX + d)), 19); };
+            ddOpcodeTable[0xBE] = () => { sbyte d = (sbyte)FetchByte(); CpA(ReadDataMemory((ushort)(Regs.IX + d), 5), 19); };
 
             ddOpcodeTable[0xE1] = () => { TStates += 8; Regs.IX = Pop(); };
             ddOpcodeTable[0xE3] = () =>
             {
-                byte low = ReadMemory(Regs.SP);
-                byte high = ReadMemory((ushort)(Regs.SP + 1));
-                WriteMemory(Regs.SP, (byte)(Regs.IX & 0xFF));
-                WriteMemory((ushort)(Regs.SP + 1), (byte)(Regs.IX >> 8));
+                byte low = ReadDataMemory(Regs.SP);
+                byte high = ReadDataMemory((ushort)(Regs.SP + 1));
+                AdvanceMemoryAccessOffset(1);
+                WriteDataMemory(Regs.SP, (byte)(Regs.IX & 0xFF));
+                WriteDataMemory((ushort)(Regs.SP + 1), (byte)(Regs.IX >> 8));
                 Regs.IX = (ushort)(low | (high << 8));
                 TStates += 23;
             };
@@ -205,8 +206,8 @@ namespace Spectrum128kEmulator.Z80
             fdOpcodeTable[0x22] = () =>
             {
                 ushort addr = FetchWord();
-                WriteMemory(addr, (byte)(Regs.IY & 0xFF));
-                WriteMemory((ushort)(addr + 1), (byte)(Regs.IY >> 8));
+                WriteDataMemory(addr, (byte)(Regs.IY & 0xFF));
+                WriteDataMemory((ushort)(addr + 1), (byte)(Regs.IY >> 8));
                 TStates += 20;
             };
             fdOpcodeTable[0x23] = () => { Regs.IY++; TStates += 10; };
@@ -217,8 +218,8 @@ namespace Spectrum128kEmulator.Z80
             fdOpcodeTable[0x2A] = () =>
             {
                 ushort addr = FetchWord();
-                byte low = ReadMemory(addr);
-                byte high = ReadMemory((ushort)(addr + 1));
+                byte low = ReadDataMemory(addr);
+                byte high = ReadDataMemory((ushort)(addr + 1));
                 Regs.IY = (ushort)(low | (high << 8));
                 TStates += 20;
             };
@@ -230,25 +231,25 @@ namespace Spectrum128kEmulator.Z80
             {
                 sbyte d = (sbyte)FetchByte();
                 ushort addr = (ushort)(Regs.IY + d);
-                byte old = ReadMemory(addr);
+                byte old = ReadDataMemory(addr, 5);
                 byte value = Inc8(old);
-                WriteMemory(addr, value);
+                WriteDataMemory(addr, value, 1);
                 TStates += 23;
             };
             fdOpcodeTable[0x35] = () =>
             {
                 sbyte d = (sbyte)FetchByte();
                 ushort addr = (ushort)(Regs.IY + d);
-                byte old = ReadMemory(addr);
+                byte old = ReadDataMemory(addr, 5);
                 byte value = Dec8(old);
-                WriteMemory(addr, value);
+                WriteDataMemory(addr, value, 1);
                 TStates += 23;
             };
             fdOpcodeTable[0x36] = () =>
             {
                 sbyte d = (sbyte)FetchByte();
                 byte n = FetchByte();
-                WriteMemory((ushort)(Regs.IY + d), n);
+                WriteDataMemory((ushort)(Regs.IY + d), n, 2);
                 TStates += 19;
             };
             fdOpcodeTable[0x39] = () => { Regs.IY = Add16(Regs.IY, Regs.SP); TStates += 15; };
@@ -256,19 +257,19 @@ namespace Spectrum128kEmulator.Z80
             // LD r, IYH/IYL/(IY+d)
             fdOpcodeTable[0x44] = () => { Regs.B = IYH; TStates += 8; };
             fdOpcodeTable[0x45] = () => { Regs.B = IYL; TStates += 8; };
-            fdOpcodeTable[0x46] = () => { sbyte d = (sbyte)FetchByte(); Regs.B = ReadMemory((ushort)(Regs.IY + d)); TStates += 19; };
+            fdOpcodeTable[0x46] = () => { sbyte d = (sbyte)FetchByte(); Regs.B = ReadDataMemory((ushort)(Regs.IY + d), 5); TStates += 19; };
 
             fdOpcodeTable[0x4C] = () => { Regs.C = IYH; TStates += 8; };
             fdOpcodeTable[0x4D] = () => { Regs.C = IYL; TStates += 8; };
-            fdOpcodeTable[0x4E] = () => { sbyte d = (sbyte)FetchByte(); Regs.C = ReadMemory((ushort)(Regs.IY + d)); TStates += 19; };
+            fdOpcodeTable[0x4E] = () => { sbyte d = (sbyte)FetchByte(); Regs.C = ReadDataMemory((ushort)(Regs.IY + d), 5); TStates += 19; };
 
             fdOpcodeTable[0x54] = () => { Regs.D = IYH; TStates += 8; };
             fdOpcodeTable[0x55] = () => { Regs.D = IYL; TStates += 8; };
-            fdOpcodeTable[0x56] = () => { sbyte d = (sbyte)FetchByte(); Regs.D = ReadMemory((ushort)(Regs.IY + d)); TStates += 19; };
+            fdOpcodeTable[0x56] = () => { sbyte d = (sbyte)FetchByte(); Regs.D = ReadDataMemory((ushort)(Regs.IY + d), 5); TStates += 19; };
 
             fdOpcodeTable[0x5C] = () => { Regs.E = IYH; TStates += 8; };
             fdOpcodeTable[0x5D] = () => { Regs.E = IYL; TStates += 8; };
-            fdOpcodeTable[0x5E] = () => { sbyte d = (sbyte)FetchByte(); Regs.E = ReadMemory((ushort)(Regs.IY + d)); TStates += 19; };
+            fdOpcodeTable[0x5E] = () => { sbyte d = (sbyte)FetchByte(); Regs.E = ReadDataMemory((ushort)(Regs.IY + d), 5); TStates += 19; };
 
             // LD IYH/IYL, r
             fdOpcodeTable[0x60] = () => { IYH = Regs.B; TStates += 8; };
@@ -286,8 +287,8 @@ namespace Spectrum128kEmulator.Z80
             fdOpcodeTable[0x6C] = () => { IYL = IYH; TStates += 8; };
             fdOpcodeTable[0x6D] = () => { IYL = IYL; TStates += 8; };            
 
-            fdOpcodeTable[0x66] = () => { sbyte d = (sbyte)FetchByte(); Regs.H = ReadMemory((ushort)(Regs.IY + d)); TStates += 19; };
-            fdOpcodeTable[0x6E] = () => { sbyte d = (sbyte)FetchByte(); Regs.L = ReadMemory((ushort)(Regs.IY + d)); TStates += 19; };
+            fdOpcodeTable[0x66] = () => { sbyte d = (sbyte)FetchByte(); Regs.H = ReadDataMemory((ushort)(Regs.IY + d), 5); TStates += 19; };
+            fdOpcodeTable[0x6E] = () => { sbyte d = (sbyte)FetchByte(); Regs.L = ReadDataMemory((ushort)(Regs.IY + d), 5); TStates += 19; };
             fdOpcodeTable[0x6F] = () => { IYL = Regs.A; TStates += 8; };
 
             // LD (IY+d), r
@@ -310,53 +311,54 @@ namespace Spectrum128kEmulator.Z80
                         7 => Regs.A,
                         _ => 0
                     };
-                    WriteMemory(addr, value);
+                    WriteDataMemory(addr, value, 5);
                     TStates += 19;
                 };
             }
 
             fdOpcodeTable[0x7C] = () => { Regs.A = IYH; TStates += 8; };
             fdOpcodeTable[0x7D] = () => { Regs.A = IYL; TStates += 8; };
-            fdOpcodeTable[0x7E] = () => { sbyte d = (sbyte)FetchByte(); Regs.A = ReadMemory((ushort)(Regs.IY + d)); TStates += 19; };
+            fdOpcodeTable[0x7E] = () => { sbyte d = (sbyte)FetchByte(); Regs.A = ReadDataMemory((ushort)(Regs.IY + d), 5); TStates += 19; };
 
             // ALU IYH/IYL/(IY+d)
             fdOpcodeTable[0x84] = () => AddA(IYH, false, 8);
             fdOpcodeTable[0x85] = () => AddA(IYL, false, 8);
-            fdOpcodeTable[0x86] = () => { sbyte d = (sbyte)FetchByte(); AddA(ReadMemory((ushort)(Regs.IY + d)), false, 19); };
+            fdOpcodeTable[0x86] = () => { sbyte d = (sbyte)FetchByte(); AddA(ReadDataMemory((ushort)(Regs.IY + d), 5), false, 19); };
             fdOpcodeTable[0x8C] = () => AddA(IYH, true, 8);
             fdOpcodeTable[0x8D] = () => AddA(IYL, true, 8);
-            fdOpcodeTable[0x8E] = () => { sbyte d = (sbyte)FetchByte(); AddA(ReadMemory((ushort)(Regs.IY + d)), true, 19); };
+            fdOpcodeTable[0x8E] = () => { sbyte d = (sbyte)FetchByte(); AddA(ReadDataMemory((ushort)(Regs.IY + d), 5), true, 19); };
 
             fdOpcodeTable[0x94] = () => SubA(IYH, false, 8);
             fdOpcodeTable[0x95] = () => SubA(IYL, false, 8);
-            fdOpcodeTable[0x96] = () => { sbyte d = (sbyte)FetchByte(); SubA(ReadMemory((ushort)(Regs.IY + d)), false, 19); };
+            fdOpcodeTable[0x96] = () => { sbyte d = (sbyte)FetchByte(); SubA(ReadDataMemory((ushort)(Regs.IY + d), 5), false, 19); };
             fdOpcodeTable[0x9C] = () => SubA(IYH, true, 8);
             fdOpcodeTable[0x9D] = () => SubA(IYL, true, 8);
-            fdOpcodeTable[0x9E] = () => { sbyte d = (sbyte)FetchByte(); SubA(ReadMemory((ushort)(Regs.IY + d)), true, 19); };
+            fdOpcodeTable[0x9E] = () => { sbyte d = (sbyte)FetchByte(); SubA(ReadDataMemory((ushort)(Regs.IY + d), 5), true, 19); };
 
             fdOpcodeTable[0xA4] = () => AndA(IYH, 8);
             fdOpcodeTable[0xA5] = () => AndA(IYL, 8);
-            fdOpcodeTable[0xA6] = () => { sbyte d = (sbyte)FetchByte(); AndA(ReadMemory((ushort)(Regs.IY + d)), 19); };
+            fdOpcodeTable[0xA6] = () => { sbyte d = (sbyte)FetchByte(); AndA(ReadDataMemory((ushort)(Regs.IY + d), 5), 19); };
 
             fdOpcodeTable[0xAC] = () => XorA(IYH, 8);
             fdOpcodeTable[0xAD] = () => XorA(IYL, 8);
-            fdOpcodeTable[0xAE] = () => { sbyte d = (sbyte)FetchByte(); XorA(ReadMemory((ushort)(Regs.IY + d)), 19); };
+            fdOpcodeTable[0xAE] = () => { sbyte d = (sbyte)FetchByte(); XorA(ReadDataMemory((ushort)(Regs.IY + d), 5), 19); };
 
             fdOpcodeTable[0xB4] = () => OrA(IYH, 8);
             fdOpcodeTable[0xB5] = () => OrA(IYL, 8);
-            fdOpcodeTable[0xB6] = () => { sbyte d = (sbyte)FetchByte(); OrA(ReadMemory((ushort)(Regs.IY + d)), 19); };
+            fdOpcodeTable[0xB6] = () => { sbyte d = (sbyte)FetchByte(); OrA(ReadDataMemory((ushort)(Regs.IY + d), 5), 19); };
 
             fdOpcodeTable[0xBC] = () => CpA(IYH, 8);
             fdOpcodeTable[0xBD] = () => CpA(IYL, 8);
-            fdOpcodeTable[0xBE] = () => { sbyte d = (sbyte)FetchByte(); CpA(ReadMemory((ushort)(Regs.IY + d)), 19); };
+            fdOpcodeTable[0xBE] = () => { sbyte d = (sbyte)FetchByte(); CpA(ReadDataMemory((ushort)(Regs.IY + d), 5), 19); };
 
             fdOpcodeTable[0xE1] = () => { TStates += 8; Regs.IY = Pop(); };
             fdOpcodeTable[0xE3] = () =>
             {
-                byte low = ReadMemory(Regs.SP);
-                byte high = ReadMemory((ushort)(Regs.SP + 1));
-                WriteMemory(Regs.SP, (byte)(Regs.IY & 0xFF));
-                WriteMemory((ushort)(Regs.SP + 1), (byte)(Regs.IY >> 8));
+                byte low = ReadDataMemory(Regs.SP);
+                byte high = ReadDataMemory((ushort)(Regs.SP + 1));
+                AdvanceMemoryAccessOffset(1);
+                WriteDataMemory(Regs.SP, (byte)(Regs.IY & 0xFF));
+                WriteDataMemory((ushort)(Regs.SP + 1), (byte)(Regs.IY >> 8));
                 Regs.IY = (ushort)(low | (high << 8));
                 TStates += 23;
             };
