@@ -73,12 +73,12 @@ namespace Spectrum128kEmulator
         private readonly object machineLock = new();
         private readonly object inputStateLock = new();
         private readonly object audioPipelineLock = new();
-        private readonly HashSet<Keys> pressedSpectrumKeys = new();
         private readonly Queue<SpectrumHostKeyEvent> pendingSpectrumHostKeyEvents = new();
-        private readonly SpectrumKeyInputBridge spectrumKeyInputBridge = new(8, 40, 90);
+        private readonly SpectrumKeyboardInputController keyboardInputController = new();
+        private SpectrumKeyboardMessageFilter? keyboardMessageFilter;
         private readonly EmulationLoopController emulationLoop = new();
         private AudioPipeline audioPipeline;
-        private int inputBridgeTick;
+        private ulong inputEmulatedTStates;
         private readonly object inputDiagnosticsLock = new();
         private StreamWriter? inputDiagnosticsWriter;
         private string? inputDiagnosticsPath;
@@ -604,7 +604,7 @@ namespace Spectrum128kEmulator
                                 }
 
                                 actualExecutedTStates += executedSliceTStates;
-                                inputBridgeTick++;
+                                inputEmulatedTStates += (ulong)Math.Max(0, executedSliceTStates);
                                 ProcessPendingSpectrumKeyReleases();
 
                                 if (!suppressAudioSubmission)
@@ -715,7 +715,7 @@ namespace Spectrum128kEmulator
             ResetInputBridgeState();
             lock (machineLock)
             {
-                inputBridgeTick = 0;
+                inputEmulatedTStates = 0;
                 machine.ClearKeyboard();
             }
         }
@@ -820,7 +820,7 @@ namespace Spectrum128kEmulator
                 accumulatedEmulationTStates = 0;
                 currentTurboTapeLoadFactor = TurboTapeLoadFactor;
                 tapeTurboPlaybackPolicy.Reset();
-                inputBridgeTick = 0;
+                inputEmulatedTStates = 0;
                 lastObservedTapeTransportState = machine.TapeTransportState;
                 lastObservedTapeMarkerStop = machine.IsTapeStoppedAtMarker;
             }
@@ -1118,6 +1118,11 @@ namespace Spectrum128kEmulator
         {
             if (disposing)
             {
+                if (keyboardMessageFilter != null)
+                {
+                    Application.RemoveMessageFilter(keyboardMessageFilter);
+                    keyboardMessageFilter = null;
+                }
                 emulationLoop.Dispose();
                 lock (inputDiagnosticsLock)
                 {
@@ -1141,6 +1146,6 @@ namespace Spectrum128kEmulator
             base.Dispose(disposing);
         }
 
-        private readonly record struct SpectrumHostKeyEvent(Keys Key, bool IsDown);
+        private readonly record struct SpectrumHostKeyEvent(Keys Key, bool IsDown, bool Reset = false);
     }
 }
