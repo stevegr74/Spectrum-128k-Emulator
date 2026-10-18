@@ -8,8 +8,8 @@ that every level, control path, or hardware edge case has been tested.
 
 | Title / release | Format | Verified checkpoint and notes |
 | --- | --- | --- |
-| Arkanoid (Imagine) | `.tzx` | Protected loading completes and gameplay runs; ship flicker exposes the frame-snapshot renderer limitation, and audio timing remains slightly imperfect |
-| Arkanoid (Hit Squad) | `.tzx` | LOAD capability gating falls back to the real-ROM protected path; loading reaches gameplay, with the same known frame-snapshot flicker |
+| Arkanoid (Imagine) | `.tzx` | Protected loading completes and gameplay runs; Milestone 16 timing reduced the ship flicker but did not eliminate the frame-snapshot renderer limitation, and audio timing remains slightly imperfect |
+| Arkanoid (Hit Squad) | `.tzx` | LOAD capability gating falls back to the real-ROM protected path; loading reaches gameplay, with the same reduced but still visible frame-snapshot flicker |
 | Batman | `.tzx` | Chained BASIC and protected loading complete; game runs |
 | Captain America | `.tzx` | Protected loader completes; game runs |
 | Donkey Kong (Erbe) | `.tzx` | Custom loader completes without corrupting the loading screen; game runs |
