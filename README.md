@@ -35,7 +35,7 @@ Manually tested titles, formats, and reached checkpoints are tracked in
 
 Current limitations and active work:
 
-- opcode/immediate fetches, ordinary/indexed/block/stack memory accesses, port I/O, border, and floating-bus timing now use model-specific machine-cycle positions; published external diagnostic validation remains active Milestone 16 work
+- opcode/immediate fetches, ordinary/indexed/block/stack memory accesses, port I/O, border, and floating-bus timing use model-specific machine-cycle positions validated against published 48K and 128K diagnostics
 - active-screen rendering is frame-snapshot based rather than beam-aware; Milestone 17 addresses this
 - exact audio timing and turbo-to-real-time tape handoff still need polish in some titles
 - broader protected/custom TZX compatibility remains ongoing
@@ -54,12 +54,13 @@ Current limitations and active work:
 - Model-specific ULA profiles now drive contention, floating-bus fetches, frame timing, and raster mapping; original 128K/+2 floating-bus reads follow the selected bank 5 or bank 7 screen, and `IN (0xFFFD)` reads the selected AY register.
 - Border, beeper, and AY writes are timestamped at the completed I/O cycle, including contended and repeating block-I/O paths; border changes are reconstructed in hardware-sized eight-pixel latch groups without stretching visible pixels across horizontal flyback.
 - Contended opcode, prefix, and immediate-byte fetches use their individual machine-cycle offsets; corrected indexed-instruction totals cover ignored `DD`/`FD` prefixes, absolute IX/IY loads and stores, stack exchange, and stack-pointer transfer.
+- Interrupt scheduling carries instruction-boundary overshoot into the next frame, preserving the 69,888-T-state 48K and 70,908-T-state 128K frame cadence without truncating instructions.
 
 ## Development Priorities
 
-Each feature is developed on its own branch. Current work is ULA/port conformance
-(Milestone 16), followed by beam-aware video (17), debugger execution controls
-(18), and bank-aware symbolic disassembly (19). Tape compatibility and the
+Each feature is developed on its own branch. Current work is beam-aware video
+(Milestone 17), followed by debugger execution controls (18), and bank-aware
+symbolic disassembly (19). Tape compatibility and the
 turbo-to-realtime audio transition continue in parallel, with the verified media
 matrix plus ZEXDOC/ZEXALL used as regression gates.
 
@@ -108,6 +109,8 @@ Spectrum128kEmulator/
 |-- Spectrum128kEmulator.Z80Compliance/    net8.0 ZEXDOC/ZEXALL compliance runner
 |-- ROMs/                                  required 128K ROM images
 |-- test-assets/                           checked-in test programs and fixtures
+|   |-- ula/                               external ULA diagnostic runbook (media not redistributed)
+|   `-- z80/                               ZEXDOC/ZEXALL compliance programs
 `-- tmp/                                   ignored local probes, captures, and scratch artifacts
 ```
 
@@ -253,6 +256,10 @@ scheduled key/register/memory events, memory-write watches, instruction traces, 
 execution breakpoints. It writes a machine dump and BMP frame image only for the run being
 investigated; game-specific probes are deliberately kept out of the harness.
 
+The [ULA timing validation runbook](test-assets/ula/README.md) records how the
+48K/128K Timing Test and floating-bus diagnostics are run without redistributing
+their GPL-licensed media.
+
 > Intended for debugging, not performance measurement.
 
 ---
@@ -296,16 +303,18 @@ compatibility and polish; completed milestones remain regression baselines.
 | 13 | Complete | Paused read-only mapped-64K disassembler window |
 | 14 | Complete | Deterministic temporary in-memory Quick State |
 | 15 | Complete | Disassembler history, search, navigation, persistence, copy, and export |
-| 16 | In progress | Central ULA profiles, contention conformance, 128K floating bus, exact port events, border-latch mapping, and timed CPU bus cycles implemented; published diagnostic validation remains |
+| 16 | Complete | Central ULA profiles, contention conformance, 128K floating bus, exact port events, border-latch mapping, timed CPU bus cycles, and published diagnostic validation |
 
-### Milestone 16 - ULA Timing Conformance And Port Accuracy In Progress
+### Milestone 16 - ULA Timing Conformance And Port Accuracy Complete
 - Implemented one model-specific timing profile for frame length, scanline length, contention start, display fetches, visible raster mapping, and the documented timing convention
 - Added table-driven contention coverage across complete 48K and original 128K display phases, line/frame boundaries, contended memory banks, and all four I/O contention cases
 - Timestamped opcode/immediate fetches, ordinary/indexed/block/stack memory accesses, interrupt-vector reads, and port reads/writes at their machine-cycle positions, including contended I/O and the distinct block-I/O repeat tail
 - Generalized the floating-bus model for the original Spectrum 128K and grey +2, including normal bank 5 and shadow bank 7 screen selection
 - Decoded attached input devices before the floating-bus fallback, including `IN (0xFFFD)` reading the selected AY register
 - Corrected and tested border, beeper, and AY write timestamps plus eight-pixel border-latch and visible pixel/T-state mapping without claiming +2A/+3 behavior
-- Continue validation with published contention and floating-bus diagnostics plus the existing tape, snapshot, RZX, ZEXDOC, and ZEXALL regression matrix
+- Preserved interrupt phase across instruction-boundary overshoot, producing exact published frame lengths of 69,888 T-states for 48K and 70,908 T-states for 128K
+- Matched the Patrik Rak Timing Test 0.3 reference captures pixel-for-pixel for 48K/128K contended NOP, snow-effect NOP, and all six even/odd I/O contention cases
+- Matched the Mark Woodmass Float48K and Float128K reference address/value sequences, with the repeatable external-media procedure recorded under `test-assets/ula`
 
 ### Milestone 17 - Beam-Aware Video Pipeline Planned
 - Add an event-driven ULA raster that advances to timed machine events; a literal per-T-state host loop is not required when the observable result is equivalent

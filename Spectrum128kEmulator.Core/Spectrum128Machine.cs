@@ -360,12 +360,13 @@ namespace Spectrum128kEmulator
                     BeginFrameAudioCapture();
 
                 int remainingFrameTStates = frameTStates - currentFrameExecutedTStates;
-                if (tStatesUntilNextInterrupt == 0)
+                if (tStatesUntilNextInterrupt <= 0)
                 {
                     TriggerFrameInterrupt();
-                    tStatesUntilNextInterrupt = realignInterruptPhaseAfterNextAccept
-                        ? remainingFrameTStates
-                        : frameTStates;
+                    if (realignInterruptPhaseAfterNextAccept)
+                        tStatesUntilNextInterrupt = remainingFrameTStates;
+                    else
+                        tStatesUntilNextInterrupt += frameTStates;
                     realignInterruptPhaseAfterNextAccept = false;
                 }
 
@@ -402,8 +403,6 @@ namespace Spectrum128kEmulator
                 remainingFrameTStates -= actualExecutedTStates;
                 currentFrameExecutedTStates += actualExecutedTStates;
                 tStatesUntilNextInterrupt -= actualExecutedTStates;
-                if (tStatesUntilNextInterrupt < 0)
-                    tStatesUntilNextInterrupt = 0;
 
                 if (remainingFrameTStates > 0)
                     continue;
