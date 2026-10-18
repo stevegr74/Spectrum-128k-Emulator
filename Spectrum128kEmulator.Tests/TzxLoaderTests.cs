@@ -433,6 +433,42 @@ namespace Spectrum128kEmulator.Tests
         }
 
         [Fact]
+        public void LoadWithPolicy_UsesRomBootstrapWhenBasicLoadsOutrunStandardBlocksBeforeProtectedData()
+        {
+            string romFolder = CreateTempRoms();
+            string tapePath = Path.Combine(romFolder, "protected-after-standard-prefix.tzx");
+
+            try
+            {
+                byte[] basicProgram = BuildBasicProgram(
+                    BuildBasicLine(10,
+                        Token(239), Ascii("\"\" "), Token(175), Ascii(":"),
+                        Token(239), Ascii("\"\" "), Token(175)));
+
+                File.WriteAllBytes(
+                    tapePath,
+                    BuildTzx(
+                        BuildStandardSpeedDataBlock(BuildSpectrumHeaderBlock(type: 0, fileName: "BOOT", dataLength: (ushort)basicProgram.Length, parameter1: 10, parameter2: (ushort)basicProgram.Length), pauseMs: 1000),
+                        BuildStandardSpeedDataBlock(BuildSpectrumDataBlock(basicProgram), pauseMs: 1000),
+                        BuildStandardSpeedDataBlock(BuildSpectrumHeaderBlock(type: 3, fileName: "PREFIX", dataLength: 1, parameter1: 0x8000, parameter2: 0), pauseMs: 1000),
+                        BuildStandardSpeedDataBlock(BuildSpectrumDataBlock(new byte[] { 0x99 }), pauseMs: 1),
+                        BuildPureToneBlock(2168, 32),
+                        BuildPulseSequenceBlock(855, 1710),
+                        BuildPureDataBlock(new byte[] { 0xAA, 0x55, 0xF0 }, usedBitsInLastByte: 8, pauseMs: 250)));
+
+                var machine = new Spectrum128Machine(romFolder, SpectrumRomProfile.SyntheticTest);
+                IReadOnlyList<Tap.TapeBlock> blocks = Tap.TzxLoader.ParseBlocks(File.ReadAllBytes(tapePath));
+                Tap.TapeLoadPlan plan = Tap.TapLoader.CreateExecutionPlan(machine, blocks);
+
+                Assert.Equal(Tap.TapeLoadStrategy.RomBootstrapMounted, plan.Strategy);
+            }
+            finally
+            {
+                Directory.Delete(romFolder, true);
+            }
+        }
+
+        [Fact]
         public void RawStandardMountedRemainder_Uses_BootstrapHybrid_Path()
         {
             string romFolder = CreateTempRoms();
@@ -878,7 +914,7 @@ namespace Spectrum128kEmulator.Tests
                 object plan = typeof(Tap.TapLoader)
                     .GetMethod("CreateExecutionPlan", BindingFlags.NonPublic | BindingFlags.Static)!
                     .Invoke(null, new object[] { machine, blocks })!;
-                Assert.Equal("BootstrapHybrid", plan.GetType().GetProperty("Strategy")!.GetValue(plan)!.ToString());
+                Assert.Equal("RomBootstrapMounted", plan.GetType().GetProperty("Strategy")!.GetValue(plan)!.ToString());
 
                 int divisor = (int)typeof(Tap.TapLoader)
                     .GetMethod("GetProtectedLiveTapeTimingDivisor", BindingFlags.NonPublic | BindingFlags.Static)!
