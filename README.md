@@ -309,7 +309,7 @@ compatibility and polish; completed milestones remain regression baselines.
 - Apply border changes and 128K normal/shadow screen switches at their raster positions through the same timing model
 - Preserve FLASH, palette, scaling, and the platform-neutral frame-buffer boundary while replacing only the frame's source data
 - Implement and validate the 48K fetch path first, then original 128K/+2 timing and shadow-screen behavior
-- Add deterministic mid-frame bitmap, attribute, border, and paging tests, followed by representative multicolour and racing-beam demo validation
+- Add deterministic mid-frame bitmap, attribute, border, and paging tests, followed by representative multicolour and racing-beam validation; Arkanoid's erase/redraw flicker is a primary acceptance case
 
 ### Milestone 18 - Debug Execution Controls Planned
 - Keep opening the window paused by default, with an explicit Run/Pause control if live execution is enabled
