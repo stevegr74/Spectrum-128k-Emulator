@@ -148,7 +148,11 @@ namespace Spectrum128kEmulator.Tests
                     Width = 1111,
                     Height = 777,
                     ColumnWidths = [80, 160, 500, 90],
-                    LastListingAddress = 0xABCD
+                    LastListingAddress = 0xABCD,
+                    Breakpoints =
+                    [
+                        new DisassemblerBreakpointSetting { Address = 0x8123, Enabled = false }
+                    ]
                 });
 
                 DisassemblerWindowSettings loaded = store.Load();
@@ -156,6 +160,9 @@ namespace Spectrum128kEmulator.Tests
                 Assert.Equal(777, loaded.Height);
                 Assert.Equal(new[] { 80, 160, 500, 90 }, loaded.ColumnWidths);
                 Assert.Equal((ushort)0xABCD, loaded.LastListingAddress);
+                Assert.Single(loaded.Breakpoints);
+                Assert.Equal((ushort)0x8123, loaded.Breakpoints[0].Address);
+                Assert.False(loaded.Breakpoints[0].Enabled);
 
                 File.WriteAllText(path, "not-json");
                 Assert.Null(store.Load().LastListingAddress);

@@ -5,6 +5,7 @@ using System.Runtime.InteropServices;
 using System.Threading;
 using System.Threading.Tasks;
 using Spectrum128kEmulator.Audio;
+using Spectrum128kEmulator.Debugging;
 using Spectrum128kEmulator.Tap;
 using Spectrum128kEmulator.Tape;
 
@@ -77,6 +78,8 @@ namespace Spectrum128kEmulator
         private readonly SpectrumKeyboardInputController keyboardInputController = new();
         private SpectrumKeyboardMessageFilter? keyboardMessageFilter;
         private readonly EmulationLoopController emulationLoop = new();
+        private readonly DebuggerExecutionController debuggerExecutionController = new();
+        private int debuggerStopNotificationQueued;
         private Exception? emulationLoopFailure;
         private string? emulationLoopFailureReportPath;
         private AudioPipeline audioPipeline;
@@ -418,9 +421,23 @@ namespace Spectrum128kEmulator
             disassemblerPauseLease = AcquireEmulationPauseLease();
             try
             {
-                disassemblerForm = new DisassemblerForm(CaptureDisassemblySnapshot);
+                lock (machineLock)
+                {
+                    machine.Cpu.StopBeforeInstruction = cpu => debuggerExecutionController.ShouldStopBeforeInstruction(
+                        cpu.Regs.PC,
+                        cpu.InstructionFetchCount);
+                }
+
+                disassemblerForm = new DisassemblerForm(
+                    CaptureDisassemblySnapshot,
+                    debuggerExecutionController,
+                    HandleDebuggerExecutionCommand,
+                    new DisassemblerWindowSettingsStore());
                 disassemblerForm.FormClosed += (_, _) =>
                 {
+                    EnsureDebuggerPaused();
+                    lock (machineLock)
+                        machine.Cpu.StopBeforeInstruction = null;
                     disassemblerForm = null;
                     disassemblerPauseLease?.Dispose();
                     disassemblerPauseLease = null;
@@ -431,9 +448,81 @@ namespace Spectrum128kEmulator
             }
             catch
             {
+                lock (machineLock)
+                    machine.Cpu.StopBeforeInstruction = null;
                 disassemblerPauseLease?.Dispose();
                 disassemblerPauseLease = null;
                 throw;
+            }
+        }
+
+        private void HandleDebuggerExecutionCommand(DebuggerExecutionCommand command, ushort? address)
+        {
+            if (command == DebuggerExecutionCommand.Pause)
+            {
+                debuggerExecutionController.RequestPause();
+                return;
+            }
+
+            if (disassemblerPauseLease == null)
+                return;
+
+            lock (machineLock)
+            {
+                ulong instructionFetchCount = machine.Cpu.InstructionFetchCount;
+                ushort programCounter = machine.Cpu.Regs.PC;
+                switch (command)
+                {
+                    case DebuggerExecutionCommand.Run:
+                        debuggerExecutionController.BeginRun(programCounter, instructionFetchCount);
+                        break;
+
+                    case DebuggerExecutionCommand.StepInto:
+                        debuggerExecutionController.BeginStepInto(programCounter, instructionFetchCount);
+                        break;
+
+                    case DebuggerExecutionCommand.RunToCursor when address.HasValue:
+                        debuggerExecutionController.BeginRunToAddress(address.Value, programCounter, instructionFetchCount);
+                        break;
+
+                    default:
+                        return;
+                }
+            }
+
+            disassemblerPauseLease.Dispose();
+            disassemblerPauseLease = null;
+        }
+
+        private void EnsureDebuggerPaused()
+        {
+            if (disassemblerPauseLease != null)
+                return;
+
+            debuggerExecutionController.RequestPause();
+            disassemblerPauseLease = AcquireEmulationPauseLease();
+        }
+
+        private void QueueDebuggerStop(DebuggerStop stop)
+        {
+            if (Interlocked.Exchange(ref debuggerStopNotificationQueued, 1) != 0)
+                return;
+
+            try
+            {
+                BeginInvoke(new Action(() =>
+                {
+                    Interlocked.Exchange(ref debuggerStopNotificationQueued, 0);
+                    if (disassemblerForm is not { IsDisposed: false } || disassemblerPauseLease != null)
+                        return;
+
+                    disassemblerPauseLease = AcquireEmulationPauseLease();
+                    disassemblerForm.ApplyExecutionStop(stop);
+                }));
+            }
+            catch
+            {
+                Interlocked.Exchange(ref debuggerStopNotificationQueued, 0);
             }
         }
 
@@ -445,13 +534,45 @@ namespace Spectrum128kEmulator
                 for (int address = 0; address < memory.Length; address++)
                     memory[address] = machine.PeekMemory((ushort)address);
 
+                var registers = machine.Cpu.Regs;
+                var stackWords = new ushort[4];
+                for (int index = 0; index < stackWords.Length; index++)
+                {
+                    ushort address = (ushort)(registers.SP + index * 2);
+                    stackWords[index] = (ushort)(memory[address] | (memory[(ushort)(address + 1)] << 8));
+                }
+
+                var cpuState = new DisassemblyCpuState(
+                    registers.AF,
+                    registers.BC,
+                    registers.DE,
+                    registers.HL,
+                    (ushort)((registers.A_ << 8) | registers.F_),
+                    (ushort)((registers.B_ << 8) | registers.C_),
+                    (ushort)((registers.D_ << 8) | registers.E_),
+                    (ushort)((registers.H_ << 8) | registers.L_),
+                    registers.IX,
+                    registers.IY,
+                    registers.SP,
+                    registers.PC,
+                    registers.I,
+                    registers.R,
+                    machine.Cpu.IFF1,
+                    machine.Cpu.IFF2,
+                    machine.Cpu.InterruptMode,
+                    machine.Cpu.IsHalted,
+                    machine.Cpu.InterruptPending,
+                    machine.Cpu.TStates,
+                    stackWords);
+
                 return new DisassemblySnapshot(
                     memory,
                     machine.Cpu.Regs.PC,
                     machine.MachineModel,
                     machine.CurrentRomBank,
                     machine.PagedRamBank,
-                    machine.ScreenBank);
+                    machine.ScreenBank,
+                    cpuState: cpuState);
             }
         }
 
@@ -608,6 +729,12 @@ namespace Spectrum128kEmulator
                                 actualExecutedTStates += executedSliceTStates;
                                 inputEmulatedTStates += (ulong)Math.Max(0, executedSliceTStates);
                                 ProcessPendingSpectrumKeyReleases();
+
+                                if (activeMachine.Cpu.ExecutionStopped &&
+                                    debuggerExecutionController.TryConsumeStop(out DebuggerStop? debuggerStop))
+                                {
+                                    QueueDebuggerStop(debuggerStop!);
+                                }
 
                                 if (!suppressAudioSubmission)
                                 {

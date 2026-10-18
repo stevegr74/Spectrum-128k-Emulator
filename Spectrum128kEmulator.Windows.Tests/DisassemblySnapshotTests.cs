@@ -57,5 +57,28 @@ namespace Spectrum128kEmulator.Tests
                 0,
                 5));
         }
+
+        [Fact]
+        public void Snapshot_ClonesCpuStackContext()
+        {
+            var stackWords = new ushort[] { 0x1234, 0x5678 };
+            var cpuState = new DisassemblyCpuState(
+                0, 0, 0, 0, 0, 0, 0, 0,
+                0, 0, 0x8000, 0x4000, 0, 0,
+                false, false, 1, false, false, 0,
+                stackWords);
+
+            var snapshot = new DisassemblySnapshot(
+                new byte[65536],
+                0x4000,
+                SpectrumMachineModel.Spectrum48K,
+                1,
+                0,
+                5,
+                cpuState: cpuState);
+            stackWords[0] = 0xFFFF;
+
+            Assert.Equal((ushort)0x1234, snapshot.CpuState!.StackWords[0]);
+        }
     }
 }

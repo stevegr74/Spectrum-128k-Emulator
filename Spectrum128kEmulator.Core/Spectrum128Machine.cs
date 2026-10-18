@@ -401,11 +401,6 @@ namespace Spectrum128kEmulator
                         : TapeTransportState.Playing;
                 }
 
-                // A diagnostic client may stop the CPU before the next instruction.
-                // Do not spin the scheduler with an unchanged T-state count in that case.
-                if (cpu.ExecutionStopped)
-                    break;
-
                 tStatesBudget -= actualExecutedTStates;
                 if (tStatesBudget < 0)
                     tStatesBudget = 0;
@@ -415,7 +410,13 @@ namespace Spectrum128kEmulator
                 tStatesUntilNextInterrupt -= actualExecutedTStates;
 
                 if (remainingFrameTStates > 0)
+                {
+                    // A diagnostic client may stop before the next instruction. Preserve
+                    // any cycles already executed, but do not spin on an unchanged clock.
+                    if (cpu.ExecutionStopped || actualExecutedTStates == 0)
+                        break;
                     continue;
+                }
 
                 lastAudioFrameTStates = (int)Math.Min((ulong)int.MaxValue, cpu.TStates - frameStartTStates);
                 if (captureAudioFramesEnabled)
@@ -442,6 +443,9 @@ namespace Spectrum128kEmulator
                 FrameCount++;
                 UpdateAutomaticTapeStopAtFrameBoundary();
                 completedFrames++;
+
+                if (cpu.ExecutionStopped)
+                    break;
             }
 
             return completedFrames;
