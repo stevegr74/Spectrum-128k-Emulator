@@ -6,6 +6,28 @@ namespace Spectrum128kEmulator.Tests
     public class DebuggerMachineExecutionTests
     {
         [Fact]
+        public void RomBankCopies_AreIndependentAndRangeChecked()
+        {
+            string romFolder = CreateTempRoms();
+            try
+            {
+                File.WriteAllBytes(Path.Combine(romFolder, "128-1.rom"),
+                    Enumerable.Repeat((byte)0xA5, 16384).ToArray());
+                var machine = new Spectrum128Machine(romFolder);
+
+                byte[] copy = machine.GetRomBankCopy(1);
+                copy[0] = 0;
+
+                Assert.Equal((byte)0xA5, machine.GetRomBankCopy(1)[0]);
+                Assert.Throws<ArgumentOutOfRangeException>(() => machine.GetRomBankCopy(2));
+            }
+            finally
+            {
+                Directory.Delete(romFolder, true);
+            }
+        }
+
+        [Fact]
         public void DebugStop_PreservesExecutedFrameProgress()
         {
             string romFolder = CreateTempRoms();

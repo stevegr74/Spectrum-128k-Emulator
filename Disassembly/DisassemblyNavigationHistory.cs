@@ -1,6 +1,9 @@
 namespace Spectrum128kEmulator
 {
-    public readonly record struct DisassemblyNavigationLocation(ushort ListingAddress, ushort SelectedAddress);
+    public readonly record struct DisassemblyNavigationLocation(
+        ushort ListingAddress,
+        ushort SelectedAddress,
+        DisassemblyAddressSpace AddressSpace = default);
 
     public sealed class DisassemblyNavigationHistory
     {

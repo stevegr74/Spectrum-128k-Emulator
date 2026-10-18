@@ -592,6 +592,8 @@ namespace Spectrum128kEmulator
                     machine.Cpu.InterruptPending,
                     machine.Cpu.TStates,
                     stackWords);
+                byte[][] romBanks = Enumerable.Range(0, 2).Select(machine.GetRomBankCopy).ToArray();
+                byte[][] ramBanks = Enumerable.Range(0, 8).Select(machine.GetRamBankCopy).ToArray();
 
                 return new DisassemblySnapshot(
                     memory,
@@ -600,7 +602,9 @@ namespace Spectrum128kEmulator
                     machine.CurrentRomBank,
                     machine.PagedRamBank,
                     machine.ScreenBank,
-                    cpuState: cpuState);
+                    cpuState: cpuState,
+                    romBanks: romBanks,
+                    ramBanks: ramBanks);
             }
         }
 

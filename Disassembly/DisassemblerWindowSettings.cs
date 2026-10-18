@@ -12,8 +12,10 @@ namespace Spectrum128kEmulator
     {
         public int Width { get; set; } = 980;
         public int Height { get; set; } = 680;
-        public int[] ColumnWidths { get; set; } = [90, 170, 480, 100];
+        public int[] ColumnWidths { get; set; } = [112, 170, 480, 100];
         public ushort? LastListingAddress { get; set; }
+        public DisassemblyAddressSpaceKind LastAddressSpaceKind { get; set; }
+        public int LastAddressSpaceBank { get; set; }
         public List<DisassemblerBreakpointSetting> Breakpoints { get; set; } = [];
     }
 
@@ -39,7 +41,7 @@ namespace Spectrum128kEmulator
                 DisassemblerWindowSettings settings =
                     JsonSerializer.Deserialize<DisassemblerWindowSettings>(File.ReadAllText(path))
                     ?? new DisassemblerWindowSettings();
-                settings.ColumnWidths ??= [90, 170, 480, 100];
+                settings.ColumnWidths ??= [112, 170, 480, 100];
                 settings.Breakpoints ??= [];
                 return settings;
             }

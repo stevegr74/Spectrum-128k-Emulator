@@ -19,6 +19,8 @@ namespace Spectrum128kEmulator
         {
             executionRunning = false;
             snapshot = captureSnapshot();
+            SetSelectedAddressSpace(DisassemblyAddressSpace.Mapped);
+            PopulateAddressSpaceChoices();
             NavigateTo(
                 snapshot.ProgramCounter,
                 status: FormatStopStatus(stop),
@@ -89,7 +91,8 @@ namespace Spectrum128kEmulator
 
         private void RunToCursor()
         {
-            if (executionRunning || SelectedInstruction() is not Z80Instruction instruction)
+            if (executionRunning || selectedAddressSpace.Kind != DisassemblyAddressSpaceKind.Mapped ||
+                SelectedInstruction() is not Z80Instruction instruction)
                 return;
 
             requestExecution(DebuggerExecutionCommand.RunToCursor, instruction.Address);
@@ -108,7 +111,8 @@ namespace Spectrum128kEmulator
 
         private void ToggleBreakpointAtSelection()
         {
-            if (executionRunning || SelectedInstruction() is not Z80Instruction instruction)
+            if (executionRunning || selectedAddressSpace.Kind != DisassemblyAddressSpaceKind.Mapped ||
+                SelectedInstruction() is not Z80Instruction instruction)
                 return;
 
             DebuggerBreakpoint? existing = executionController.GetBreakpoints()
@@ -159,7 +163,10 @@ namespace Spectrum128kEmulator
         private void NavigateToSelectedBreakpoint()
         {
             if (breakpointList.SelectedItem is BreakpointListItem item)
+            {
+                SetSelectedAddressSpace(DisassemblyAddressSpace.Mapped);
                 NavigateTo(item.Address);
+            }
         }
 
         private void UpdateExecutionControls()
@@ -169,8 +176,9 @@ namespace Spectrum128kEmulator
             stepIntoButton.Enabled = !executionRunning;
             stepOverButton.Enabled = !executionRunning;
             stepOutButton.Enabled = !executionRunning;
-            runToCursorButton.Enabled = !executionRunning;
-            toggleBreakpointButton.Enabled = !executionRunning;
+            bool mappedView = selectedAddressSpace.Kind == DisassemblyAddressSpaceKind.Mapped;
+            runToCursorButton.Enabled = !executionRunning && mappedView;
+            toggleBreakpointButton.Enabled = !executionRunning && mappedView;
             breakpointList.Enabled = !executionRunning;
         }
 

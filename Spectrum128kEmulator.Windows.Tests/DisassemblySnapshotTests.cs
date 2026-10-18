@@ -80,5 +80,58 @@ namespace Spectrum128kEmulator.Tests
 
             Assert.Equal((ushort)0x1234, snapshot.CpuState!.StackWords[0]);
         }
+
+        [Fact]
+        public void Snapshot_ClonesAndReadsPhysicalBanks()
+        {
+            byte[][] romBanks = CreateBanks(2);
+            byte[][] ramBanks = CreateBanks(8);
+            romBanks[1][0x1234] = 0xA5;
+            ramBanks[7][0x2345] = 0x5A;
+
+            var snapshot = new DisassemblySnapshot(
+                new byte[65536],
+                0,
+                SpectrumMachineModel.Spectrum128K,
+                1,
+                7,
+                5,
+                romBanks: romBanks,
+                ramBanks: ramBanks);
+            romBanks[1][0x1234] = 0;
+            ramBanks[7][0x2345] = 0;
+
+            Assert.Equal(11, snapshot.AvailableAddressSpaces.Count);
+            Assert.Equal((byte)0xA5, snapshot.ReadMemory(DisassemblyAddressSpace.Rom(1), 0x1234));
+            Assert.Equal((byte)0x5A, snapshot.ReadMemory(DisassemblyAddressSpace.Ram(7), 0x2345));
+            Assert.Equal((byte)0xFF, snapshot.ReadMemory(DisassemblyAddressSpace.Ram(7), 0x4000));
+        }
+
+        [Fact]
+        public void Snapshot_RejectsIncompletePhysicalBankSets()
+        {
+            Assert.Throws<ArgumentException>(() => new DisassemblySnapshot(
+                new byte[65536],
+                0,
+                SpectrumMachineModel.Spectrum128K,
+                1,
+                0,
+                5,
+                romBanks: [new byte[0x4000]]));
+
+            byte[][] ramBanks = CreateBanks(8);
+            ramBanks[3] = new byte[100];
+            Assert.Throws<ArgumentException>(() => new DisassemblySnapshot(
+                new byte[65536],
+                0,
+                SpectrumMachineModel.Spectrum128K,
+                1,
+                0,
+                5,
+                ramBanks: ramBanks));
+        }
+
+        private static byte[][] CreateBanks(int count) =>
+            Enumerable.Range(0, count).Select(_ => new byte[0x4000]).ToArray();
     }
 }

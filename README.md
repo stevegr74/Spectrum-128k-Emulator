@@ -16,7 +16,7 @@ This project focuses on correctness, clean architecture, and incremental develop
 - `.tap` and `.tzx` parsing, fast bootstrap, ROM-driven loading, protected/mounted playback, VERIFY, and multi-block sequencing
 - Manual/resumable tape transport with 48K stop-marker support and persistent status feedback
 - Platform-neutral headless core with Windows presentation/audio adapters
-- Paused `F6` debugger with immutable captures, CPU/stack context, Step Into/Over/Out, Run/Pause, run to cursor, persistent breakpoints, search, navigation, copy, and export
+- Paused `F6` debugger with immutable mapped/physical-bank captures, CPU/stack context, Step Into/Over/Out, Run/Pause, run to cursor, persistent breakpoints, search, navigation, copy, and export
 - In-memory `F7`/`F8` Quick State save and restore
 - Headless manual diagnostics and Z80 compliance runners
 
@@ -170,13 +170,15 @@ the associated media name as well as CPU, RAM banks, paging, ULA/audio frame
 state, tape, and RZX position; it survives media loads during the session and is
 discarded on exit.
 
-The debugger captures the mapped logical 64K plus registers, flags, interrupt
-state, stack context, model, ROM, and paging state; it does not yet expose every
-physical bank. It opens paused and supports Run/Pause, Step Into, Step Over,
-Step Out, run to cursor, and persistent enabled/disabled address breakpoints.
-The listing remains frozen while execution runs and refreshes only after the
-machine stops safely at an instruction boundary. Help and file choosers use
-nested-safe pause ownership.
+The debugger captures the mapped logical 64K, both ROM banks, all eight RAM
+banks, registers, flags, interrupt state, stack context, model, and paging state.
+Its memory-view selector keeps mapped addresses distinct from bank-qualified
+physical offsets; search, history, copy, and export follow the selected view.
+It opens paused and supports Run/Pause, Step Into, Step Over, Step Out, run to
+cursor, and persistent enabled/disabled mapped-address breakpoints. The listing
+remains frozen while execution runs and refreshes only after the machine stops
+safely at an instruction boundary. Help and file choosers use nested-safe pause
+ownership.
 
 ---
 
@@ -310,7 +312,7 @@ compatibility and polish; completed milestones remain regression baselines.
 | 16 | Complete | Central ULA profiles, contention conformance, 128K floating bus, exact port events, border-latch mapping, timed CPU bus cycles, and published diagnostic validation |
 | 17 | Complete | Event-driven beam capture for bitmap, per-line attributes, border timing, and 128K shadow-screen changes, validated against Arkanoid and published diagnostics |
 | 18 | Complete | Instruction-boundary Run/Pause, Step Into/Over/Out, run to cursor, CPU context, and persistent breakpoints |
-| 19 | Planned | Bank-aware disassembly, labels, symbols, cross-references, and code/data analysis |
+| 19 | In progress | Physical-bank inspection and export complete; labels, symbols, cross-references, and code/data analysis remain |
 
 ### Milestone 16 - ULA Timing Conformance And Port Accuracy Complete
 - Implemented one model-specific timing profile for frame length, scanline length, contention start, display fetches, visible raster mapping, and the documented timing convention
@@ -340,9 +342,10 @@ compatibility and polish; completed milestones remain regression baselines.
 - Keeps execution and breakpoint policy in a platform-neutral debugger service, with deterministic controller, interrupt-boundary, CPU, and scheduler tests
 - Refreshes the immutable capture only after a safe stop, avoiding mutable-state inspection while execution is active
 
-### Milestone 19 - Bank-Aware Disassembly And Symbolic Analysis Planned
-- Allow inspection of physical ROM and RAM banks independently of the currently mapped 64K address space
-- Annotate logical addresses with ROM/RAM bank identity and make paging changes visible in refreshed snapshots
+### Milestone 19 - Bank-Aware Disassembly And Symbolic Analysis In Progress
+- Completed immutable inspection of both ROM banks and all eight RAM banks independently of the currently mapped 64K address space
+- Completed explicit mapped versus bank-qualified offset context across navigation history, search, copy, and 64K/16K export
+- Keep paging changes visible in refreshed snapshots without conflating physical offsets with logical CPU addresses
 - Add user labels, symbol import/export, and automatic labels for followed branch and call targets
 - Add cross-references for jumps, calls, and data references without treating arbitrary data as executable code
 - Add code/data marking, hexadecimal memory inspection, and navigation from registers, stack entries, and branch targets

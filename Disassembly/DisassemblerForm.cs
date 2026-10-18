@@ -18,6 +18,7 @@ namespace Spectrum128kEmulator
         private readonly TextBox addressTextBox = new();
         private readonly TextBox searchTextBox = new();
         private readonly ComboBox searchModeComboBox = new();
+        private readonly ComboBox addressSpaceComboBox = new();
         private readonly Label mappingLabel = new();
         private readonly Label captureStateLabel = new();
         private readonly Label statusLabel = new();
@@ -33,16 +34,20 @@ namespace Spectrum128kEmulator
         private Button stepOutButton = null!;
         private Button runToCursorButton = null!;
         private Button toggleBreakpointButton = null!;
+        private Button exportButton = null!;
         private readonly Font listingFont = new("Consolas", 10.0f, FontStyle.Regular);
         private readonly Font currentInstructionFont = new("Consolas", 10.0f, FontStyle.Bold);
         private readonly System.Windows.Forms.Timer captureAgeTimer = new() { Interval = 1000 };
         private DisassemblySnapshot snapshot;
+        private DisassemblyAddressSpace selectedAddressSpace;
         private ushort listingAddress;
         private string? lastSearchQuery;
         private DisassemblySearchMode? lastSearchMode;
+        private DisassemblyAddressSpace? lastSearchAddressSpace;
         private ushort lastSearchAddress;
         private bool executionRunning;
         private bool refreshingBreakpointList;
+        private bool changingAddressSpace;
 
         public DisassemblerForm(Func<DisassemblySnapshot> captureSnapshot)
             : this(
@@ -78,6 +83,7 @@ namespace Spectrum128kEmulator
             executionController.ReplaceBreakpoints(settings.Breakpoints.Select(
                 breakpoint => new DebuggerBreakpoint(breakpoint.Address, breakpoint.Enabled)));
             snapshot = captureSnapshot();
+            selectedAddressSpace = RestoreAddressSpace(settings, snapshot);
             backButton = CreateButton("< Back", 18, 29, 68);
             forwardButton = CreateButton("Forward >", 94, 29, 82);
 
@@ -103,7 +109,9 @@ namespace Spectrum128kEmulator
             captureAgeTimer.Tick += (_, _) => UpdateCaptureState();
             Shown += (_, _) =>
             {
-                NavigateTo(settings.LastListingAddress ?? snapshot.ProgramCounter);
+                ushort initialAddress = settings.LastListingAddress ??
+                    (selectedAddressSpace.Kind == DisassemblyAddressSpaceKind.Mapped ? snapshot.ProgramCounter : (ushort)0);
+                NavigateTo(NormalizeAddress(initialAddress));
                 captureAgeTimer.Start();
                 instructionList.Focus();
             };
@@ -132,6 +140,25 @@ namespace Spectrum128kEmulator
             captureStateLabel.ForeColor = Color.FromArgb(95, 225, 195);
             captureStateLabel.Location = new Point(20, 42);
             header.Controls.Add(captureStateLabel);
+
+            var addressSpaceLabel = new Label
+            {
+                AutoSize = true,
+                Text = "MEMORY VIEW",
+                Font = new Font(FontFamily.GenericSansSerif, 7.5f, FontStyle.Bold),
+                ForeColor = Color.FromArgb(190, 205, 207),
+                Location = new Point(755, 9),
+                Anchor = AnchorStyles.Top | AnchorStyles.Right
+            };
+            header.Controls.Add(addressSpaceLabel);
+            addressSpaceComboBox.DropDownStyle = ComboBoxStyle.DropDownList;
+            addressSpaceComboBox.Font = new Font("Consolas", 9.0f);
+            addressSpaceComboBox.Location = new Point(755, 31);
+            addressSpaceComboBox.Size = new Size(185, 25);
+            addressSpaceComboBox.Anchor = AnchorStyles.Top | AnchorStyles.Right;
+            PopulateAddressSpaceChoices();
+            addressSpaceComboBox.SelectedIndexChanged += (_, _) => SelectAddressSpaceFromComboBox();
+            header.Controls.Add(addressSpaceComboBox);
             UpdateCaptureState();
             return header;
         }
@@ -164,7 +191,7 @@ namespace Spectrum128kEmulator
             goButton.Click += (_, _) => NavigateFromAddressBox();
             toolbar.Controls.Add(goButton);
             Button pcButton = CreateButton("PC", 344, 29, 48);
-            pcButton.Click += (_, _) => NavigateTo(snapshot.ProgramCounter);
+            pcButton.Click += (_, _) => NavigateToMappedProgramCounter();
             toolbar.Controls.Add(pcButton);
             Button refreshButton = CreateButton("Refresh", 400, 29, 72);
             refreshButton.Click += (_, _) => RefreshSnapshot();
@@ -172,7 +199,7 @@ namespace Spectrum128kEmulator
             Button copyButton = CreateButton("Copy", 480, 29, 62);
             copyButton.Click += (_, _) => CopyListing(selectedOnly: true);
             toolbar.Controls.Add(copyButton);
-            Button exportButton = CreateButton("Export 64K", 550, 29, 78);
+            exportButton = CreateButton("Export 64K", 550, 29, 78);
             exportButton.Click += (_, _) => ExportListing();
             toolbar.Controls.Add(exportButton);
 
@@ -256,7 +283,7 @@ namespace Spectrum128kEmulator
             instructionList.Font = listingFont;
             instructionList.BackColor = Color.FromArgb(251, 250, 245);
             instructionList.ForeColor = Ink;
-            instructionList.Columns.Add("Address", 90, HorizontalAlignment.Left);
+            instructionList.Columns.Add("Address", 112, HorizontalAlignment.Left);
             instructionList.Columns.Add("Bytes", 170, HorizontalAlignment.Left);
             instructionList.Columns.Add("Instruction", 480, HorizontalAlignment.Left);
             instructionList.Columns.Add("Target", 100, HorizontalAlignment.Left);
@@ -294,12 +321,15 @@ namespace Spectrum128kEmulator
             menu.Items.Add(new ToolStripSeparator());
             menu.Items.Add("Copy Selected", null, (_, _) => CopyListing(selectedOnly: true));
             menu.Items.Add("Copy All Displayed", null, (_, _) => CopyListing(selectedOnly: false));
-            menu.Items.Add("Export Complete 64K Listing...", null, (_, _) => ExportListing());
+            menu.Items.Add("Export Complete View...", null, (_, _) => ExportListing());
             menu.Opening += (_, _) =>
             {
-                menu.Items[0].Enabled = SelectedInstruction()?.BranchTarget != null;
-                menu.Items[1].Enabled = !executionRunning && SelectedInstruction() != null;
-                menu.Items[2].Enabled = !executionRunning && SelectedInstruction() != null;
+                menu.Items[0].Enabled = SelectedInstruction()?.BranchTarget is ushort target &&
+                    target < selectedAddressSpace.Length;
+                bool mappedSelection = selectedAddressSpace.Kind == DisassemblyAddressSpaceKind.Mapped &&
+                    SelectedInstruction() != null;
+                menu.Items[1].Enabled = !executionRunning && mappedSelection;
+                menu.Items[2].Enabled = !executionRunning && mappedSelection;
             };
             return menu;
         }
@@ -337,10 +367,15 @@ namespace Spectrum128kEmulator
 
             ushort selectedAddress = SelectedInstruction()?.Address ?? listingAddress;
             snapshot = captureSnapshot();
+            if (!snapshot.AvailableAddressSpaces.Contains(selectedAddressSpace))
+                selectedAddressSpace = DisassemblyAddressSpace.Mapped;
+            PopulateAddressSpaceChoices();
+            selectedAddress = NormalizeAddress(selectedAddress);
+            listingAddress = NormalizeAddress(listingAddress);
             PopulateListing(selectedAddress);
             UpdateCaptureState();
             UpdateCpuState();
-            statusLabel.Text = $"Capture refreshed at PC={snapshot.ProgramCounter:X4}H; listing remains at {listingAddress:X4}H.";
+            statusLabel.Text = $"Capture refreshed at PC={snapshot.ProgramCounter:X4}H; {selectedAddressSpace.DisplayName} remains at {listingAddress:X4}H.";
         }
 
         private void NavigateFromAddressBox()
@@ -348,6 +383,13 @@ namespace Spectrum128kEmulator
             if (!DisassemblyAddressParser.TryParse(addressTextBox.Text, out ushort address))
             {
                 statusLabel.Text = "Enter a hexadecimal address from 0000 to FFFF.";
+                addressTextBox.SelectAll();
+                addressTextBox.Focus();
+                return;
+            }
+            if (address >= selectedAddressSpace.Length)
+            {
+                statusLabel.Text = $"Enter a hexadecimal offset from 0000 to {selectedAddressSpace.Length - 1:X4} for {selectedAddressSpace.DisplayName}.";
                 addressTextBox.SelectAll();
                 addressTextBox.Focus();
                 return;
@@ -362,17 +404,19 @@ namespace Spectrum128kEmulator
             ushort? selectedAddress = null)
         {
             ushort selection = selectedAddress ?? address;
+            address = NormalizeAddress(address);
+            selection = NormalizeAddress(selection);
             if (recordHistory)
             {
                 PreserveCurrentHistorySelection();
-                navigationHistory.NavigateTo(new DisassemblyNavigationLocation(address, selection));
+                navigationHistory.NavigateTo(new DisassemblyNavigationLocation(address, selection, selectedAddressSpace));
             }
 
             listingAddress = address;
             addressTextBox.Text = address.ToString("X4");
             PopulateListing(selection);
             UpdateNavigationButtons();
-            statusLabel.Text = status ?? $"Showing {InstructionCount} instructions from {address:X4}H in the frozen capture.";
+            statusLabel.Text = status ?? $"Showing {selectedAddressSpace.DisplayName} from {address:X4}H in the frozen capture.";
         }
 
         private void GoBack()
@@ -380,10 +424,11 @@ namespace Spectrum128kEmulator
             PreserveCurrentHistorySelection();
             if (navigationHistory.TryGoBack(out DisassemblyNavigationLocation location))
             {
+                SetSelectedAddressSpace(location.AddressSpace);
                 NavigateTo(
                     location.ListingAddress,
                     recordHistory: false,
-                    status: $"Back to {location.SelectedAddress:X4}H.",
+                    status: $"Back to {location.AddressSpace.FormatAddress(location.SelectedAddress)}.",
                     selectedAddress: location.SelectedAddress);
             }
         }
@@ -393,10 +438,11 @@ namespace Spectrum128kEmulator
             PreserveCurrentHistorySelection();
             if (navigationHistory.TryGoForward(out DisassemblyNavigationLocation location))
             {
+                SetSelectedAddressSpace(location.AddressSpace);
                 NavigateTo(
                     location.ListingAddress,
                     recordHistory: false,
-                    status: $"Forward to {location.SelectedAddress:X4}H.",
+                    status: $"Forward to {location.AddressSpace.FormatAddress(location.SelectedAddress)}.",
                     selectedAddress: location.SelectedAddress);
             }
         }
@@ -413,12 +459,118 @@ namespace Spectrum128kEmulator
             forwardButton.Enabled = navigationHistory.CanGoForward;
         }
 
+        private void PopulateAddressSpaceChoices()
+        {
+            changingAddressSpace = true;
+            try
+            {
+                addressSpaceComboBox.Items.Clear();
+                foreach (DisassemblyAddressSpace addressSpace in snapshot.AvailableAddressSpaces)
+                    addressSpaceComboBox.Items.Add(addressSpace);
+                addressSpaceComboBox.SelectedItem = selectedAddressSpace;
+            }
+            finally
+            {
+                changingAddressSpace = false;
+            }
+        }
+
+        private void SelectAddressSpaceFromComboBox()
+        {
+            if (changingAddressSpace || addressSpaceComboBox.SelectedItem is not DisassemblyAddressSpace addressSpace ||
+                addressSpace == selectedAddressSpace)
+            {
+                return;
+            }
+
+            PreserveCurrentHistorySelection();
+            selectedAddressSpace = addressSpace;
+            lastSearchAddressSpace = null;
+            ushort address = addressSpace.Kind == DisassemblyAddressSpaceKind.Mapped
+                ? snapshot.ProgramCounter
+                : (ushort)0;
+            NavigateTo(address, status: $"Inspecting immutable {addressSpace.DisplayName} capture.");
+        }
+
+        private void SetSelectedAddressSpace(DisassemblyAddressSpace addressSpace)
+        {
+            if (!snapshot.AvailableAddressSpaces.Contains(addressSpace))
+                addressSpace = DisassemblyAddressSpace.Mapped;
+
+            selectedAddressSpace = addressSpace;
+            changingAddressSpace = true;
+            try
+            {
+                addressSpaceComboBox.SelectedItem = addressSpace;
+            }
+            finally
+            {
+                changingAddressSpace = false;
+            }
+        }
+
+        private void NavigateToMappedProgramCounter()
+        {
+            PreserveCurrentHistorySelection();
+            SetSelectedAddressSpace(DisassemblyAddressSpace.Mapped);
+            NavigateTo(snapshot.ProgramCounter);
+        }
+
+        private IReadOnlyList<Z80Instruction> DisassembleVisibleInstructions()
+        {
+            if (selectedAddressSpace.Kind == DisassemblyAddressSpaceKind.Mapped)
+            {
+                return Z80InstructionDisassembler.DisassembleBlock(
+                    listingAddress,
+                    InstructionCount,
+                    snapshot.ReadMemory);
+            }
+
+            var instructions = new List<Z80Instruction>();
+            int address = listingAddress;
+            while (instructions.Count < InstructionCount && address < selectedAddressSpace.Length)
+            {
+                Z80Instruction instruction = Z80InstructionDisassembler.Disassemble(
+                    (ushort)address,
+                    value => snapshot.ReadMemory(selectedAddressSpace, value));
+                instructions.Add(instruction);
+                address += Math.Max(1, instruction.Length);
+            }
+            return instructions;
+        }
+
+        private ushort NormalizeAddress(ushort address) =>
+            (ushort)(address % selectedAddressSpace.Length);
+
+        private static string AddressSpacePrefix(DisassemblyAddressSpace addressSpace) => addressSpace.Kind switch
+        {
+            DisassemblyAddressSpaceKind.Rom => $"ROM{addressSpace.Bank}",
+            DisassemblyAddressSpaceKind.Ram => $"RAM{addressSpace.Bank}",
+            _ => "MAP"
+        };
+
+        private static string AddressSpaceFileName(DisassemblyAddressSpace addressSpace) => addressSpace.Kind switch
+        {
+            DisassemblyAddressSpaceKind.Rom => $"rom{addressSpace.Bank}",
+            DisassemblyAddressSpaceKind.Ram => $"ram{addressSpace.Bank}",
+            _ => "mapped64k"
+        };
+
+        private static DisassemblyAddressSpace RestoreAddressSpace(
+            DisassemblerWindowSettings settings,
+            DisassemblySnapshot snapshot)
+        {
+            var requested = new DisassemblyAddressSpace(
+                settings.LastAddressSpaceKind,
+                settings.LastAddressSpaceBank);
+            return snapshot.AvailableAddressSpaces.Contains(requested)
+                ? requested
+                : DisassemblyAddressSpace.Mapped;
+        }
+
         private void PopulateListing(ushort selectedAddress)
         {
-            IReadOnlyList<Z80Instruction> instructions = Z80InstructionDisassembler.DisassembleBlock(
-                listingAddress,
-                InstructionCount,
-                snapshot.ReadMemory);
+            IReadOnlyList<Z80Instruction> instructions = DisassembleVisibleInstructions();
             Dictionary<ushort, bool> breakpoints = executionController.GetBreakpoints()
                 .ToDictionary(breakpoint => breakpoint.Address, breakpoint => breakpoint.Enabled);
 
@@ -428,17 +580,22 @@ namespace Spectrum128kEmulator
                 instructionList.Items.Clear();
                 foreach (Z80Instruction instruction in instructions)
                 {
-                    var item = new ListViewItem(instruction.Address.ToString("X4")) { Tag = instruction };
+                    string addressText = selectedAddressSpace.Kind == DisassemblyAddressSpaceKind.Mapped
+                        ? instruction.Address.ToString("X4")
+                        : $"{AddressSpacePrefix(selectedAddressSpace)}:{instruction.Address:X4}";
+                    var item = new ListViewItem(addressText) { Tag = instruction };
                     item.SubItems.Add(instruction.BytesText);
                     item.SubItems.Add(instruction.Mnemonic);
                     item.SubItems.Add(instruction.BranchTarget is ushort target ? target.ToString("X4") : string.Empty);
-                    if (instruction.Address == snapshot.ProgramCounter)
+                    if (selectedAddressSpace.Kind == DisassemblyAddressSpaceKind.Mapped &&
+                        instruction.Address == snapshot.ProgramCounter)
                     {
                         item.BackColor = Color.FromArgb(255, 230, 145);
                         item.ForeColor = Color.FromArgb(65, 45, 0);
                         item.Font = currentInstructionFont;
                     }
-                    else if (breakpoints.TryGetValue(instruction.Address, out bool enabled))
+                    else if (selectedAddressSpace.Kind == DisassemblyAddressSpaceKind.Mapped &&
+                        breakpoints.TryGetValue(instruction.Address, out bool enabled))
                     {
                         item.BackColor = enabled
                             ? Color.FromArgb(255, 220, 215)
@@ -466,14 +623,28 @@ namespace Spectrum128kEmulator
                 instructionList.EndUpdate();
             }
 
-            mappingLabel.Text = $"CAPTURED PC {snapshot.ProgramCounter:X4}H | LISTING {listingAddress:X4}H\r\n{snapshot.MappingText}";
+            string viewRange = selectedAddressSpace.Kind == DisassemblyAddressSpaceKind.Mapped
+                ? "0000-FFFF"
+                : "OFFSET 0000-3FFF";
+            mappingLabel.Text = $"VIEW {selectedAddressSpace.DisplayName} | {viewRange} | LISTING {listingAddress:X4}H\r\nCAPTURED PC {snapshot.ProgramCounter:X4}H | {snapshot.MappingText}";
+            exportButton.Text = selectedAddressSpace.Kind == DisassemblyAddressSpaceKind.Mapped
+                ? "Export 64K"
+                : "Export 16K";
             UpdateCpuState();
+            UpdateExecutionControls();
         }
 
         private void NavigateToSelectedTarget()
         {
             if (SelectedInstruction()?.BranchTarget is ushort target)
+            {
+                if (target >= selectedAddressSpace.Length)
+                {
+                    statusLabel.Text = $"Target {target:X4}H is outside {selectedAddressSpace.DisplayName}; switch to Mapped 64K to follow its logical address.";
+                    return;
+                }
                 NavigateTo(target);
+            }
             else
                 statusLabel.Text = "The selected instruction has no direct branch target.";
         }
@@ -489,10 +660,12 @@ namespace Spectrum128kEmulator
         {
             var mode = (DisassemblySearchMode)searchModeComboBox.SelectedIndex;
             string query = searchTextBox.Text.Trim();
-            bool sameSearch = lastSearchMode == mode && string.Equals(lastSearchQuery, query, StringComparison.OrdinalIgnoreCase);
+            bool sameSearch = lastSearchMode == mode &&
+                lastSearchAddressSpace == selectedAddressSpace &&
+                string.Equals(lastSearchQuery, query, StringComparison.OrdinalIgnoreCase);
             ushort startAddress = sameSearch ? (ushort)(lastSearchAddress + 1) : listingAddress;
 
-            if (!DisassemblySearch.TryFindNext(snapshot, mode, query, startAddress, out DisassemblySearchResult? result, out string? error))
+            if (!DisassemblySearch.TryFindNext(snapshot, selectedAddressSpace, mode, query, startAddress, out DisassemblySearchResult? result, out string? error))
             {
                 statusLabel.Text = error ?? "No match found.";
                 searchTextBox.SelectAll();
@@ -501,9 +674,10 @@ namespace Spectrum128kEmulator
             }
 
             lastSearchMode = mode;
+            lastSearchAddressSpace = selectedAddressSpace;
             lastSearchQuery = query;
             lastSearchAddress = result!.Address;
-            NavigateTo(result.Address, status: $"Found {result.Description} at {result.Address:X4}H. F3 finds the next match.");
+            NavigateTo(result.Address, status: $"Found {result.Description}. F3 finds the next match.");
             instructionList.Focus();
         }
 
@@ -522,7 +696,12 @@ namespace Spectrum128kEmulator
             if (instructions.Count == 0)
                 return;
 
-            Clipboard.SetText(DisassemblyListingFormatter.Format(snapshot, listingAddress, instructions, includeHeader: true));
+            Clipboard.SetText(DisassemblyListingFormatter.Format(
+                snapshot,
+                selectedAddressSpace,
+                listingAddress,
+                instructions,
+                includeHeader: true));
             statusLabel.Text = $"Copied {instructions.Count} instruction(s) with capture metadata.";
         }
 
@@ -530,9 +709,9 @@ namespace Spectrum128kEmulator
         {
             using var dialog = new SaveFileDialog
             {
-                Title = "Export Complete 64K Disassembly",
+                Title = $"Export Complete {selectedAddressSpace.DisplayName} Disassembly",
                 Filter = "Assembly listing (*.asm)|*.asm|Text file (*.txt)|*.txt|All files (*.*)|*.*",
-                FileName = $"disassembly-{listingAddress:X4}.asm",
+                FileName = $"disassembly-{AddressSpaceFileName(selectedAddressSpace)}-{listingAddress:X4}.asm",
                 AddExtension = true,
                 OverwritePrompt = true
             };
@@ -540,9 +719,14 @@ namespace Spectrum128kEmulator
                 return;
 
             IReadOnlyList<Z80Instruction> instructions =
-                DisassemblyListingFormatter.DisassembleCompleteAddressSpace(snapshot, listingAddress);
-            File.WriteAllText(dialog.FileName, DisassemblyListingFormatter.Format(snapshot, listingAddress, instructions, includeHeader: true));
-            statusLabel.Text = $"Exported complete 64K listing ({instructions.Count} instructions) to {Path.GetFileName(dialog.FileName)}.";
+                DisassemblyListingFormatter.DisassembleCompleteAddressSpace(snapshot, selectedAddressSpace, listingAddress);
+            File.WriteAllText(dialog.FileName, DisassemblyListingFormatter.Format(
+                snapshot,
+                selectedAddressSpace,
+                listingAddress,
+                instructions,
+                includeHeader: true));
+            statusLabel.Text = $"Exported complete {selectedAddressSpace.DisplayName} listing ({instructions.Count} instructions) to {Path.GetFileName(dialog.FileName)}.";
         }
 
         private void UpdateCaptureState()
@@ -576,6 +760,8 @@ namespace Spectrum128kEmulator
             settings.Height = ClientSize.Height;
             settings.ColumnWidths = instructionList.Columns.Cast<ColumnHeader>().Select(column => column.Width).ToArray();
             settings.LastListingAddress = listingAddress;
+            settings.LastAddressSpaceKind = selectedAddressSpace.Kind;
+            settings.LastAddressSpaceBank = selectedAddressSpace.Bank;
             settings.Breakpoints = executionController.GetBreakpoints()
                 .Select(breakpoint => new DisassemblerBreakpointSetting
                 {

@@ -721,6 +721,14 @@ namespace Spectrum128kEmulator
             return (byte[])ramBanks[bank].Clone();
         }
 
+        public byte[] GetRomBankCopy(int bank)
+        {
+            if ((uint)bank >= romBanks.Length)
+                throw new ArgumentOutOfRangeException(nameof(bank));
+
+            return (byte[])romBanks[bank].Clone();
+        }
+
         public byte PeekMemory(ushort addr) => ReadMemory(addr);
 
         public void PokeMemory(ushort addr, byte value) => WriteMemory(addr, value);
