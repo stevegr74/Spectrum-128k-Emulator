@@ -175,7 +175,8 @@ namespace Spectrum128kEmulator
                 return;
             }
 
-            QueueSpectrumHostKeyEvent(key, pressed);
+            if (IsSpectrumMappedKey(key))
+                QueueSpectrumHostKeyEvent(key, pressed);
         }
 
         private bool IsSpectrumMappedKey(Keys key)

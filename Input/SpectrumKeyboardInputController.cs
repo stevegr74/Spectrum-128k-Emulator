@@ -17,7 +17,7 @@ namespace Spectrum128kEmulator
             Action<int, int, bool> setMatrixKey)
         {
             if (!SpectrumKeyboardMapping.IsMappedKey(key))
-                throw new ArgumentOutOfRangeException(nameof(key), key, "The host key has no Spectrum matrix mapping.");
+                return false;
 
             IReadOnlyList<SpectrumKeyInputBridge.SpectrumKeyStateChange> changes = isDown
                 ? bridge.RegisterKeyDown(key, SpectrumKeyboardMapping.GetRows(key), getRowScanCount, currentTStates)

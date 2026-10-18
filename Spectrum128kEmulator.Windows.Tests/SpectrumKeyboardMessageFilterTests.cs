@@ -57,5 +57,16 @@ namespace Spectrum128kEmulator.Tests
             Assert.False(filter.PreFilterMessage(ref message));
             Assert.False(called);
         }
+
+        [Fact]
+        public void BasicPunctuation_IsCapturedAsSpectrumInput()
+        {
+            Keys? capturedKey = null;
+            var filter = new SpectrumKeyboardMessageFilter(() => true, (key, _) => capturedKey = key);
+            Message message = Message.Create(IntPtr.Zero, 0x0100, (IntPtr)(int)Keys.Oemcomma, IntPtr.Zero);
+
+            Assert.True(filter.PreFilterMessage(ref message));
+            Assert.Equal(Keys.Oemcomma, capturedKey);
+        }
     }
 }

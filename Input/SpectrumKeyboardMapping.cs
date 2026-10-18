@@ -21,6 +21,13 @@ namespace Spectrum128kEmulator
                 Keys.Escape => Positions((0, 0), (7, 0)),
                 Keys.CapsLock => Positions((0, 0), (3, 1)),
                 Keys.Tab => Positions((0, 0), (7, 1)),
+                Keys.Oemcomma => Positions((7, 1), (7, 3)),
+                Keys.OemPeriod => Positions((7, 1), (7, 2)),
+                Keys.OemSemicolon => Positions((7, 1), (5, 1)),
+                Keys.OemQuotes => Positions((7, 1), (5, 0)),
+                Keys.OemQuestion => Positions((7, 1), (0, 4)),
+                Keys.OemMinus => Positions((7, 1), (6, 3)),
+                Keys.Oemplus => Positions((7, 1), (6, 2)),
 
                 Keys.ShiftKey or Keys.LShiftKey or Keys.RShiftKey => Positions((0, 0)),
                 Keys.Z => Positions((0, 1)),

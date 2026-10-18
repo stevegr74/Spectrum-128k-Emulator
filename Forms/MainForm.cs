@@ -77,6 +77,8 @@ namespace Spectrum128kEmulator
         private readonly SpectrumKeyboardInputController keyboardInputController = new();
         private SpectrumKeyboardMessageFilter? keyboardMessageFilter;
         private readonly EmulationLoopController emulationLoop = new();
+        private Exception? emulationLoopFailure;
+        private string? emulationLoopFailureReportPath;
         private AudioPipeline audioPipeline;
         private ulong inputEmulatedTStates;
         private readonly object inputDiagnosticsLock = new();
@@ -673,13 +675,36 @@ namespace Spectrum128kEmulator
             }
             catch (Exception ex)
             {
+                string? crashPath = null;
                 try
                 {
                     string debugFolder = Path.Combine(AppContext.BaseDirectory, "debug");
                     Directory.CreateDirectory(debugFolder);
                     string fileName = $"emulation-loop-crash-{DateTime.Now:yyyyMMdd-HHmmssfff}.txt";
-                    string path = Path.Combine(debugFolder, fileName);
-                    File.WriteAllText(path, $"Exception: {ex}{Environment.NewLine}");
+                    crashPath = Path.Combine(debugFolder, fileName);
+                    File.WriteAllText(crashPath, $"Exception: {ex}{Environment.NewLine}");
+                }
+                catch
+                {
+                }
+
+                Volatile.Write(ref emulationLoopFailure, ex);
+                Volatile.Write(ref emulationLoopFailureReportPath, crashPath);
+                try
+                {
+                    BeginInvoke(new Action(() =>
+                    {
+                        frameTimer.Stop();
+                        string reportDetail = crashPath == null
+                            ? string.Empty
+                            : $"\n\nDiagnostic saved to:\n{crashPath}";
+                        MessageBox.Show(
+                            this,
+                            $"The emulation loop stopped:\n{ex.Message}{reportDetail}",
+                            "Emulator Crash",
+                            MessageBoxButtons.OK,
+                            MessageBoxIcon.Error);
+                    }));
                 }
                 catch
                 {
@@ -695,6 +720,16 @@ namespace Spectrum128kEmulator
 
         private IDisposable AcquireEmulationPauseLease()
         {
+            Exception? failure = Volatile.Read(ref emulationLoopFailure);
+            if (failure != null)
+            {
+                string? reportPath = Volatile.Read(ref emulationLoopFailureReportPath);
+                string reportDetail = reportPath == null ? string.Empty : $" Diagnostic: {reportPath}";
+                throw new InvalidOperationException(
+                    $"The emulation loop stopped: {failure.Message}.{reportDetail}",
+                    failure);
+            }
+
             return emulationLoop.AcquirePause(
                 () =>
                 {

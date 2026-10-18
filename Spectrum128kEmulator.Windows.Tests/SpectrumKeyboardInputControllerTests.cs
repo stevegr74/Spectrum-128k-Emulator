@@ -104,6 +104,20 @@ namespace Spectrum128kEmulator.Tests
             Assert.True(matrix[3, 4]);
         }
 
+        [Fact]
+        public void UnmappedWindowsKey_IsIgnoredWithoutChangingTheMatrix()
+        {
+            Assert.False(controller.HandleHostKeyEvent(
+                Keys.LWin,
+                true,
+                row => scans[row],
+                0,
+                FrameTStates,
+                (row, bit, pressed) => matrix[row, bit] = pressed));
+
+            Assert.DoesNotContain(matrix.Cast<bool>(), pressed => pressed);
+        }
+
         [Theory]
         [InlineData(Keys.Left, 0, 0, 3, 4)]
         [InlineData(Keys.Back, 0, 0, 4, 0)]
@@ -111,6 +125,13 @@ namespace Spectrum128kEmulator.Tests
         [InlineData(Keys.Escape, 0, 0, 7, 0)]
         [InlineData(Keys.CapsLock, 0, 0, 3, 1)]
         [InlineData(Keys.Tab, 0, 0, 7, 1)]
+        [InlineData(Keys.Oemcomma, 7, 1, 7, 3)]
+        [InlineData(Keys.OemPeriod, 7, 1, 7, 2)]
+        [InlineData(Keys.OemSemicolon, 7, 1, 5, 1)]
+        [InlineData(Keys.OemQuotes, 7, 1, 5, 0)]
+        [InlineData(Keys.OemQuestion, 7, 1, 0, 4)]
+        [InlineData(Keys.OemMinus, 7, 1, 6, 3)]
+        [InlineData(Keys.Oemplus, 7, 1, 6, 2)]
         public void ConvenienceKey_MapsToExpectedSpectrumChord(Keys key, int row1, int bit1, int row2, int bit2)
         {
             Host(key, true, 0);

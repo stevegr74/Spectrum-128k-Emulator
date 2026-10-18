@@ -64,6 +64,25 @@ namespace Spectrum128kEmulator.Tests
             }
         }
 
+        [Fact]
+        public void BasicComma_ReachesSymbolShiftAndNOnTheRealMachinePort()
+        {
+            string romFolder = CreateTempRoms();
+            try
+            {
+                var machine = new Spectrum128Machine(romFolder);
+                var controller = new SpectrumKeyboardInputController();
+
+                SetHostKey(controller, machine, Keys.Oemcomma, true, 0);
+
+                Assert.Equal(0, machine.DebugReadPort(0x7FFE) & 0x0A);
+            }
+            finally
+            {
+                Directory.Delete(romFolder, true);
+            }
+        }
+
         private static void SetHostKey(
             SpectrumKeyboardInputController controller,
             Spectrum128Machine machine,
