@@ -67,8 +67,8 @@ namespace Spectrum128kEmulator
                 ("F2", "Show or hide the FPS and display-mode overlay"),
                 ("F3", "Reset and toggle between 128K and 48K machine modes"),
                 ("F4", "Cycle 1x Native, 2x Enhanced, and 3x Enhanced"),
-                ("F5", "Stop or resume tape; its state appears on-screen and in the title"),
-                ("F6", "Open or close the read-only Z80 disassembler"),
+                ("F5", "Stop or resume tape; its state appears in the on-screen transport badge"),
+                ("F6", "Open or close the paused Z80 execution debugger"),
                 ("F7", "Save the current machine state to the temporary Quick State slot"),
                 ("F8", "Restore the temporary Quick State; unavailable until one is saved"),
                 ("Right-click", "Open the quick menu for all emulator actions")
@@ -86,7 +86,10 @@ namespace Spectrum128kEmulator
                 ("Alt+Left / Right", "Move backward or forward through address history"),
                 ("Ctrl+G / Ctrl+P", "Focus address entry or return to the captured PC"),
                 ("Ctrl+F / F3", "Focus search or find the next address, byte, or mnemonic match"),
-                ("F5 / Ctrl+R", "Refresh the immutable capture while remaining paused"),
+                ("F5", "Run or request a pause at the next instruction boundary"),
+                ("F9 / F11", "Toggle a breakpoint or execute one instruction"),
+                ("Ctrl+F10", "Run to the selected instruction without adding a breakpoint"),
+                ("Ctrl+R", "Refresh the immutable capture while remaining paused"),
                 ("Ctrl+C", "Copy selected rows with capture metadata"),
                 ("Ctrl+Shift+C", "Copy every displayed row with capture metadata"),
                 ("Ctrl+E", "Export a complete mapped 64K disassembly listing")
@@ -95,7 +98,9 @@ namespace Spectrum128kEmulator
             {
                 ("Letters / numbers", "Map to their Spectrum keys"),
                 ("Enter / Space", "Map directly to the Spectrum keyboard"),
-                ("Ctrl / Alt", "Map to Spectrum CAPS SHIFT"),
+                ("Shift", "Maps to Spectrum CAPS SHIFT"),
+                ("Ctrl / Alt", "Map to Spectrum SYMBOL SHIFT"),
+                ("PC punctuation", "Maps common BASIC punctuation to Spectrum SYMBOL SHIFT chords"),
                 ("Arrow keys", "Provide cursor-style Spectrum input chords")
             }));
 

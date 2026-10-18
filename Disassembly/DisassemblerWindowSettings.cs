@@ -2,12 +2,19 @@ using System.Text.Json;
 
 namespace Spectrum128kEmulator
 {
+    public sealed class DisassemblerBreakpointSetting
+    {
+        public ushort Address { get; set; }
+        public bool Enabled { get; set; } = true;
+    }
+
     public sealed class DisassemblerWindowSettings
     {
         public int Width { get; set; } = 980;
         public int Height { get; set; } = 680;
         public int[] ColumnWidths { get; set; } = [90, 170, 480, 100];
         public ushort? LastListingAddress { get; set; }
+        public List<DisassemblerBreakpointSetting> Breakpoints { get; set; } = [];
     }
 
     public sealed class DisassemblerWindowSettingsStore
@@ -33,6 +40,7 @@ namespace Spectrum128kEmulator
                     JsonSerializer.Deserialize<DisassemblerWindowSettings>(File.ReadAllText(path))
                     ?? new DisassemblerWindowSettings();
                 settings.ColumnWidths ??= [90, 170, 480, 100];
+                settings.Breakpoints ??= [];
                 return settings;
             }
             catch

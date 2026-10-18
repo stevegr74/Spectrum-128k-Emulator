@@ -2,6 +2,29 @@ using System.Globalization;
 
 namespace Spectrum128kEmulator
 {
+    public sealed record DisassemblyCpuState(
+        ushort AF,
+        ushort BC,
+        ushort DE,
+        ushort HL,
+        ushort AlternateAF,
+        ushort AlternateBC,
+        ushort AlternateDE,
+        ushort AlternateHL,
+        ushort IX,
+        ushort IY,
+        ushort SP,
+        ushort PC,
+        byte I,
+        byte R,
+        bool IFF1,
+        bool IFF2,
+        int InterruptMode,
+        bool IsHalted,
+        bool InterruptPending,
+        ulong TStates,
+        IReadOnlyList<ushort> StackWords);
+
     public sealed class DisassemblySnapshot
     {
         private readonly byte[] memory;
@@ -13,7 +36,8 @@ namespace Spectrum128kEmulator
             int currentRomBank,
             int pagedRamBank,
             int screenBank,
-            DateTime? capturedAtUtc = null)
+            DateTime? capturedAtUtc = null,
+            DisassemblyCpuState? cpuState = null)
         {
             ArgumentNullException.ThrowIfNull(memory);
             if (memory.Length != 65536)
@@ -26,6 +50,9 @@ namespace Spectrum128kEmulator
             PagedRamBank = pagedRamBank;
             ScreenBank = screenBank;
             CapturedAtUtc = capturedAtUtc ?? DateTime.UtcNow;
+            CpuState = cpuState is null
+                ? null
+                : cpuState with { StackWords = Array.AsReadOnly(cpuState.StackWords.ToArray()) };
         }
 
         public ushort ProgramCounter { get; }
@@ -34,6 +61,7 @@ namespace Spectrum128kEmulator
         public int PagedRamBank { get; }
         public int ScreenBank { get; }
         public DateTime CapturedAtUtc { get; }
+        public DisassemblyCpuState? CpuState { get; }
 
         public byte ReadMemory(ushort address) => memory[address];
 

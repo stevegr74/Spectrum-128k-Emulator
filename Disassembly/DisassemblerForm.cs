@@ -1,14 +1,17 @@
 using Spectrum128kEmulator.Z80;
+using Spectrum128kEmulator.Debugging;
 
 namespace Spectrum128kEmulator
 {
-    public sealed class DisassemblerForm : Form
+    public sealed partial class DisassemblerForm : Form
     {
         private const int InstructionCount = 96;
         private static readonly Color Ink = Color.FromArgb(30, 39, 46);
         private static readonly Color Paper = Color.FromArgb(242, 239, 228);
 
         private readonly Func<DisassemblySnapshot> captureSnapshot;
+        private readonly DebuggerExecutionController executionController;
+        private readonly Action<DebuggerExecutionCommand, ushort?> requestExecution;
         private readonly DisassemblyNavigationHistory navigationHistory = new();
         private readonly DisassemblerWindowSettingsStore settingsStore;
         private readonly DisassemblerWindowSettings settings;
@@ -18,9 +21,16 @@ namespace Spectrum128kEmulator
         private readonly Label mappingLabel = new();
         private readonly Label captureStateLabel = new();
         private readonly Label statusLabel = new();
+        private readonly Label cpuStateLabel = new();
         private readonly ListView instructionList = new();
+        private readonly CheckedListBox breakpointList = new();
         private readonly Button backButton;
         private readonly Button forwardButton;
+        private Button runButton = null!;
+        private Button pauseButton = null!;
+        private Button stepIntoButton = null!;
+        private Button runToCursorButton = null!;
+        private Button toggleBreakpointButton = null!;
         private readonly Font listingFont = new("Consolas", 10.0f, FontStyle.Regular);
         private readonly Font currentInstructionFont = new("Consolas", 10.0f, FontStyle.Bold);
         private readonly System.Windows.Forms.Timer captureAgeTimer = new() { Interval = 1000 };
@@ -29,25 +39,48 @@ namespace Spectrum128kEmulator
         private string? lastSearchQuery;
         private DisassemblySearchMode? lastSearchMode;
         private ushort lastSearchAddress;
+        private bool executionRunning;
+        private bool refreshingBreakpointList;
 
         public DisassemblerForm(Func<DisassemblySnapshot> captureSnapshot)
-            : this(captureSnapshot, new DisassemblerWindowSettingsStore())
+            : this(
+                captureSnapshot,
+                new DebuggerExecutionController(),
+                (_, _) => { },
+                new DisassemblerWindowSettingsStore())
         {
         }
 
         internal DisassemblerForm(
             Func<DisassemblySnapshot> captureSnapshot,
             DisassemblerWindowSettingsStore settingsStore)
+            : this(
+                captureSnapshot,
+                new DebuggerExecutionController(),
+                (_, _) => { },
+                settingsStore)
+        {
+        }
+
+        internal DisassemblerForm(
+            Func<DisassemblySnapshot> captureSnapshot,
+            DebuggerExecutionController executionController,
+            Action<DebuggerExecutionCommand, ushort?> requestExecution,
+            DisassemblerWindowSettingsStore settingsStore)
         {
             this.captureSnapshot = captureSnapshot ?? throw new ArgumentNullException(nameof(captureSnapshot));
+            this.executionController = executionController ?? throw new ArgumentNullException(nameof(executionController));
+            this.requestExecution = requestExecution ?? throw new ArgumentNullException(nameof(requestExecution));
             this.settingsStore = settingsStore ?? throw new ArgumentNullException(nameof(settingsStore));
             settings = settingsStore.Load();
+            executionController.ReplaceBreakpoints(settings.Breakpoints.Select(
+                breakpoint => new DebuggerBreakpoint(breakpoint.Address, breakpoint.Enabled)));
             snapshot = captureSnapshot();
             backButton = CreateButton("< Back", 18, 29, 68);
             forwardButton = CreateButton("Forward >", 94, 29, 82);
 
             Text = "Z80 Disassembler - Paused Capture";
-            MinimumSize = new Size(760, 540);
+            MinimumSize = new Size(980, 620);
             ClientSize = new Size(
                 Math.Clamp(settings.Width, MinimumSize.Width, 1800),
                 Math.Clamp(settings.Height, MinimumSize.Height, 1200));
@@ -60,6 +93,8 @@ namespace Spectrum128kEmulator
             Controls.Add(CreateToolbar());
             Controls.Add(CreateHeader());
             ApplySavedColumnWidths();
+            RefreshBreakpointList();
+            UpdateExecutionControls();
 
             KeyDown += DisassemblerForm_KeyDown;
             FormClosing += (_, _) => SaveWindowSettings();
@@ -104,7 +139,7 @@ namespace Spectrum128kEmulator
             var toolbar = new Panel
             {
                 Dock = DockStyle.Top,
-                Height = 112,
+                Height = 168,
                 BackColor = Color.FromArgb(222, 226, 220),
                 Padding = new Padding(18, 8, 18, 8)
             };
@@ -148,31 +183,48 @@ namespace Spectrum128kEmulator
             mappingLabel.TextAlign = ContentAlignment.MiddleLeft;
             toolbar.Controls.Add(mappingLabel);
 
-            toolbar.Controls.Add(CreateToolbarLabel("FIND IN CAPTURE", 18, 65));
+            toolbar.Controls.Add(CreateToolbarLabel("EXECUTION", 18, 65));
+            runButton = CreateButton("Run", 18, 82, 62);
+            runButton.Click += (_, _) => BeginExecution(DebuggerExecutionCommand.Run);
+            toolbar.Controls.Add(runButton);
+            pauseButton = CreateButton("Pause", 88, 82, 62);
+            pauseButton.Click += (_, _) => RequestPause();
+            toolbar.Controls.Add(pauseButton);
+            stepIntoButton = CreateButton("Step Into", 158, 82, 78);
+            stepIntoButton.Click += (_, _) => BeginExecution(DebuggerExecutionCommand.StepInto);
+            toolbar.Controls.Add(stepIntoButton);
+            runToCursorButton = CreateButton("Run to Cursor", 244, 82, 104);
+            runToCursorButton.Click += (_, _) => RunToCursor();
+            toolbar.Controls.Add(runToCursorButton);
+            toggleBreakpointButton = CreateButton("Toggle Breakpoint", 356, 82, 126);
+            toggleBreakpointButton.Click += (_, _) => ToggleBreakpointAtSelection();
+            toolbar.Controls.Add(toggleBreakpointButton);
+
+            toolbar.Controls.Add(CreateToolbarLabel("FIND IN CAPTURE", 18, 116));
             searchModeComboBox.DropDownStyle = ComboBoxStyle.DropDownList;
             searchModeComboBox.Items.AddRange(Enum.GetNames<DisassemblySearchMode>());
             searchModeComboBox.SelectedIndex = 0;
-            searchModeComboBox.Location = new Point(18, 83);
+            searchModeComboBox.Location = new Point(18, 133);
             searchModeComboBox.Size = new Size(105, 24);
             toolbar.Controls.Add(searchModeComboBox);
 
-            searchTextBox.Location = new Point(131, 83);
+            searchTextBox.Location = new Point(131, 133);
             searchTextBox.Size = new Size(270, 24);
             searchTextBox.Font = listingFont;
             searchTextBox.PlaceholderText = "8000, 3E 10, or CALL";
             searchTextBox.KeyDown += SearchTextBox_KeyDown;
             toolbar.Controls.Add(searchTextBox);
 
-            Button findButton = CreateButton("Find Next", 409, 81, 86);
+            Button findButton = CreateButton("Find Next", 409, 131, 86);
             findButton.Click += (_, _) => FindNext();
             toolbar.Controls.Add(findButton);
             toolbar.Controls.Add(new Label
             {
                 AutoSize = true,
-                Text = "Ctrl+F find | F3 next | Alt+Left/Right history | Enter follows target",
+                Text = "F5 run/pause | F9 breakpoint | F11 step | Ctrl+F10 run to cursor",
                 Font = new Font(FontFamily.GenericSansSerif, 8.0f),
                 ForeColor = Color.FromArgb(65, 75, 75),
-                Location = new Point(510, 87)
+                Location = new Point(510, 137)
             });
 
             return toolbar;
@@ -203,6 +255,15 @@ namespace Spectrum128kEmulator
             instructionList.DoubleClick += (_, _) => NavigateToSelectedTarget();
             instructionList.ContextMenuStrip = CreateListingContextMenu();
 
+            cpuStateLabel.Dock = DockStyle.Top;
+            cpuStateLabel.Height = 66;
+            cpuStateLabel.Padding = new Padding(8, 5, 8, 4);
+            cpuStateLabel.Font = new Font("Consolas", 9.0f, FontStyle.Regular);
+            cpuStateLabel.BackColor = Color.FromArgb(232, 230, 219);
+            cpuStateLabel.ForeColor = Ink;
+
+            Panel breakpointPanel = CreateBreakpointPanel();
+
             statusLabel.Dock = DockStyle.Bottom;
             statusLabel.Height = 29;
             statusLabel.Font = new Font(FontFamily.GenericSansSerif, 8.5f);
@@ -210,6 +271,8 @@ namespace Spectrum128kEmulator
             statusLabel.TextAlign = ContentAlignment.MiddleLeft;
 
             content.Controls.Add(instructionList);
+            content.Controls.Add(breakpointPanel);
+            content.Controls.Add(cpuStateLabel);
             content.Controls.Add(statusLabel);
             return content;
         }
@@ -218,11 +281,18 @@ namespace Spectrum128kEmulator
         {
             var menu = new ContextMenuStrip();
             menu.Items.Add("Follow Target", null, (_, _) => NavigateToSelectedTarget());
+            menu.Items.Add("Run to Cursor", null, (_, _) => RunToCursor());
+            menu.Items.Add("Toggle Breakpoint", null, (_, _) => ToggleBreakpointAtSelection());
             menu.Items.Add(new ToolStripSeparator());
             menu.Items.Add("Copy Selected", null, (_, _) => CopyListing(selectedOnly: true));
             menu.Items.Add("Copy All Displayed", null, (_, _) => CopyListing(selectedOnly: false));
             menu.Items.Add("Export Complete 64K Listing...", null, (_, _) => ExportListing());
-            menu.Opening += (_, _) => menu.Items[0].Enabled = SelectedInstruction()?.BranchTarget != null;
+            menu.Opening += (_, _) =>
+            {
+                menu.Items[0].Enabled = SelectedInstruction()?.BranchTarget != null;
+                menu.Items[1].Enabled = !executionRunning && SelectedInstruction() != null;
+                menu.Items[2].Enabled = !executionRunning && SelectedInstruction() != null;
+            };
             return menu;
         }
 
@@ -254,10 +324,14 @@ namespace Spectrum128kEmulator
 
         private void RefreshSnapshot()
         {
+            if (executionRunning)
+                return;
+
             ushort selectedAddress = SelectedInstruction()?.Address ?? listingAddress;
             snapshot = captureSnapshot();
             PopulateListing(selectedAddress);
             UpdateCaptureState();
+            UpdateCpuState();
             statusLabel.Text = $"Capture refreshed at PC={snapshot.ProgramCounter:X4}H; listing remains at {listingAddress:X4}H.";
         }
 
@@ -337,6 +411,8 @@ namespace Spectrum128kEmulator
                 listingAddress,
                 InstructionCount,
                 snapshot.ReadMemory);
+            Dictionary<ushort, bool> breakpoints = executionController.GetBreakpoints()
+                .ToDictionary(breakpoint => breakpoint.Address, breakpoint => breakpoint.Enabled);
 
             instructionList.BeginUpdate();
             try
@@ -353,6 +429,15 @@ namespace Spectrum128kEmulator
                         item.BackColor = Color.FromArgb(255, 230, 145);
                         item.ForeColor = Color.FromArgb(65, 45, 0);
                         item.Font = currentInstructionFont;
+                    }
+                    else if (breakpoints.TryGetValue(instruction.Address, out bool enabled))
+                    {
+                        item.BackColor = enabled
+                            ? Color.FromArgb(255, 220, 215)
+                            : Color.FromArgb(230, 230, 226);
+                        item.ForeColor = enabled
+                            ? Color.FromArgb(120, 30, 25)
+                            : Color.FromArgb(105, 105, 100);
                     }
                     instructionList.Items.Add(item);
                 }
@@ -374,6 +459,7 @@ namespace Spectrum128kEmulator
             }
 
             mappingLabel.Text = $"CAPTURED PC {snapshot.ProgramCounter:X4}H | LISTING {listingAddress:X4}H\r\n{snapshot.MappingText}";
+            UpdateCpuState();
         }
 
         private void NavigateToSelectedTarget()
@@ -453,6 +539,12 @@ namespace Spectrum128kEmulator
 
         private void UpdateCaptureState()
         {
+            if (executionRunning)
+            {
+                captureStateLabel.Text = "RUNNING | CAPTURE FROZEN UNTIL NEXT PAUSE";
+                return;
+            }
+
             TimeSpan age = DateTime.UtcNow - snapshot.CapturedAtUtc;
             if (age < TimeSpan.Zero)
                 age = TimeSpan.Zero;
@@ -476,6 +568,13 @@ namespace Spectrum128kEmulator
             settings.Height = ClientSize.Height;
             settings.ColumnWidths = instructionList.Columns.Cast<ColumnHeader>().Select(column => column.Width).ToArray();
             settings.LastListingAddress = listingAddress;
+            settings.Breakpoints = executionController.GetBreakpoints()
+                .Select(breakpoint => new DisassemblerBreakpointSetting
+                {
+                    Address = breakpoint.Address,
+                    Enabled = breakpoint.Enabled
+                })
+                .ToList();
             try
             {
                 settingsStore.Save(settings);
@@ -524,7 +623,20 @@ namespace Spectrum128kEmulator
             }
             else if (e.KeyCode == Keys.F3)
                 FindNext();
-            else if (e.KeyCode == Keys.F5 || (e.Control && e.KeyCode == Keys.R))
+            else if (e.KeyCode == Keys.F5)
+            {
+                if (executionRunning)
+                    RequestPause();
+                else
+                    BeginExecution(DebuggerExecutionCommand.Run);
+            }
+            else if (e.KeyCode == Keys.F9)
+                ToggleBreakpointAtSelection();
+            else if (e.KeyCode == Keys.F11)
+                BeginExecution(DebuggerExecutionCommand.StepInto);
+            else if (e.Control && e.KeyCode == Keys.F10)
+                RunToCursor();
+            else if (e.Control && e.KeyCode == Keys.R)
                 RefreshSnapshot();
             else if (e.Control && e.Shift && e.KeyCode == Keys.C)
                 CopyListing(selectedOnly: false);
