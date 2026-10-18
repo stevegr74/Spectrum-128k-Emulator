@@ -762,17 +762,49 @@ namespace Spectrum128kEmulator.Tap
                 consumedBlockCount += 2;
             }
 
-            AdvanceBootstrapTapeTime(machine, consumedTStates);
-
             int ignoredLoadCount = 0;
             if (autoStartFileName != null)
             {
-                ignoredLoadCount = ExecuteBootstrapBasicAutoStart(
-                    machine,
-                    autoStartProgramStart,
-                    autoStartProgramLength,
-                    autoStartLine,
-                    ignoreLoadStatements: true).IgnoredLoadCount;
+                if (BasicBootstrapExecutor.CanRunPreloadedProgramUnderRom(
+                        machine,
+                        autoStartProgramStart,
+                        autoStartProgramLength,
+                        autoStartLine))
+                {
+                    InitializeMachineForRomDrivenTapeLoad(machine, use128kMode);
+                    if (CanStartRomDrivenMountedBasicAutoStart(machine))
+                    {
+                        ReloadConsumedStandardBlocks(machine, blocks, consumedBlockCount);
+                        AdvanceBootstrapTapeTime(machine, consumedTStates);
+                        StartRomDrivenMountedBasicAutoStart(machine, autoStartLine);
+                    }
+                    else
+                    {
+                        InitializeMachineForFakeTapeLoad(machine, use128kMode);
+                        ReloadConsumedStandardBlocks(machine, blocks, consumedBlockCount);
+                        AdvanceBootstrapTapeTime(machine, consumedTStates);
+                        ignoredLoadCount = ExecuteBootstrapBasicAutoStart(
+                            machine,
+                            autoStartProgramStart,
+                            autoStartProgramLength,
+                            autoStartLine,
+                            ignoreLoadStatements: true).IgnoredLoadCount;
+                    }
+                }
+                else
+                {
+                    AdvanceBootstrapTapeTime(machine, consumedTStates);
+                    ignoredLoadCount = ExecuteBootstrapBasicAutoStart(
+                        machine,
+                        autoStartProgramStart,
+                        autoStartProgramLength,
+                        autoStartLine,
+                        ignoreLoadStatements: true).IgnoredLoadCount;
+                }
+            }
+            else
+            {
+                AdvanceBootstrapTapeTime(machine, consumedTStates);
             }
 
             if (TryFindTapCustomLoaderResumePc(machine, blocks, out ushort resumePc))
@@ -811,6 +843,33 @@ namespace Spectrum128kEmulator.Tap
                 machine.SetInitialInterruptDelay(DefaultTapeAutoStartInitialInterruptDelay);
 
             return new TapBootstrapResult(blocks.Count, consumedBlockCount, displayName, autoStartFileName);
+        }
+
+        private static void ReloadConsumedStandardBlocks(
+            Spectrum128Machine machine,
+            IReadOnlyList<TapeBlock> blocks,
+            int consumedBlockCount)
+        {
+            int index = 0;
+            while (index < consumedBlockCount)
+            {
+                if (blocks[index].Kind == TapeBlockKind.Metadata)
+                {
+                    index++;
+                    continue;
+                }
+
+                if (index + 1 >= consumedBlockCount ||
+                    !IsStandardHeaderBlock(blocks[index]) ||
+                    blocks[index + 1].Flag != DataFlag)
+                {
+                    throw new InvalidOperationException("The consumed tape prefix is not a complete standard header/data chain.");
+                }
+
+                TapHeaderInfo header = ParseHeaderInfo(blocks[index]);
+                LoadDataBlock(machine, header, blocks[index + 1].Payload!);
+                index += 2;
+            }
         }
 
         private static bool TryFindTapCustomLoaderResumePc(

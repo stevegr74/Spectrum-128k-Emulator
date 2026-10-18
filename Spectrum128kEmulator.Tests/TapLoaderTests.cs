@@ -3672,6 +3672,80 @@ namespace Spectrum128kEmulator.Tests
             }
         }
 
+        [Fact]
+        public void LoadWithPolicy_PreloadedAutorunWithoutLoad_EntersRealRomBasicInterpreter()
+        {
+            string tempFolder = CreateTempRoms();
+            string tapePath = Path.Combine(tempFolder, "rom-autorun.tap");
+
+            try
+            {
+                byte[] rom = new byte[16384];
+                byte[] bootstrap =
+                {
+                    0x31, 0x58, 0xFF,
+                    0x21, 0x50, 0xFF,
+                    0x22, 0x3D, 0x5C,
+                    0xC3, 0xE7, 0x15
+                };
+                Buffer.BlockCopy(bootstrap, 0, rom, 0, bootstrap.Length);
+                File.WriteAllBytes(Path.Combine(tempFolder, "128-1.rom"), rom);
+
+                byte[] program = BuildBasicProgram(
+                    BuildBasicLine(10,
+                        Token(249), Ascii(" "), Token(192), Ascii("32768"), NumberMarker(32768)));
+                File.WriteAllBytes(tapePath, BuildTap(
+                    BuildHeaderBlock(type: 0, fileName: "ROMRUN", dataLength: (ushort)program.Length, parameter1: 10, parameter2: (ushort)program.Length),
+                    BuildDataBlock(program),
+                    BuildHeaderBlock(type: 3, fileName: "CODE", dataLength: 1, parameter1: 0x8000, parameter2: 0),
+                    BuildDataBlock(new byte[] { 0xC9 })));
+
+                var machine = new Spectrum128Machine(tempFolder, SpectrumRomProfile.SyntheticTest);
+                TapeExecutionResult result = TapLoader.LoadWithPolicy(machine, tapePath);
+
+                Assert.Equal(TapeLoadStrategy.FullFakeLoad, result.Strategy);
+                Assert.Equal((ushort)0x1B9E, machine.Cpu.Regs.PC);
+                Assert.Equal((ushort)10, ReadWord(machine, 23618));
+                Assert.Equal((byte)0xC9, machine.PeekMemory(0x8000));
+            }
+            finally
+            {
+                Directory.Delete(tempFolder, true);
+            }
+        }
+
+        [Fact]
+        public void LoadWithPolicy_PreloadedAutorunWithLoad_KeepsBootstrapLoadSkipping()
+        {
+            string tempFolder = CreateTempRoms();
+            string tapePath = Path.Combine(tempFolder, "bootstrap-autorun.tap");
+
+            try
+            {
+                byte[] program = BuildBasicProgram(
+                    BuildBasicLine(10,
+                        Token(239), QuoteQuote(), Ascii(" "), Token(175),
+                        Colon(),
+                        Token(249), Ascii(" "), Token(192), Ascii("32768"), NumberMarker(32768)));
+                File.WriteAllBytes(tapePath, BuildTap(
+                    BuildHeaderBlock(type: 0, fileName: "BOOTRUN", dataLength: (ushort)program.Length, parameter1: 10, parameter2: (ushort)program.Length),
+                    BuildDataBlock(program),
+                    BuildHeaderBlock(type: 3, fileName: "CODE", dataLength: 1, parameter1: 0x8000, parameter2: 0),
+                    BuildDataBlock(new byte[] { 0xC9 })));
+
+                var machine = new Spectrum128Machine(tempFolder);
+                TapeExecutionResult result = TapLoader.LoadWithPolicy(machine, tapePath);
+
+                Assert.Equal(TapeLoadStrategy.FullFakeLoad, result.Strategy);
+                Assert.Equal((ushort)0x8000, machine.Cpu.Regs.PC);
+                Assert.Equal((byte)0xC9, machine.PeekMemory(0x8000));
+            }
+            finally
+            {
+                Directory.Delete(tempFolder, true);
+            }
+        }
+
         private static ushort ReadWord(Spectrum128Machine machine, ushort address)
         {
             return (ushort)(machine.PeekMemory(address) | (machine.PeekMemory((ushort)(address + 1)) << 8));

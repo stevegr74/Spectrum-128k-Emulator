@@ -1374,6 +1374,34 @@ namespace Spectrum128kEmulator.Tap
                 return startLineIndex >= 0 && CanExecuteImmediateSideEffectProgram(parsedLines, startLineIndex);
             }
 
+            public static bool CanRunPreloadedProgramUnderRom(
+                Spectrum128Machine machine,
+                ushort programStart,
+                ushort programLength,
+                ushort autoStartLine)
+            {
+                if (programLength == 0)
+                    return false;
+
+                List<BasicLine> parsedLines = ParseLines(machine, programStart, programLength);
+                int startLineIndex = autoStartLine == 0
+                    ? 0
+                    : parsedLines.FindIndex(line => line.Number == autoStartLine);
+                if (startLineIndex < 0)
+                    return false;
+
+                for (int lineIndex = startLineIndex; lineIndex < parsedLines.Count; lineIndex++)
+                {
+                    foreach (List<string> statement in parsedLines[lineIndex].Statements)
+                    {
+                        if (statement.Count > 0 && NormalizeStatementKeyword(statement[0]) == "LOAD")
+                            return false;
+                    }
+                }
+
+                return true;
+            }
+
             public static bool CanExecuteImmediateSideEffectProgram(
                 Spectrum128Machine machine,
                 ushort programStart,
