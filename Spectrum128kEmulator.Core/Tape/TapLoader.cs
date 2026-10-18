@@ -34,6 +34,7 @@ namespace Spectrum128kEmulator.Tap
         private const ushort BasicProgramStart = 23755;
         private const ushort DefaultStackPointer = 0xFF58;
         private const ushort RomSystemVariablesBase = 0x5C3A;
+        private const ushort ErrorNumberSystemVariableAddress = RomSystemVariablesBase;
 
         private const ushort NewPpcAddress = 23618;
         private const ushort NspPcAddress = 23620;
@@ -1542,6 +1543,10 @@ namespace Spectrum128kEmulator.Tap
             machine.Cpu.Regs.SP = errorStackPointer;
             machine.Cpu.Regs.HL = autoStartLine;
             machine.Cpu.Regs.PC = machine.RomProfile.BasicLineNewAddress;
+            // The normal ROM tape return executes EI before returning to BASIC.
+            // This direct handoff bypasses that path, so preserve its interrupt state.
+            machine.Cpu.RestoreInterruptState(true, true, machine.Cpu.InterruptMode);
+            machine.PokeMemory(ErrorNumberSystemVariableAddress, 0xFF);
             machine.PokeMemory(
                 FlagsSystemVariableAddress,
                 (byte)(machine.PeekMemory(FlagsSystemVariableAddress) | 0x80));

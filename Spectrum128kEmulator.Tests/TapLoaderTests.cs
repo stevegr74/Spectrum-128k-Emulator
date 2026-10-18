@@ -1401,6 +1401,9 @@ namespace Spectrum128kEmulator.Tests
                 Assert.Equal((ushort)0, ReadWord(machine, 23618));
                 Assert.Equal((ushort)23755, ReadWord(machine, 23635));
                 Assert.Equal((ushort)(23755 + basicProgram.Length), ReadWord(machine, 23627));
+                Assert.Equal((byte)0xFF, machine.PeekMemory(23610));
+                Assert.True(machine.Cpu.IFF1);
+                Assert.True(machine.Cpu.IFF2);
                 Assert.Equal(2, (int)GetPrivateField(tape, "nextBlockIndex"));
             }
             finally
