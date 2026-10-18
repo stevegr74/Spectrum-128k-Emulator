@@ -1401,6 +1401,9 @@ namespace Spectrum128kEmulator.Tests
                 Assert.Equal((ushort)0, ReadWord(machine, 23618));
                 Assert.Equal((ushort)23755, ReadWord(machine, 23635));
                 Assert.Equal((ushort)(23755 + basicProgram.Length), ReadWord(machine, 23627));
+                Assert.Equal((byte)0xFF, machine.PeekMemory(23610));
+                Assert.True(machine.Cpu.IFF1);
+                Assert.True(machine.Cpu.IFF2);
                 Assert.Equal(2, (int)GetPrivateField(tape, "nextBlockIndex"));
             }
             finally
@@ -2240,6 +2243,18 @@ namespace Spectrum128kEmulator.Tests
                 var romDrivenMachine = new Spectrum128Machine(tempFolder);
                 object romDrivenPlan = createPlan.Invoke(null, new[] { romDrivenMachine, romDrivenBlocks })!;
                 Assert.Equal("RomBootstrapMounted", strategyProperty.GetValue(romDrivenPlan)!.ToString());
+
+                byte[] nonContiguousBasicTape = BuildTap(
+                    BuildHeaderBlock(type: 0, fileName: "BOOT", dataLength: (ushort)romDrivenProgram.Length, parameter1: 10, parameter2: (ushort)romDrivenProgram.Length),
+                    BuildDataBlock(romDrivenProgram),
+                    BuildHeaderBlock(type: 3, fileName: "SCREEN", dataLength: 1, parameter1: 0x4000, parameter2: 0),
+                    BuildDataBlock(new byte[] { 0xAA }),
+                    BuildHeaderBlock(type: 0, fileName: "GAME", dataLength: (ushort)opaqueBasicStage.Length, parameter1: 0, parameter2: (ushort)opaqueBasicStage.Length),
+                    BuildDataBlock(opaqueBasicStage));
+                var nonContiguousBasicBlocks = parseBlocks.Invoke(null, new object[] { nonContiguousBasicTape })!;
+                var nonContiguousBasicMachine = new Spectrum128Machine(tempFolder);
+                object nonContiguousBasicPlan = createPlan.Invoke(null, new[] { nonContiguousBasicMachine, nonContiguousBasicBlocks })!;
+                Assert.Equal("RomBootstrapMounted", strategyProperty.GetValue(nonContiguousBasicPlan)!.ToString());
 
                 byte[] hybridProgram = BuildBasicProgram(
                     BuildBasicLine(10,
