@@ -95,6 +95,65 @@ namespace Spectrum128kEmulator.Tests
             Assert.Equal((ulong)21, cpu.TStates);
         }
 
+        [Theory]
+        [InlineData(0xA2)] // INI
+        [InlineData(0xAA)] // IND
+        [InlineData(0xB2)] // INIR
+        [InlineData(0xBA)] // INDR
+        public void BlockInput_SamplesDuringTheThirdIoTState(byte opcode)
+        {
+            var memory = new byte[65536];
+            int? sampleOffset = null;
+            var cpu = new Z80Cpu
+            {
+                ReadMemory = address => memory[address],
+                WriteMemory = (address, value) => memory[address] = value,
+                ReadPortTimed = (_, offset) =>
+                {
+                    sampleOffset = offset;
+                    return 0x55;
+                }
+            };
+            memory[0] = 0xED;
+            memory[1] = opcode;
+            cpu.Reset();
+            cpu.Regs.BC = 0x0200;
+            cpu.Regs.HL = 0x1234;
+
+            cpu.Step();
+
+            Assert.Equal(12, sampleOffset);
+        }
+
+        [Theory]
+        [InlineData(0xA3, 16UL)] // OUTI
+        [InlineData(0xAB, 16UL)] // OUTD
+        [InlineData(0xB3, 16UL)] // OTIR
+        [InlineData(0xBB, 16UL)] // OTDR
+        public void BlockOutput_WritesBeforeTheRepeatTail(byte opcode, ulong expectedWriteTStates)
+        {
+            var memory = new byte[65536];
+            ulong? writeTStates = null;
+            var cpu = new Z80Cpu
+            {
+                ReadMemory = address => memory[address],
+                WriteMemory = (address, value) => memory[address] = value
+            };
+            cpu.WritePort = (_, _) => writeTStates = cpu.TStates;
+            memory[0] = 0xED;
+            memory[1] = opcode;
+            memory[0x1234] = 0x55;
+            cpu.Reset();
+            cpu.Regs.BC = 0x0200;
+            cpu.Regs.HL = 0x1234;
+
+            cpu.Step();
+
+            // WritePort is invoked at the start of the four-T-state I/O cycle.
+            Assert.Equal(expectedWriteTStates - 4, writeTStates);
+            Assert.Equal(opcode is 0xB3 or 0xBB ? 21UL : 16UL, cpu.TStates);
+        }
+
         private static Z80Cpu CreateCpu(byte[] memory, byte input, out List<(ushort Port, byte Value)> writes)
         {
             var portWrites = new List<(ushort Port, byte Value)>();

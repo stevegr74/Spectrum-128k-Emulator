@@ -86,27 +86,27 @@ namespace Spectrum128kEmulator.Z80
             // =========================
             // 16-bit loads via memory
             // =========================
-            edOpcodeTable[0x43] = () => { ushort a = FetchWord(); WriteMemory(a, Regs.C); WriteMemory((ushort)(a + 1), Regs.B); TStates += 20; };
-            edOpcodeTable[0x53] = () => { ushort a = FetchWord(); WriteMemory(a, Regs.E); WriteMemory((ushort)(a + 1), Regs.D); TStates += 20; };
-            edOpcodeTable[0x63] = () => { ushort a = FetchWord(); WriteMemory(a, Regs.L); WriteMemory((ushort)(a + 1), Regs.H); TStates += 20; };
+            edOpcodeTable[0x43] = () => { ushort a = FetchWord(); WriteDataMemory(a, Regs.C); WriteDataMemory((ushort)(a + 1), Regs.B); TStates += 20; };
+            edOpcodeTable[0x53] = () => { ushort a = FetchWord(); WriteDataMemory(a, Regs.E); WriteDataMemory((ushort)(a + 1), Regs.D); TStates += 20; };
+            edOpcodeTable[0x63] = () => { ushort a = FetchWord(); WriteDataMemory(a, Regs.L); WriteDataMemory((ushort)(a + 1), Regs.H); TStates += 20; };
             edOpcodeTable[0x73] = () =>
             {
                 ushort a = FetchWord();
                 byte low = (byte)(Regs.SP & 0xFF);
                 byte high = (byte)(Regs.SP >> 8);
-                WriteMemory(a, low);
-                WriteMemory((ushort)(a + 1), high);
+                WriteDataMemory(a, low);
+                WriteDataMemory((ushort)(a + 1), high);
                 TStates += 20;
             };
 
-            edOpcodeTable[0x4B] = () => { ushort a = FetchWord(); Regs.BC = (ushort)(ReadMemory(a) | (ReadMemory((ushort)(a + 1)) << 8)); TStates += 20; };
-            edOpcodeTable[0x5B] = () => { ushort a = FetchWord(); Regs.DE = (ushort)(ReadMemory(a) | (ReadMemory((ushort)(a + 1)) << 8)); TStates += 20; };
-            edOpcodeTable[0x6B] = () => { ushort a = FetchWord(); Regs.HL = (ushort)(ReadMemory(a) | (ReadMemory((ushort)(a + 1)) << 8)); TStates += 20; };
+            edOpcodeTable[0x4B] = () => { ushort a = FetchWord(); Regs.BC = (ushort)(ReadDataMemory(a) | (ReadDataMemory((ushort)(a + 1)) << 8)); TStates += 20; };
+            edOpcodeTable[0x5B] = () => { ushort a = FetchWord(); Regs.DE = (ushort)(ReadDataMemory(a) | (ReadDataMemory((ushort)(a + 1)) << 8)); TStates += 20; };
+            edOpcodeTable[0x6B] = () => { ushort a = FetchWord(); Regs.HL = (ushort)(ReadDataMemory(a) | (ReadDataMemory((ushort)(a + 1)) << 8)); TStates += 20; };
             edOpcodeTable[0x7B] = () =>
             {
                 ushort a = FetchWord();
-                byte low = ReadMemory(a);
-                byte high = ReadMemory((ushort)(a + 1));
+                byte low = ReadDataMemory(a);
+                byte high = ReadDataMemory((ushort)(a + 1));
                 ushort value = (ushort)(low | (high << 8));
                 Regs.SP = value;
                 TStates += 20;
@@ -143,12 +143,12 @@ namespace Spectrum128kEmulator.Z80
             // =========================
             edOpcodeTable[0x67] = () => // RRD
             {
-                byte mem = ReadMemory(Regs.HL);
+                byte mem = ReadDataMemory(Regs.HL);
                 byte aLow = (byte)(Regs.A & 0x0F);
                 byte newMem = (byte)((aLow << 4) | (mem >> 4));
                 byte newA = (byte)((Regs.A & 0xF0) | (mem & 0x0F));
 
-                WriteMemory(Regs.HL, newMem);
+                WriteDataMemory(Regs.HL, newMem, 4);
                 Regs.A = newA;
 
                 SetFlag(Flag.S, (Regs.A & 0x80) != 0);
@@ -163,12 +163,12 @@ namespace Spectrum128kEmulator.Z80
 
             edOpcodeTable[0x6F] = () => // RLD
             {
-                byte mem = ReadMemory(Regs.HL);
+                byte mem = ReadDataMemory(Regs.HL);
                 byte aLow = (byte)(Regs.A & 0x0F);
                 byte newMem = (byte)((mem << 4) | aLow);
                 byte newA = (byte)((Regs.A & 0xF0) | (mem >> 4));
 
-                WriteMemory(Regs.HL, newMem);
+                WriteDataMemory(Regs.HL, newMem, 4);
                 Regs.A = newA;
 
                 SetFlag(Flag.S, (Regs.A & 0x80) != 0);
@@ -186,8 +186,8 @@ namespace Spectrum128kEmulator.Z80
             // =========================
             edOpcodeTable[0xA0] = () => // LDI
             {
-                byte value = ReadMemory(Regs.HL);
-                WriteMemory(Regs.DE, value);
+                byte value = ReadDataMemory(Regs.HL);
+                WriteDataMemory(Regs.DE, value);
                 Regs.HL++;
                 Regs.DE++;
                 Regs.BC--;
@@ -203,8 +203,8 @@ namespace Spectrum128kEmulator.Z80
 
             edOpcodeTable[0xB0] = () => // LDIR
             {
-                byte value = ReadMemory(Regs.HL);
-                WriteMemory(Regs.DE, value);
+                byte value = ReadDataMemory(Regs.HL);
+                WriteDataMemory(Regs.DE, value);
                 Regs.HL++;
                 Regs.DE++;
                 Regs.BC--;
@@ -228,8 +228,8 @@ namespace Spectrum128kEmulator.Z80
 
             edOpcodeTable[0xA8] = () => // LDD
             {
-                byte value = ReadMemory(Regs.HL);
-                WriteMemory(Regs.DE, value);
+                byte value = ReadDataMemory(Regs.HL);
+                WriteDataMemory(Regs.DE, value);
                 Regs.HL--;
                 Regs.DE--;
                 Regs.BC--;
@@ -245,8 +245,8 @@ namespace Spectrum128kEmulator.Z80
 
             edOpcodeTable[0xB8] = () => // LDDR
             {
-                byte value = ReadMemory(Regs.HL);
-                WriteMemory(Regs.DE, value);
+                byte value = ReadDataMemory(Regs.HL);
+                WriteDataMemory(Regs.DE, value);
                 Regs.HL--;
                 Regs.DE--;
                 Regs.BC--;
@@ -294,8 +294,8 @@ namespace Spectrum128kEmulator.Z80
         {
             // INI/IND use two opcode M1 cycles followed by the four-T-state
             // I/O read. The ULA samples on the third I/O T-state.
-            byte value = ReadPortTimed?.Invoke(Regs.BC, 11) ?? ReadPort(Regs.BC);
-            WriteMemory(Regs.HL, value);
+            byte value = ReadPortTimed?.Invoke(Regs.BC, 12) ?? ReadPort(Regs.BC);
+            WriteMemoryAtInstructionOffset(Regs.HL, value, 12);
 
             Regs.HL = increment ? (ushort)(Regs.HL + 1) : (ushort)(Regs.HL - 1);
             Regs.B = (byte)(Regs.B - 1);
@@ -314,24 +314,23 @@ namespace Spectrum128kEmulator.Z80
 
         private void BlockOut(bool increment, bool repeat)
         {
-            byte value = ReadMemory(Regs.HL);
+            byte value = ReadDataMemory(Regs.HL);
 
             Regs.HL = increment ? (ushort)(Regs.HL + 1) : (ushort)(Regs.HL - 1);
             Regs.B = (byte)(Regs.B - 1);
             ApplyBlockIoFlags(value, Regs.L);
 
-            int instructionTStates;
-            if (repeat && Regs.B != 0)
+            bool repeats = repeat && Regs.B != 0;
+            if (repeats)
             {
                 Regs.PC = (ushort)(Regs.PC - 2);
-                instructionTStates = 21;
-            }
-            else
-            {
-                instructionTStates = 16;
             }
 
-            WritePortTimed(Regs.BC, value, instructionTStates);
+            // The port cycle completes at T16. Repeating forms spend their
+            // additional five T-states after the write has reached the bus.
+            WritePortTimed(Regs.BC, value, 16);
+            if (repeats)
+                TStates += 5;
         }
 
         private void ApplyBlockIoFlags(byte value, int adjustment)
@@ -372,7 +371,7 @@ namespace Spectrum128kEmulator.Z80
         {
             bool oldCarry = (Regs.F & (1 << (int)Flag.C)) != 0;
 
-            byte value = ReadMemory(Regs.HL);
+            byte value = ReadDataMemory(Regs.HL);
             byte r = CompareAInternal(value);
 
             bool halfBorrow = (Regs.F & (1 << (int)Flag.H)) != 0;

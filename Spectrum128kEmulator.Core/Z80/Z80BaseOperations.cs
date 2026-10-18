@@ -73,10 +73,10 @@ namespace Spectrum128kEmulator.Z80
                 TStates += 4;
             };
 
-            opcodeTable[0x02] = () => { WriteMemory(Regs.BC, Regs.A); TStates += 7; };
-            opcodeTable[0x0A] = () => { Regs.A = ReadMemory(Regs.BC); TStates += 7; };
-            opcodeTable[0x12] = () => { WriteMemory(Regs.DE, Regs.A); TStates += 7; };
-            opcodeTable[0x1A] = () => { Regs.A = ReadMemory(Regs.DE); TStates += 7; };
+            opcodeTable[0x02] = () => { WriteDataMemory(Regs.BC, Regs.A); TStates += 7; };
+            opcodeTable[0x0A] = () => { Regs.A = ReadDataMemory(Regs.BC); TStates += 7; };
+            opcodeTable[0x12] = () => { WriteDataMemory(Regs.DE, Regs.A); TStates += 7; };
+            opcodeTable[0x1A] = () => { Regs.A = ReadDataMemory(Regs.DE); TStates += 7; };
 
             opcodeTable[0x09] = () => { Regs.HL = Add16(Regs.HL, Regs.BC); TStates += 11; };
             opcodeTable[0x19] = () => { Regs.HL = Add16(Regs.HL, Regs.DE); TStates += 11; };
@@ -113,8 +113,8 @@ namespace Spectrum128kEmulator.Z80
             opcodeTable[0x22] = () => // LD (nn),HL
             {
                 ushort addr = FetchWord();
-                WriteMemory(addr, Regs.L);
-                WriteMemory((ushort)(addr + 1), Regs.H);
+                WriteDataMemory(addr, Regs.L);
+                WriteDataMemory((ushort)(addr + 1), Regs.H);
                 TStates += 16;
             };
 
@@ -140,8 +140,8 @@ namespace Spectrum128kEmulator.Z80
             opcodeTable[0x2A] = () => // LD HL,(nn)
             {
                 ushort addr = FetchWord();
-                byte low = ReadMemory(addr);
-                byte high = ReadMemory((ushort)(addr + 1));
+                byte low = ReadDataMemory(addr);
+                byte high = ReadDataMemory((ushort)(addr + 1));
                 Regs.HL = (ushort)(low | (high << 8));
                 TStates += 16;
             };
@@ -186,7 +186,7 @@ namespace Spectrum128kEmulator.Z80
                 opcodeTable[op] = () =>
                 {
                     SetReg((byte)d, GetReg((byte)s));
-                    TStates += 4;
+                    TStates += (d == 6 || s == 6) ? 7UL : 4UL;
                 };
             }
 
@@ -209,7 +209,7 @@ namespace Spectrum128kEmulator.Z80
 
             opcodeTable[0x36] = () => // LD (HL),n
             {
-                WriteMemory(Regs.HL, FetchByte());
+                WriteDataMemory(Regs.HL, FetchByte());
                 TStates += 10;
             };
 
@@ -219,7 +219,7 @@ namespace Spectrum128kEmulator.Z80
                 int rr = r;
                 opcodeTable[0x70 + r] = () =>
                 {
-                    WriteMemory(Regs.HL, GetReg((byte)rr));
+                    WriteDataMemory(Regs.HL, GetReg((byte)rr));
                     TStates += 7;
                 };
             }
@@ -229,8 +229,8 @@ namespace Spectrum128kEmulator.Z80
             opcodeTable[0x21] = () => { Regs.HL = FetchWord(); TStates += 10; };
             opcodeTable[0x31] = () => { Regs.SP = FetchWord(); TStates += 10; };
 
-            opcodeTable[0x3A] = () => { Regs.A = ReadMemory(FetchWord()); TStates += 13; };
-            opcodeTable[0x32] = () => { WriteMemory(FetchWord(), Regs.A); TStates += 13; };
+            opcodeTable[0x3A] = () => { Regs.A = ReadDataMemory(FetchWord()); TStates += 13; };
+            opcodeTable[0x32] = () => { WriteDataMemory(FetchWord(), Regs.A); TStates += 13; };
 
             opcodeTable[0x03] = () => { Regs.BC++; TStates += 6; };
             opcodeTable[0x0B] = () => { Regs.BC--; TStates += 6; };
@@ -269,10 +269,11 @@ namespace Spectrum128kEmulator.Z80
 
             opcodeTable[0xE3] = () => // EX (SP),HL
             {
-                byte low = ReadMemory(Regs.SP);
-                byte high = ReadMemory((ushort)(Regs.SP + 1));
-                WriteMemory(Regs.SP, Regs.L);
-                WriteMemory((ushort)(Regs.SP + 1), Regs.H);
+                byte low = ReadDataMemory(Regs.SP);
+                byte high = ReadDataMemory((ushort)(Regs.SP + 1));
+                AdvanceMemoryAccessOffset(1);
+                WriteDataMemory(Regs.SP, Regs.L);
+                WriteDataMemory((ushort)(Regs.SP + 1), Regs.H);
                 Regs.HL = (ushort)(low | (high << 8));
                 TStates += 19;
             };
@@ -292,14 +293,15 @@ namespace Spectrum128kEmulator.Z80
             for (int i = 0; i < 8; i++)
             {
                 int r = i;
-                opcodeTable[0x80 + i] = () => AddA(GetReg((byte)r), false, 4);
-                opcodeTable[0x88 + i] = () => AddA(GetReg((byte)r), true, 4);
-                opcodeTable[0x90 + i] = () => SubA(GetReg((byte)r), false, 4);
-                opcodeTable[0x98 + i] = () => SubA(GetReg((byte)r), true, 4);
-                opcodeTable[0xA0 + i] = () => AndA(GetReg((byte)r), 4);
-                opcodeTable[0xA8 + i] = () => XorA(GetReg((byte)r), 4);
-                opcodeTable[0xB0 + i] = () => OrA(GetReg((byte)r), 4);
-                opcodeTable[0xB8 + i] = () => CpA(GetReg((byte)r), 4);
+                int tStates = r == 6 ? 7 : 4;
+                opcodeTable[0x80 + i] = () => AddA(GetReg((byte)r), false, tStates);
+                opcodeTable[0x88 + i] = () => AddA(GetReg((byte)r), true, tStates);
+                opcodeTable[0x90 + i] = () => SubA(GetReg((byte)r), false, tStates);
+                opcodeTable[0x98 + i] = () => SubA(GetReg((byte)r), true, tStates);
+                opcodeTable[0xA0 + i] = () => AndA(GetReg((byte)r), tStates);
+                opcodeTable[0xA8 + i] = () => XorA(GetReg((byte)r), tStates);
+                opcodeTable[0xB0 + i] = () => OrA(GetReg((byte)r), tStates);
+                opcodeTable[0xB8 + i] = () => CpA(GetReg((byte)r), tStates);
             }
 
             opcodeTable[0xC6] = () => AddA(FetchByte(), false, 7);

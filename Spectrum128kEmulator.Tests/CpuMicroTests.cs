@@ -457,6 +457,35 @@ namespace Spectrum128kEmulator.Tests
         }
 
         [Fact]
+        public void InterruptMode2_Acknowledge_IncludesBothVectorReadCycles()
+        {
+            var memory = new byte[65536];
+            var vectorReadTStates = new List<ulong>();
+            var cpu = new Z80Cpu();
+            cpu.ReadMemory = addr =>
+            {
+                if (addr == 0x12FF || addr == 0x1300)
+                    vectorReadTStates.Add(cpu.TStates);
+                return memory[addr];
+            };
+            cpu.WriteMemory = (addr, value) => memory[addr] = value;
+
+            memory[0x12FF] = 0x34;
+            memory[0x1300] = 0x56;
+            cpu.Reset();
+            cpu.Regs.I = 0x12;
+            cpu.Regs.SP = 0x9000;
+            cpu.RestoreInterruptState(iff1: true, iff2: true, interruptMode: 2);
+            cpu.InterruptPending = true;
+
+            cpu.ExecuteCycles(19);
+
+            Assert.Equal((ushort)0x5634, cpu.Regs.PC);
+            Assert.Equal(new ulong[] { 13, 16 }, vectorReadTStates);
+            Assert.Equal(19UL, cpu.TStates);
+        }
+
+        [Fact]
         public void Halt_Refresh_Cycles_Increment_R_Register()
         {
             var memory = new byte[65536];
@@ -712,6 +741,203 @@ namespace Spectrum128kEmulator.Tests
 
             Assert.True(FlagSet(cpu.Regs.F, 3));
             Assert.True(FlagSet(cpu.Regs.F, 5));
+        }
+
+        [Fact]
+        public void LdHlIndirect_UsesSequentialDataReadOffsets()
+        {
+            var memory = new byte[65536];
+            var dataReadOffsets = new List<int>();
+            var cpu = new Z80Cpu
+            {
+                ReadMemory = addr => memory[addr],
+                ReadMemoryTimed = (addr, offset) =>
+                {
+                    if (addr >= 0x4000)
+                        dataReadOffsets.Add(offset);
+                    return memory[addr];
+                },
+                WriteMemory = (addr, value) => memory[addr] = value
+            };
+
+            memory[0x0000] = 0x2A; // LD HL,(4000h)
+            memory[0x0001] = 0x00;
+            memory[0x0002] = 0x40;
+            memory[0x4000] = 0x34;
+            memory[0x4001] = 0x12;
+
+            cpu.Step();
+
+            Assert.Equal((ushort)0x1234, cpu.Regs.HL);
+            Assert.Equal(new[] { 10, 13 }, dataReadOffsets);
+            Assert.Equal(16UL, cpu.TStates);
+        }
+
+        [Theory]
+        [InlineData(0x7E)] // LD A,(HL)
+        [InlineData(0x86)] // ADD A,(HL)
+        public void HlIndirectReadInstructions_UseSevenTStates(byte opcode)
+        {
+            var memory = new byte[65536];
+            var cpu = new Z80Cpu
+            {
+                ReadMemory = addr => memory[addr],
+                WriteMemory = (addr, value) => memory[addr] = value
+            };
+
+            memory[0x0000] = opcode;
+            memory[0x4000] = 1;
+            cpu.Regs.HL = 0x4000;
+
+            cpu.Step();
+
+            Assert.Equal(7UL, cpu.TStates);
+        }
+
+        [Fact]
+        public void IncHlIndirect_SeparatesReadAndWriteWithInternalCycle()
+        {
+            var memory = new byte[65536];
+            var dataReadOffsets = new List<int>();
+            var dataWriteOffsets = new List<int>();
+            var cpu = new Z80Cpu
+            {
+                ReadMemory = addr => memory[addr],
+                ReadMemoryTimed = (addr, offset) =>
+                {
+                    if (addr == 0x4000)
+                        dataReadOffsets.Add(offset);
+                    return memory[addr];
+                },
+                WriteMemory = (addr, value) => memory[addr] = value,
+                WriteMemoryTimed = (addr, value, offset) =>
+                {
+                    dataWriteOffsets.Add(offset);
+                    memory[addr] = value;
+                }
+            };
+
+            memory[0x0000] = 0x34; // INC (HL)
+            memory[0x4000] = 0x27;
+            cpu.Regs.HL = 0x4000;
+
+            cpu.Step();
+
+            Assert.Equal((byte)0x28, memory[0x4000]);
+            Assert.Equal(new[] { 4 }, dataReadOffsets);
+            Assert.Equal(new[] { 8 }, dataWriteOffsets);
+            Assert.Equal(11UL, cpu.TStates);
+        }
+
+        [Fact]
+        public void Ldi_UsesReadThenWriteMemoryCycles()
+        {
+            var memory = new byte[65536];
+            var dataReadOffsets = new List<int>();
+            var dataWriteOffsets = new List<int>();
+            var cpu = new Z80Cpu
+            {
+                ReadMemory = addr => memory[addr],
+                ReadMemoryTimed = (addr, offset) =>
+                {
+                    if (addr == 0x4000)
+                        dataReadOffsets.Add(offset);
+                    return memory[addr];
+                },
+                WriteMemory = (addr, value) => memory[addr] = value,
+                WriteMemoryTimed = (addr, value, offset) =>
+                {
+                    dataWriteOffsets.Add(offset);
+                    memory[addr] = value;
+                }
+            };
+
+            memory[0x0000] = 0xED;
+            memory[0x0001] = 0xA0; // LDI
+            memory[0x4000] = 0x5A;
+            cpu.Regs.HL = 0x4000;
+            cpu.Regs.DE = 0x8000;
+            cpu.Regs.BC = 1;
+
+            cpu.Step();
+
+            Assert.Equal((byte)0x5A, memory[0x8000]);
+            Assert.Equal(new[] { 8 }, dataReadOffsets);
+            Assert.Equal(new[] { 11 }, dataWriteOffsets);
+            Assert.Equal(16UL, cpu.TStates);
+        }
+
+        [Theory]
+        [InlineData(0xDD)]
+        [InlineData(0xFD)]
+        public void IndexedRead_UsesEffectiveAddressDelay(byte prefix)
+        {
+            var memory = new byte[65536];
+            var dataReadOffsets = new List<int>();
+            var cpu = new Z80Cpu
+            {
+                ReadMemory = addr => memory[addr],
+                ReadMemoryTimed = (addr, offset) =>
+                {
+                    if (addr == 0x4001)
+                        dataReadOffsets.Add(offset);
+                    return memory[addr];
+                },
+                WriteMemory = (addr, value) => memory[addr] = value
+            };
+
+            memory[0x0000] = prefix;
+            memory[0x0001] = 0x7E; // LD A,(IX/IY+1)
+            memory[0x0002] = 0x01;
+            memory[0x4001] = 0xA5;
+            cpu.Regs.IX = 0x4000;
+            cpu.Regs.IY = 0x4000;
+
+            cpu.Step();
+
+            Assert.Equal((byte)0xA5, cpu.Regs.A);
+            Assert.Equal(new[] { 16 }, dataReadOffsets);
+            Assert.Equal(19UL, cpu.TStates);
+        }
+
+        [Fact]
+        public void IndexedCbReadModifyWrite_UsesSeparatedMemoryCycles()
+        {
+            var memory = new byte[65536];
+            var dataReadOffsets = new List<int>();
+            var dataWriteOffsets = new List<int>();
+            var cpu = new Z80Cpu
+            {
+                ReadMemory = addr => memory[addr],
+                ReadMemoryTimed = (addr, offset) =>
+                {
+                    if (addr == 0x4001)
+                        dataReadOffsets.Add(offset);
+                    return memory[addr];
+                },
+                WriteMemory = (addr, value) => memory[addr] = value,
+                WriteMemoryTimed = (addr, value, offset) =>
+                {
+                    dataWriteOffsets.Add(offset);
+                    memory[addr] = value;
+                }
+            };
+
+            memory[0x0000] = 0xDD;
+            memory[0x0001] = 0xCB;
+            memory[0x0002] = 0x01;
+            memory[0x0003] = 0x06; // RLC (IX+1)
+            memory[0x4001] = 0x80;
+            cpu.Regs.IX = 0x4000;
+
+            cpu.Step();
+
+            Assert.Equal((byte)0x01, memory[0x4001]);
+            Assert.Equal(new[] { 16 }, dataReadOffsets);
+            Assert.Equal(new[] { 20 }, dataWriteOffsets);
+            Assert.Equal(23UL, cpu.TStates);
+            Assert.Equal((byte)2, cpu.Regs.R);
+            Assert.Equal(2UL, cpu.InstructionFetchCount);
         }
 
         [Theory]

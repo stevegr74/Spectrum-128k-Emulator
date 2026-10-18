@@ -32,11 +32,13 @@ namespace Spectrum128kEmulator.Tests
         [Fact]
         public void FrameBuffer_RendersBorderColorChangesAtTheirTStatePositions()
         {
-            const int firstVisibleTState = 14361 - (Spectrum128Machine.BorderTopHeight * 228) - 22;
+            const int firstVisibleTState = 14364 -
+                                           (Spectrum128Machine.BorderTopHeight * 228) -
+                                           (Spectrum128Machine.BorderLeftWidth / 2);
             var borderFrame = new BorderFrame(
                 Spectrum128Machine.FrameTStates128,
                 initialColor: 1,
-                new[] { new BorderEvent(firstVisibleTState + (10 * 228), 2) });
+                new[] { new BorderEvent(firstVisibleTState + (10 * 228) + 4, 2) });
             var frameBuffer = new SpectrumFrameBuffer();
 
             frameBuffer.Render(new byte[0x1B00], borderFrame, flashPhase: false);
@@ -44,6 +46,63 @@ namespace Spectrum128kEmulator.Tests
             ReadOnlySpan<uint> pixels = frameBuffer.Pixels.Span;
             Assert.Equal(SpectrumFrameBuffer.GetSpectrumColorArgb(1, false), pixels[9 * SpectrumFrameBuffer.Width]);
             Assert.Equal(SpectrumFrameBuffer.GetSpectrumColorArgb(2, false), pixels[10 * SpectrumFrameBuffer.Width]);
+        }
+
+        [Theory]
+        [InlineData(Spectrum128Machine.FrameTStates48, 14336, 224, 6)]
+        [InlineData(Spectrum128Machine.FrameTStates128, 14364, 228, 4)]
+        public void FrameBuffer_LatchesBorderChangesInEightPixelGroups(
+            int frameTStates,
+            int topLeftDisplayTState,
+            int lineTStates,
+            int latchLeadTStates)
+        {
+            int firstVisibleTState = topLeftDisplayTState -
+                                     (Spectrum128Machine.BorderTopHeight * lineTStates) -
+                                     (Spectrum128Machine.BorderLeftWidth / 2);
+            var borderFrame = new BorderFrame(
+                frameTStates,
+                initialColor: 1,
+                new[] { new BorderEvent(firstVisibleTState + latchLeadTStates + 1, 2) });
+            var frameBuffer = new SpectrumFrameBuffer();
+
+            frameBuffer.Render(new byte[0x1B00], borderFrame, flashPhase: false);
+
+            ReadOnlySpan<uint> pixels = frameBuffer.Pixels.Span;
+            uint initial = SpectrumFrameBuffer.GetSpectrumColorArgb(1, false);
+            uint changed = SpectrumFrameBuffer.GetSpectrumColorArgb(2, false);
+            for (int x = 0; x < 8; x++)
+                Assert.Equal(initial, pixels[x]);
+            for (int x = 8; x < 16; x++)
+                Assert.Equal(changed, pixels[x]);
+        }
+
+        [Theory]
+        [InlineData(Spectrum128Machine.FrameTStates48, 14336, 224, 6)]
+        [InlineData(Spectrum128Machine.FrameTStates128, 14364, 228, 4)]
+        public void FrameBuffer_DoesNotStretchVisiblePixelsAcrossHorizontalFlyback(
+            int frameTStates,
+            int topLeftDisplayTState,
+            int lineTStates,
+            int latchLeadTStates)
+        {
+            int firstVisibleTState = topLeftDisplayTState -
+                                     (Spectrum128Machine.BorderTopHeight * lineTStates) -
+                                     (Spectrum128Machine.BorderLeftWidth / 2);
+            int secondLineStart = firstVisibleTState + lineTStates;
+            var borderFrame = new BorderFrame(
+                frameTStates,
+                initialColor: 1,
+                new[] { new BorderEvent(secondLineStart + latchLeadTStates, 2) });
+            var frameBuffer = new SpectrumFrameBuffer();
+
+            frameBuffer.Render(new byte[0x1B00], borderFrame, flashPhase: false);
+
+            ReadOnlySpan<uint> pixels = frameBuffer.Pixels.Span;
+            uint initial = SpectrumFrameBuffer.GetSpectrumColorArgb(1, false);
+            uint changed = SpectrumFrameBuffer.GetSpectrumColorArgb(2, false);
+            Assert.Equal(initial, pixels[SpectrumFrameBuffer.Width - 1]);
+            Assert.Equal(changed, pixels[SpectrumFrameBuffer.Width]);
         }
 
         [Fact]

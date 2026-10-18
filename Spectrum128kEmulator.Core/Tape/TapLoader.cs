@@ -426,6 +426,15 @@ namespace Spectrum128kEmulator.Tap
 
             if (RequiresMountedRealtimeForMixedTape(machine, blocks))
             {
+                bool use128kMode = Use128kTapeLoadMode(machine);
+                if (FindLeadingStandardBasicChainEndIndex(blocks) == 0 &&
+                    !CanSatisfyLeadingBasicLoadRequestsBeforeProtectedRemainder(machine, blocks, use128kMode))
+                {
+                    return new TapeLoadPlan(
+                        TapeLoadStrategy.RomBootstrapMounted,
+                        "Tape loader requests more standard LOAD stages than the safe bootstrap can satisfy before protected playback, so autorun must remain under ROM control.");
+                }
+
                 if (HasStandardHeaderDataPairAfterLeadingBasic(blocks) &&
                     !CanResolveMountedLoadUsrContinuation(machine, blocks))
                 {
@@ -448,6 +457,14 @@ namespace Spectrum128kEmulator.Tap
                     return new TapeLoadPlan(
                         TapeLoadStrategy.RomBootstrapMounted,
                         "Tape begins with a protected BASIC loader whose interpreter handoff must execute under ROM control.");
+                }
+
+                if (FindLeadingStandardBasicChainEndIndex(blocks) == 0 &&
+                    !CanSatisfyLeadingBasicLoadRequestsBeforeProtectedRemainder(machine, blocks, use128kMode))
+                {
+                    return new TapeLoadPlan(
+                        TapeLoadStrategy.RomBootstrapMounted,
+                        "Tape loader cannot complete its LOAD sequence through the safe bootstrap path, so autorun must remain under ROM control.");
                 }
 
                 return new TapeLoadPlan(
@@ -1342,6 +1359,61 @@ namespace Spectrum128kEmulator.Tap
                 header,
                 blocks[index + 1].Payload!,
                 use128kMode);
+        }
+
+        private static bool CanSatisfyLeadingBasicLoadRequestsBeforeProtectedRemainder(
+            Spectrum128Machine machine,
+            IReadOnlyList<TapeBlock> blocks,
+            bool use128kMode)
+        {
+            int index = 0;
+            while (index < blocks.Count && blocks[index].Kind == TapeBlockKind.Metadata)
+                index++;
+
+            if (index + 1 >= blocks.Count ||
+                !IsStandardHeaderBlock(blocks[index]) ||
+                blocks[index + 1].Flag != DataFlag ||
+                blocks[index + 1].Payload == null)
+            {
+                return false;
+            }
+
+            TapHeaderInfo header = ParseHeaderInfo(blocks[index]);
+            if (header.Type != ProgramType || header.AutoStartLine >= 32768)
+                return false;
+
+            // Chained BASIC stages are adopted dynamically by the bootstrap executor;
+            // their LOAD requirements cannot be inferred from the first program alone.
+            if (FindLeadingStandardBasicChainEndIndex(blocks) > 0)
+                return true;
+
+            InitializeMachineForFakeTapeLoad(machine, use128kMode);
+            LoadBasicProgram(machine, header, blocks[index + 1].Payload!);
+
+            int requiredLoadCount = ExecuteBootstrapBasicAutoStart(
+                machine,
+                BasicProgramStart,
+                header.ProgramLength,
+                header.AutoStartLine,
+                ignoreLoadStatements: true).IgnoredLoadCount;
+            int availableLoadCount = CountBootstrapConsumableDataBlocks(blocks, index + 2);
+            return requiredLoadCount <= availableLoadCount;
+        }
+
+        private static int CountBootstrapConsumableDataBlocks(IReadOnlyList<TapeBlock> blocks, int startIndex)
+        {
+            int count = 0;
+            for (int index = startIndex; index < blocks.Count; index++)
+            {
+                TapeBlock block = blocks[index];
+                if (block.Kind == TapeBlockKind.StopTape)
+                    break;
+
+                if (block.CanUseRomLoadTrap && block.Flag == DataFlag)
+                    count++;
+            }
+
+            return count;
         }
 
         private static bool CanBootstrapLoadedBasicProgram(

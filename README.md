@@ -35,9 +35,9 @@ Manually tested titles, formats, and reached checkpoints are tracked in
 
 Current limitations and active work:
 
-- original 128K/+2 floating-bus reads and AY selected-register reads are planned for Milestone 16
+- opcode/immediate fetches, ordinary/indexed/block/stack memory accesses, port I/O, border, and floating-bus timing now use model-specific machine-cycle positions; published external diagnostic validation remains active Milestone 16 work
 - active-screen rendering is frame-snapshot based rather than beam-aware; Milestone 17 addresses this
-- protected live-tape audio handoff still needs polish in some titles
+- exact audio timing and turbo-to-real-time tape handoff still need polish in some titles
 - broader protected/custom TZX compatibility remains ongoing
 
 ### Implementation Notes
@@ -51,11 +51,14 @@ Current limitations and active work:
 - Mounted-loader continuation state, BASIC workspace preservation, resume gating, and Quick State capture are isolated from the machine in a dedicated controller.
 - The background emulation loop owns mutable machine state; the UI consumes copied snapshots and uses nested pause leases for safe inspection.
 - The undocumented Z80 Q latch is tracked by flag-writing semantics, including prefix and interrupt boundaries, with focused regressions alongside ZEXDOC/ZEXALL.
+- Model-specific ULA profiles now drive contention, floating-bus fetches, frame timing, and raster mapping; original 128K/+2 floating-bus reads follow the selected bank 5 or bank 7 screen, and `IN (0xFFFD)` reads the selected AY register.
+- Border, beeper, and AY writes are timestamped at the completed I/O cycle, including contended and repeating block-I/O paths; border changes are reconstructed in hardware-sized eight-pixel latch groups without stretching visible pixels across horizontal flyback.
+- Contended opcode, prefix, and immediate-byte fetches use their individual machine-cycle offsets; corrected indexed-instruction totals cover ignored `DD`/`FD` prefixes, absolute IX/IY loads and stores, stack exchange, and stack-pointer transfer.
 
 ## Development Priorities
 
-Each feature is developed on its own branch. The next ordered work is ULA/port
-conformance (Milestone 16), beam-aware video (17), debugger execution controls
+Each feature is developed on its own branch. Current work is ULA/port conformance
+(Milestone 16), followed by beam-aware video (17), debugger execution controls
 (18), and bank-aware symbolic disassembly (19). Tape compatibility and the
 turbo-to-realtime audio transition continue in parallel, with the verified media
 matrix plus ZEXDOC/ZEXALL used as regression gates.
@@ -78,6 +81,7 @@ Spectrum128kEmulator/
 |   |   |-- TapeLoadContracts.cs           load plans, results, and transport state
 |   |   `-- MountedLoadContinuationController.cs  ROM-profile-aware loader resume policy
 |   |-- Z80/                               CPU execution plus side-effect-free instruction decoding
+|   |-- Ula/                               model timing profiles and ULA timing policy
 |   |-- Spectrum128Machine.cs              machine orchestration, memory, paging, ULA timing, and input
 |   |-- Spectrum128Machine.Diagnostics.cs  trace capture, watches, and diagnostic dumps
 |   |-- SpectrumRomProfile.cs              fingerprinted ROM capabilities and internal entry points
@@ -195,7 +199,11 @@ Test coverage includes:
 - banked tape-loader regression coverage
 - Tape transport pause/resume and 48K stop-marker behaviour
 - 48K/128K machine-model behavior
-- AY register behaviour
+- complete 48K/128K contention phases, boundaries, I/O cases, and contended-bank behavior
+- 48K/128K floating-bus fetches, including 128K shadow-screen bank selection
+- exact port event timestamps, block-I/O timing, and border latch/raster mapping
+- timed opcode, prefix, immediate, ordinary, indexed, block, stack, and interrupt-vector memory cycles
+- AY register write and selected-register port-read behaviour
 - Audio sample generation
 - Audio pipeline behaviour
 - Z80 instruction decoding, disassembly navigation/search, listing export, settings, and snapshot behavior
@@ -288,15 +296,16 @@ compatibility and polish; completed milestones remain regression baselines.
 | 13 | Complete | Paused read-only mapped-64K disassembler window |
 | 14 | Complete | Deterministic temporary in-memory Quick State |
 | 15 | Complete | Disassembler history, search, navigation, persistence, copy, and export |
+| 16 | In progress | Central ULA profiles, contention conformance, 128K floating bus, exact port events, border-latch mapping, and timed CPU bus cycles implemented; published diagnostic validation remains |
 
-### Milestone 16 - ULA Timing Conformance And Port Accuracy Planned
-- Introduce one model-specific timing profile for frame length, scanline length, contention start, display fetches, visible raster mapping, and the documented timing convention
-- Add table-driven contention coverage across complete 48K and original 128K display phases, line/frame boundaries, contended memory banks, and all four I/O contention cases
-- Timestamp CPU memory and I/O bus accesses at their actual machine-cycle positions where required, rather than relying on instruction-total timing
-- Generalize the existing floating-bus model for the original Spectrum 128K and grey +2, including normal bank 5 and shadow bank 7 screen selection
-- Decode attached input devices before the floating-bus fallback, including `IN (0xFFFD)` reading the selected AY register
-- Correct and test border-latch timestamps and visible pixel/T-state mapping without claiming +2A/+3 behavior
-- Validate with published contention and floating-bus diagnostics plus the existing tape, snapshot, RZX, ZEXDOC, and ZEXALL regression matrix
+### Milestone 16 - ULA Timing Conformance And Port Accuracy In Progress
+- Implemented one model-specific timing profile for frame length, scanline length, contention start, display fetches, visible raster mapping, and the documented timing convention
+- Added table-driven contention coverage across complete 48K and original 128K display phases, line/frame boundaries, contended memory banks, and all four I/O contention cases
+- Timestamped opcode/immediate fetches, ordinary/indexed/block/stack memory accesses, interrupt-vector reads, and port reads/writes at their machine-cycle positions, including contended I/O and the distinct block-I/O repeat tail
+- Generalized the floating-bus model for the original Spectrum 128K and grey +2, including normal bank 5 and shadow bank 7 screen selection
+- Decoded attached input devices before the floating-bus fallback, including `IN (0xFFFD)` reading the selected AY register
+- Corrected and tested border, beeper, and AY write timestamps plus eight-pixel border-latch and visible pixel/T-state mapping without claiming +2A/+3 behavior
+- Continue validation with published contention and floating-bus diagnostics plus the existing tape, snapshot, RZX, ZEXDOC, and ZEXALL regression matrix
 
 ### Milestone 17 - Beam-Aware Video Pipeline Planned
 - Add an event-driven ULA raster that advances to timed machine events; a literal per-T-state host loop is not required when the observable result is equivalent
@@ -304,7 +313,7 @@ compatibility and polish; completed milestones remain regression baselines.
 - Apply border changes and 128K normal/shadow screen switches at their raster positions through the same timing model
 - Preserve FLASH, palette, scaling, and the platform-neutral frame-buffer boundary while replacing only the frame's source data
 - Implement and validate the 48K fetch path first, then original 128K/+2 timing and shadow-screen behavior
-- Add deterministic mid-frame bitmap, attribute, border, and paging tests, followed by representative multicolour and racing-beam demo validation
+- Add deterministic mid-frame bitmap, attribute, border, and paging tests, followed by representative multicolour and racing-beam validation; Arkanoid's erase/redraw flicker is a primary acceptance case
 
 ### Milestone 18 - Debug Execution Controls Planned
 - Keep opening the window paused by default, with an explicit Run/Pause control if live execution is enabled
@@ -327,7 +336,6 @@ compatibility and polish; completed milestones remain regression baselines.
 ## Longer-Term Improvements
 
 - Demo compatibility beyond the current validation matrix
-- Remaining menu/input responsiveness polish for games like Jet Set Willy
 - Broader real-game validation
 - Optional game library window with searchable artwork tiles, recent items, and an explicit file picker; prefer a scalable grid over a carousel-only interface
 - Additional platform frontends, including a browser/WebAssembly adapter using the established headless engine boundary

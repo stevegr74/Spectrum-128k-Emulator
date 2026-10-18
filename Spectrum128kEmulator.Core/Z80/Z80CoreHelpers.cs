@@ -18,7 +18,7 @@ namespace Spectrum128kEmulator.Z80
                 3 => Regs.E,
                 4 => Regs.H,
                 5 => Regs.L,
-                6 => ReadMemory(Regs.HL),
+                6 => ReadDataMemory(Regs.HL),
                 7 => Regs.A,
                 _ => 0
             };
@@ -34,7 +34,7 @@ namespace Spectrum128kEmulator.Z80
                 case 3: Regs.E = val; break;
                 case 4: Regs.H = val; break;
                 case 5: Regs.L = val; break;
-                case 6: WriteMemory(Regs.HL, val); break;
+                case 6: WriteDataMemory(Regs.HL, val); break;
                 case 7: Regs.A = val; break;
             }
         }
@@ -43,6 +43,8 @@ namespace Spectrum128kEmulator.Z80
         {
             byte old = GetReg(idx);
             byte val = (byte)(old + 1);
+            if (idx == 6)
+                AdvanceMemoryAccessOffset(1);
             SetReg(idx, val);
 
             SetFlag(Flag.S, (val & 0x80) != 0);
@@ -59,6 +61,8 @@ namespace Spectrum128kEmulator.Z80
         {
             byte old = GetReg(idx);
             byte val = (byte)(old - 1);
+            if (idx == 6)
+                AdvanceMemoryAccessOffset(1);
             SetReg(idx, val);
 
             SetFlag(Flag.S, (val & 0x80) != 0);
@@ -108,10 +112,11 @@ namespace Spectrum128kEmulator.Z80
         // prefix bytes, but not on ordinary operand bytes.
         private byte FetchOpcodeByte()
         {
-            byte b = ReadMemory(Regs.PC);
+            byte b = ReadMemoryAtInstructionOffset(Regs.PC, instructionFetchOffsetTStates);
             Regs.PC = (ushort)(Regs.PC + 1);
             IncrementRefreshRegister();
             InstructionFetchCount++;
+            instructionFetchOffsetTStates += 4;
             return b;
         }
 
@@ -122,9 +127,41 @@ namespace Spectrum128kEmulator.Z80
 
         private byte FetchByte()
         {
-            byte b = ReadMemory(Regs.PC);
+            byte b = ReadMemoryAtInstructionOffset(Regs.PC, instructionFetchOffsetTStates);
             Regs.PC = (ushort)(Regs.PC + 1);
+            instructionFetchOffsetTStates += 3;
             return b;
+        }
+
+        private byte ReadMemoryAtInstructionOffset(ushort address, int offsetTStates) =>
+            ReadMemoryTimed?.Invoke(address, offsetTStates) ?? ReadMemory(address);
+
+        private void WriteMemoryAtInstructionOffset(ushort address, byte value, int offsetTStates)
+        {
+            if (WriteMemoryTimed != null)
+                WriteMemoryTimed(address, value, offsetTStates);
+            else
+                WriteMemory(address, value);
+        }
+
+        private byte ReadDataMemory(ushort address, int internalTStatesBefore = 0)
+        {
+            AdvanceMemoryAccessOffset(internalTStatesBefore);
+            byte value = ReadMemoryAtInstructionOffset(address, instructionFetchOffsetTStates);
+            instructionFetchOffsetTStates += 3;
+            return value;
+        }
+
+        private void WriteDataMemory(ushort address, byte value, int internalTStatesBefore = 0)
+        {
+            AdvanceMemoryAccessOffset(internalTStatesBefore);
+            WriteMemoryAtInstructionOffset(address, value, instructionFetchOffsetTStates);
+            instructionFetchOffsetTStates += 3;
+        }
+
+        private void AdvanceMemoryAccessOffset(int tStates)
+        {
+            instructionFetchOffsetTStates += tStates;
         }
 
         private ushort FetchWord()
@@ -134,23 +171,5 @@ namespace Spectrum128kEmulator.Z80
             return (ushort)(low | (high << 8));
         }
 
-        private void WriteWordWithAccessSpacing(ushort addr, byte low, byte high, int totalTStates)
-        {
-            TStates += (ulong)(totalTStates - 6);
-            WriteMemory(addr, low);
-            TStates += 3;
-            WriteMemory((ushort)(addr + 1), high);
-            TStates += 3;
-        }
-
-        private ushort ReadWordWithAccessSpacing(ushort addr, int totalTStates)
-        {
-            TStates += (ulong)(totalTStates - 6);
-            byte low = ReadMemory(addr);
-            TStates += 3;
-            byte high = ReadMemory((ushort)(addr + 1));
-            TStates += 3;
-            return (ushort)(low | (high << 8));
-        }
     }
 }
