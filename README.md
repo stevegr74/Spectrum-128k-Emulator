@@ -75,9 +75,10 @@ Current limitations and active work:
 
 Each feature is developed on its own branch. Current Milestone 19 work is
 cross-reference and code/data analysis on top of the completed bank-aware symbol
-foundation. Tape compatibility and the turbo-to-realtime audio transition continue
-in parallel, with the verified media matrix plus ZEXDOC/ZEXALL used as regression
-gates.
+foundation. Milestone 20 will then harden the tape architecture through
+behavior-preserving decomposition and stronger transition tests. Tape compatibility
+and the turbo-to-realtime audio transition continue in parallel, with the verified
+media matrix plus ZEXDOC/ZEXALL used as regression gates.
 
 ---
 
@@ -331,6 +332,7 @@ compatibility and polish; completed milestones remain regression baselines.
 | 17 | Complete | Event-driven beam capture for bitmap, per-line attributes, border timing, and 128K shadow-screen changes, validated against Arkanoid and published diagnostics |
 | 18 | Complete | Instruction-boundary Run/Pause, Step Into/Over/Out, run to cursor, CPU context, and persistent breakpoints |
 | 19 | In progress | Physical-bank inspection, labels, and symbol import/export complete; cross-references and code/data analysis remain |
+| 20 | Planned | Tape state ownership, transition coverage, diagnostics, and behavior-preserving subsystem decomposition |
 
 ### Milestone 16 - ULA Timing Conformance And Port Accuracy Complete
 - Implemented one model-specific timing profile for frame length, scanline length, contention start, display fetches, visible raster mapping, and the documented timing convention
@@ -368,6 +370,15 @@ compatibility and polish; completed milestones remain regression baselines.
 - Completed stable bank-qualified listings suitable for diagnostics and comparison between emulator runs
 - Add cross-references for jumps, calls, and data references without treating arbitrary data as executable code
 - Add code/data marking, hexadecimal memory inspection, and navigation from registers, stack entries, and branch targets
+
+### Milestone 20 - Tape Architecture Hardening Planned
+- Audit tape state ownership and document invariants across transport, load-strategy selection, and continuation handling
+- Add table-driven transition coverage for fast loading, real-time fallback, pause/resume, stop markers, tape end, multiloads, media replacement, reset, and Quick State restoration
+- Split the large tape regression suite into responsibility-based test classes without reducing existing coverage
+- Keep pulse/EAR transport, fast/ROM/protected load strategy, and BASIC/machine-code continuation as separate cooperating responsibilities rather than one combined state machine
+- Reduce `TapLoader.BasicBootstrap.cs`, `TapLoader.cs`, and `MountedTape.cs` incrementally, starting with behavior-preserving extractions and leaving `MountedLoadContinuationController` focused on resume state
+- Add structured transition diagnostics that distinguish pauses, tape end, ROM handoff, unsupported acceleration, and invalid continuation state
+- Use one branch per extraction and retain the full automated suite plus the verified media matrix as regression gates; do not mix compatibility changes into structural branches
 
 ---
 
