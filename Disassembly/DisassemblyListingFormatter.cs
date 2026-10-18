@@ -9,17 +9,29 @@ namespace Spectrum128kEmulator
             DisassemblySnapshot snapshot,
             ushort startAddress)
         {
+            return DisassembleCompleteAddressSpace(snapshot, DisassemblyAddressSpace.Mapped, startAddress);
+        }
+
+        public static IReadOnlyList<Z80Instruction> DisassembleCompleteAddressSpace(
+            DisassemblySnapshot snapshot,
+            DisassemblyAddressSpace addressSpace,
+            ushort startAddress)
+        {
             ArgumentNullException.ThrowIfNull(snapshot);
             var instructions = new List<Z80Instruction>();
-            ushort address = startAddress;
+            int length = addressSpace.Length;
+            int address = startAddress % length;
             int coveredBytes = 0;
-            while (coveredBytes < 65536)
+            while (coveredBytes < length)
             {
-                Z80Instruction instruction = Z80InstructionDisassembler.Disassemble(address, snapshot.ReadMemory);
+                ushort instructionAddress = (ushort)address;
+                Z80Instruction instruction = Z80InstructionDisassembler.Disassemble(
+                    instructionAddress,
+                    value => snapshot.ReadMemory(addressSpace, value));
                 instructions.Add(instruction);
-                int length = Math.Max(1, instruction.Length);
-                coveredBytes += length;
-                address = (ushort)(address + length);
+                int instructionLength = Math.Max(1, instruction.Length);
+                coveredBytes += instructionLength;
+                address = (address + instructionLength) % addressSpace.Length;
             }
 
             return instructions;
@@ -31,6 +43,22 @@ namespace Spectrum128kEmulator
             IEnumerable<Z80Instruction> instructions,
             bool includeHeader)
         {
+            return Format(
+                snapshot,
+                DisassemblyAddressSpace.Mapped,
+                listingAddress,
+                instructions,
+                includeHeader);
+        }
+
+        public static string Format(
+            DisassemblySnapshot snapshot,
+            DisassemblyAddressSpace addressSpace,
+            ushort listingAddress,
+            IEnumerable<Z80Instruction> instructions,
+            bool includeHeader,
+            DisassemblySymbolTable? symbols = null)
+        {
             ArgumentNullException.ThrowIfNull(snapshot);
             ArgumentNullException.ThrowIfNull(instructions);
 
@@ -40,13 +68,32 @@ namespace Spectrum128kEmulator
                 builder.AppendLine("; Z80 disassembly - immutable paused capture");
                 builder.AppendLine($"; Captured UTC: {snapshot.CapturedAtUtc:O}");
                 builder.AppendLine($"; Captured PC: {snapshot.ProgramCounter:X4}H");
-                builder.AppendLine($"; Listing address: {listingAddress:X4}H");
+                builder.AppendLine($"; Address space: {addressSpace.DisplayName}");
+                builder.AppendLine($"; Listing address: {addressSpace.FormatAddress(listingAddress)}");
                 builder.AppendLine($"; {snapshot.MappingText}");
                 builder.AppendLine();
             }
 
             foreach (Z80Instruction instruction in instructions)
-                builder.AppendLine($"{instruction.Address:X4}:  {instruction.BytesText,-14}  {instruction.Mnemonic}");
+            {
+                string? label = symbols?.GetName(addressSpace, instruction.Address);
+                if (label != null)
+                    builder.AppendLine($"{label}:");
+
+                string targetComment = instruction.BranchTarget is ushort target &&
+                    symbols?.GetName(addressSpace, target) is string targetLabel
+                        ? $"  ; -> {targetLabel}"
+                        : string.Empty;
+                if (addressSpace.Kind == DisassemblyAddressSpaceKind.Mapped)
+                {
+                    builder.AppendLine($"{instruction.Address:X4}:  {instruction.BytesText,-14}  {instruction.Mnemonic}{targetComment}");
+                }
+                else
+                {
+                    string addressText = $"{addressSpace.DisplayName}:{instruction.Address:X4}:";
+                    builder.AppendLine($"{addressText,-13}  {instruction.BytesText,-14}  {instruction.Mnemonic}{targetComment}");
+                }
+            }
 
             return builder.ToString().TrimEnd();
         }

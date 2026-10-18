@@ -22,9 +22,29 @@ namespace Spectrum128kEmulator
             out DisassemblySearchResult? result,
             out string? error)
         {
+            return TryFindNext(
+                snapshot,
+                DisassemblyAddressSpace.Mapped,
+                mode,
+                query,
+                startAddress,
+                out result,
+                out error);
+        }
+
+        public static bool TryFindNext(
+            DisassemblySnapshot snapshot,
+            DisassemblyAddressSpace addressSpace,
+            DisassemblySearchMode mode,
+            string? query,
+            ushort startAddress,
+            out DisassemblySearchResult? result,
+            out string? error)
+        {
             ArgumentNullException.ThrowIfNull(snapshot);
             result = null;
             error = null;
+            int addressSpaceLength = addressSpace.Length;
 
             if (mode == DisassemblySearchMode.Address)
             {
@@ -34,7 +54,13 @@ namespace Spectrum128kEmulator
                     return false;
                 }
 
-                result = new DisassemblySearchResult(address, $"Address {address:X4}H");
+                if (address >= addressSpaceLength)
+                {
+                    error = $"Enter a hexadecimal offset from 0000 to {addressSpaceLength - 1:X4}.";
+                    return false;
+                }
+
+                result = new DisassemblySearchResult(address, $"Address {addressSpace.FormatAddress(address)}");
                 return true;
             }
 
@@ -46,13 +72,30 @@ namespace Spectrum128kEmulator
                     return false;
                 }
 
-                for (int offset = 0; offset < 65536; offset++)
+                if (bytes.Length > addressSpaceLength)
                 {
-                    ushort candidate = (ushort)(startAddress + offset);
+                    error = "Byte sequence is larger than the selected address space.";
+                    return false;
+                }
+
+                int normalizedStart = startAddress % addressSpaceLength;
+                for (int offset = 0; offset < addressSpaceLength; offset++)
+                {
+                    int candidateValue = (normalizedStart + offset) % addressSpaceLength;
+                    if (addressSpace.Kind != DisassemblyAddressSpaceKind.Mapped &&
+                        candidateValue + bytes.Length > addressSpaceLength)
+                    {
+                        continue;
+                    }
+
+                    ushort candidate = (ushort)candidateValue;
                     bool matches = true;
                     for (int index = 0; index < bytes.Length; index++)
                     {
-                        if (snapshot.ReadMemory((ushort)(candidate + index)) != bytes[index])
+                        ushort byteAddress = addressSpace.Kind == DisassemblyAddressSpaceKind.Mapped
+                            ? (ushort)(candidate + index)
+                            : (ushort)(candidateValue + index);
+                        if (snapshot.ReadMemory(addressSpace, byteAddress) != bytes[index])
                         {
                             matches = false;
                             break;
@@ -77,10 +120,13 @@ namespace Spectrum128kEmulator
                 return false;
             }
 
-            for (int offset = 0; offset < 65536; offset++)
+            int mnemonicStart = startAddress % addressSpaceLength;
+            for (int offset = 0; offset < addressSpaceLength; offset++)
             {
-                ushort candidate = (ushort)(startAddress + offset);
-                Z80Instruction instruction = Z80InstructionDisassembler.Disassemble(candidate, snapshot.ReadMemory);
+                ushort candidate = (ushort)((mnemonicStart + offset) % addressSpaceLength);
+                Z80Instruction instruction = Z80InstructionDisassembler.Disassemble(
+                    candidate,
+                    address => snapshot.ReadMemory(addressSpace, address));
                 if (instruction.Mnemonic.Contains(mnemonicQuery, StringComparison.OrdinalIgnoreCase))
                 {
                     result = new DisassemblySearchResult(candidate, $"Mnemonic {instruction.Mnemonic}");

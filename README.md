@@ -16,7 +16,7 @@ This project focuses on correctness, clean architecture, and incremental develop
 - `.tap` and `.tzx` parsing, fast bootstrap, ROM-driven loading, protected/mounted playback, VERIFY, and multi-block sequencing
 - Manual/resumable tape transport with 48K stop-marker support and persistent status feedback
 - Platform-neutral headless core with Windows presentation/audio adapters
-- Paused `F6` debugger with immutable captures, CPU/stack context, Step Into/Over/Out, Run/Pause, run to cursor, persistent breakpoints, search, navigation, copy, and export
+- Paused `F6` debugger with immutable mapped/physical-bank captures, CPU/stack context, Step Into/Over/Out, Run/Pause, run to cursor, persistent breakpoints, bank-qualified labels, symbol files, search, navigation, copy, and export
 - In-memory `F7`/`F8` Quick State save and restore
 - Headless manual diagnostics and Z80 compliance runners
 
@@ -61,9 +61,9 @@ Current limitations and active work:
 ## Development Priorities
 
 Each feature is developed on its own branch. Current work is bank-aware symbolic
-disassembly (Milestone 19). Tape compatibility and the
-turbo-to-realtime audio transition continue in parallel, with the verified media
-matrix plus ZEXDOC/ZEXALL used as regression gates.
+disassembly (Milestone 19). Tape compatibility and the turbo-to-realtime audio
+transition continue in parallel, with the verified media matrix plus
+ZEXDOC/ZEXALL used as regression gates.
 
 ---
 
@@ -95,7 +95,7 @@ Spectrum128kEmulator/
 |   `-- RzxPlaybackSession.cs              RZX playback orchestration
 |
 |-- Audio/                                 Windows audio pipeline and output adapters
-|-- Disassembly/                           execution debugger UI, captures, navigation, and export
+|-- Disassembly/                           debugger UI, bank captures, symbols, navigation, and export
 |-- Host/                                  background loop, pause ownership, and UI snapshots
 |-- Forms/                                 main window partials and shortcut-reference dialog
 |-- Input/                                 WinForms-to-Spectrum keyboard bridge
@@ -118,9 +118,9 @@ Spectrum128kEmulator/
 `Spectrum128kEmulator.Core` has no WinForms, `System.Drawing`, or Windows
 audio-device dependency. The `net10.0-windows` frontend consumes Core for
 emulation state and produces Windows-specific video and audio output. The
-compliance runner depends only on Core, while the test and manual-harness
-projects also depend only on Core. Windows presentation and host behavior is
-isolated in `Spectrum128kEmulator.Windows.Tests`.
+compliance runner, `Spectrum128kEmulator.Tests`, and manual harness depend only
+on Core. Windows presentation, debugger UI, and host behavior are covered by
+`Spectrum128kEmulator.Windows.Tests`.
 
 ---
 
@@ -170,13 +170,18 @@ the associated media name as well as CPU, RAM banks, paging, ULA/audio frame
 state, tape, and RZX position; it survives media loads during the session and is
 discarded on exit.
 
-The debugger captures the mapped logical 64K plus registers, flags, interrupt
-state, stack context, model, ROM, and paging state; it does not yet expose every
-physical bank. It opens paused and supports Run/Pause, Step Into, Step Over,
-Step Out, run to cursor, and persistent enabled/disabled address breakpoints.
-The listing remains frozen while execution runs and refreshes only after the
-machine stops safely at an instruction boundary. Help and file choosers use
-nested-safe pause ownership.
+The debugger captures the mapped logical 64K, both ROM banks, all eight RAM
+banks, registers, flags, interrupt state, stack context, model, and paging state.
+Its memory-view selector keeps mapped addresses distinct from bank-qualified
+physical offsets; search, history, copy, and export follow the selected view.
+Bank-qualified labels persist between sessions, can be imported or exported as
+plain-text symbol files, and are created automatically when an unlabeled direct
+call or branch target is followed.
+It opens paused and supports Run/Pause, Step Into, Step Over, Step Out, run to
+cursor, and persistent enabled/disabled mapped-address breakpoints. The listing
+remains frozen while execution runs and refreshes only after the machine stops
+safely at an instruction boundary. Help and file choosers use nested-safe pause
+ownership.
 
 ---
 
@@ -213,7 +218,7 @@ Test coverage includes:
 - AY register write and selected-register port-read behaviour
 - Audio sample generation
 - Audio pipeline behaviour
-- Z80 instruction decoding, disassembly navigation/search, listing export, settings, and snapshot behavior
+- Z80 instruction decoding, bank-aware disassembly navigation/search, labels, symbol import/export, listing export, settings, snapshot behavior, and STA WinForms interaction
 - Quick State deterministic machine, tape-cursor, and RZX-cursor restoration
 - ZEXDOC and ZEXALL compliance validation via the dedicated runner
 
@@ -310,7 +315,7 @@ compatibility and polish; completed milestones remain regression baselines.
 | 16 | Complete | Central ULA profiles, contention conformance, 128K floating bus, exact port events, border-latch mapping, timed CPU bus cycles, and published diagnostic validation |
 | 17 | Complete | Event-driven beam capture for bitmap, per-line attributes, border timing, and 128K shadow-screen changes, validated against Arkanoid and published diagnostics |
 | 18 | Complete | Instruction-boundary Run/Pause, Step Into/Over/Out, run to cursor, CPU context, and persistent breakpoints |
-| 19 | Planned | Bank-aware disassembly, labels, symbols, cross-references, and code/data analysis |
+| 19 | In progress | Physical-bank inspection, labels, and symbol import/export complete; cross-references and code/data analysis remain |
 
 ### Milestone 16 - ULA Timing Conformance And Port Accuracy Complete
 - Implemented one model-specific timing profile for frame length, scanline length, contention start, display fetches, visible raster mapping, and the documented timing convention
@@ -340,13 +345,14 @@ compatibility and polish; completed milestones remain regression baselines.
 - Keeps execution and breakpoint policy in a platform-neutral debugger service, with deterministic controller, interrupt-boundary, CPU, and scheduler tests
 - Refreshes the immutable capture only after a safe stop, avoiding mutable-state inspection while execution is active
 
-### Milestone 19 - Bank-Aware Disassembly And Symbolic Analysis Planned
-- Allow inspection of physical ROM and RAM banks independently of the currently mapped 64K address space
-- Annotate logical addresses with ROM/RAM bank identity and make paging changes visible in refreshed snapshots
-- Add user labels, symbol import/export, and automatic labels for followed branch and call targets
+### Milestone 19 - Bank-Aware Disassembly And Symbolic Analysis In Progress
+- Completed immutable inspection of both ROM banks and all eight RAM banks independently of the currently mapped 64K address space
+- Completed explicit mapped versus bank-qualified offset context across navigation history, search, copy, and 64K/16K export
+- Completed persistent user labels, automatic followed-target labels, symbol-aware navigation, and bank-qualified symbol import/export
+- Completed refreshed paging context without conflating physical offsets with logical CPU addresses
+- Completed stable bank-qualified listings suitable for diagnostics and comparison between emulator runs
 - Add cross-references for jumps, calls, and data references without treating arbitrary data as executable code
 - Add code/data marking, hexadecimal memory inspection, and navigation from registers, stack entries, and branch targets
-- Export stable bank-qualified listings suitable for diagnostics and comparison between emulator runs
 
 ---
 

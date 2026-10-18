@@ -48,6 +48,20 @@ namespace Spectrum128kEmulator.Tests
             Assert.Equal((ushort)0x1015, back.SelectedAddress);
         }
 
+        [Fact]
+        public void NavigationHistory_RestoresPhysicalAddressSpace()
+        {
+            var history = new DisassemblyNavigationHistory();
+            var ramSeven = DisassemblyAddressSpace.Ram(7);
+
+            Assert.True(history.NavigateTo(new DisassemblyNavigationLocation(0x0100, 0x0104, ramSeven)));
+            Assert.True(history.NavigateTo(new DisassemblyNavigationLocation(0x8000, 0x8000)));
+            Assert.True(history.TryGoBack(out DisassemblyNavigationLocation back));
+
+            Assert.Equal(ramSeven, back.AddressSpace);
+            Assert.Equal((ushort)0x0104, back.SelectedAddress);
+        }
+
         [Theory]
         [InlineData("3E 10", "3E 10")]
         [InlineData("DD,21,00,80", "DD 21 00 80")]
@@ -104,6 +118,29 @@ namespace Spectrum128kEmulator.Tests
         }
 
         [Fact]
+        public void PhysicalBankSearch_IsBoundedAndDoesNotWrapSequenceAcrossBankEnd()
+        {
+            byte[][] romBanks = CreateBanks(2);
+            byte[][] ramBanks = CreateBanks(8);
+            ramBanks[3][0x0100] = 0x3E;
+            ramBanks[3][0x0101] = 0x42;
+            ramBanks[3][0x3FFF] = 0xAA;
+            ramBanks[3][0] = 0xBB;
+            DisassemblySnapshot snapshot = CreateSnapshot(new byte[65536], romBanks: romBanks, ramBanks: ramBanks);
+
+            Assert.True(DisassemblySearch.TryFindNext(
+                snapshot, DisassemblyAddressSpace.Ram(3), DisassemblySearchMode.Bytes, "3E 42", 0,
+                out DisassemblySearchResult? result, out _));
+            Assert.Equal((ushort)0x0100, result!.Address);
+            Assert.False(DisassemblySearch.TryFindNext(
+                snapshot, DisassemblyAddressSpace.Ram(3), DisassemblySearchMode.Bytes, "AA BB", 0,
+                out _, out _));
+            Assert.False(DisassemblySearch.TryFindNext(
+                snapshot, DisassemblyAddressSpace.Ram(3), DisassemblySearchMode.Address, "4000", 0,
+                out _, out _));
+        }
+
+        [Fact]
         public void ListingFormatter_IncludesCaptureContextAndStableRows()
         {
             var memory = new byte[65536];
@@ -136,6 +173,33 @@ namespace Spectrum128kEmulator.Tests
         }
 
         [Fact]
+        public void PhysicalBankListing_CoversOnlySelectedBankAndQualifiesExportedAddresses()
+        {
+            byte[][] romBanks = CreateBanks(2);
+            byte[][] ramBanks = CreateBanks(8);
+            ramBanks[4][0x0200] = 0x3E;
+            ramBanks[4][0x0201] = 0x10;
+            DisassemblySnapshot snapshot = CreateSnapshot(new byte[65536], romBanks: romBanks, ramBanks: ramBanks);
+
+            IReadOnlyList<Z80Instruction> instructions =
+                DisassemblyListingFormatter.DisassembleCompleteAddressSpace(
+                    snapshot,
+                    DisassemblyAddressSpace.Ram(4),
+                    0x0200);
+            string listing = DisassemblyListingFormatter.Format(
+                snapshot,
+                DisassemblyAddressSpace.Ram(4),
+                0x0200,
+                instructions.Take(1),
+                includeHeader: true);
+
+            Assert.InRange(instructions.Sum(instruction => Math.Max(1, instruction.Length)), 0x4000, 0x4003);
+            Assert.Contains("Address space: RAM 4", listing);
+            Assert.Contains("RAM 4:0200:", listing);
+            Assert.Contains("LD A,10H", listing);
+        }
+
+        [Fact]
         public void WindowSettings_RoundTripAndRecoverFromInvalidJson()
         {
             string folder = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"));
@@ -149,9 +213,22 @@ namespace Spectrum128kEmulator.Tests
                     Height = 777,
                     ColumnWidths = [80, 160, 500, 90],
                     LastListingAddress = 0xABCD,
+                    LastAddressSpaceKind = DisassemblyAddressSpaceKind.Ram,
+                    LastAddressSpaceBank = 6,
                     Breakpoints =
                     [
                         new DisassemblerBreakpointSetting { Address = 0x8123, Enabled = false }
+                    ],
+                    Symbols =
+                    [
+                        new DisassemblerSymbolSetting
+                        {
+                            AddressSpaceKind = DisassemblyAddressSpaceKind.Rom,
+                            Bank = 1,
+                            Address = 0x1234,
+                            Name = "RomRoutine",
+                            IsAutomatic = true
+                        }
                     ]
                 });
 
@@ -160,9 +237,14 @@ namespace Spectrum128kEmulator.Tests
                 Assert.Equal(777, loaded.Height);
                 Assert.Equal(new[] { 80, 160, 500, 90 }, loaded.ColumnWidths);
                 Assert.Equal((ushort)0xABCD, loaded.LastListingAddress);
+                Assert.Equal(DisassemblyAddressSpaceKind.Ram, loaded.LastAddressSpaceKind);
+                Assert.Equal(6, loaded.LastAddressSpaceBank);
                 Assert.Single(loaded.Breakpoints);
                 Assert.Equal((ushort)0x8123, loaded.Breakpoints[0].Address);
                 Assert.False(loaded.Breakpoints[0].Enabled);
+                Assert.Single(loaded.Symbols);
+                Assert.Equal("RomRoutine", loaded.Symbols[0].Name);
+                Assert.True(loaded.Symbols[0].IsAutomatic);
 
                 File.WriteAllText(path, "not-json");
                 Assert.Null(store.Load().LastListingAddress);
@@ -174,7 +256,11 @@ namespace Spectrum128kEmulator.Tests
             }
         }
 
-        private static DisassemblySnapshot CreateSnapshot(byte[] memory, DateTime? capturedAtUtc = null)
+        private static DisassemblySnapshot CreateSnapshot(
+            byte[] memory,
+            DateTime? capturedAtUtc = null,
+            IReadOnlyList<byte[]>? romBanks = null,
+            IReadOnlyList<byte[]>? ramBanks = null)
         {
             return new DisassemblySnapshot(
                 memory,
@@ -183,7 +269,12 @@ namespace Spectrum128kEmulator.Tests
                 currentRomBank: 1,
                 pagedRamBank: 7,
                 screenBank: 5,
-                capturedAtUtc);
+                capturedAtUtc,
+                romBanks: romBanks,
+                ramBanks: ramBanks);
         }
+
+        private static byte[][] CreateBanks(int count) =>
+            Enumerable.Range(0, count).Select(_ => new byte[0x4000]).ToArray();
     }
 }
