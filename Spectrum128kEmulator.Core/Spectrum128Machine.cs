@@ -24,12 +24,6 @@ namespace Spectrum128kEmulator
         public const int BorderTopHeight = 24;
         public const int ScreenWidth = ActiveDisplayWidth + (BorderLeftWidth * 2);
         public const int ScreenHeight = ActiveDisplayHeight + (BorderTopHeight * 2);
-        private const int DisplayLineTStates = 224;
-        private const int DisplayAreaStartTStates48 = 14347;
-        private const int DisplayAreaVisibleLineTStates = 128;
-        private const int DisplayAreaLineCount = 192;
-        private const int Default48kFloatingBusDisplayStartAdjustTStates = 0;
-        private const int Default48kFloatingBusSampleAdjustTStates = 1;
         private const int TapeLoaderActivityReadsPerFrame = 64;
         private const int TapeLoaderHandoffFramesBeforeStop = 3;
 
@@ -198,12 +192,13 @@ namespace Spectrum128kEmulator
         public int BorderColor { get; private set; } = 1;
         public int FrameCount { get; private set; }
         public int FrameTStates => frameTStates;
-        public int CurrentCpuClockHz => frameTStates == FrameTStates48 ? CpuClockHz48 : CpuClockHz128;
+        public int CurrentCpuClockHz => TimingProfile.CpuClockHz;
         public SpectrumMachineModel MachineModel { get; private set; } = SpectrumMachineModel.Spectrum128K;
         public SpectrumRomProfile RomProfile { get; private set; } = null!;
         public bool SupportsRomTapeAcceleration => RomProfile.SupportsAddressBasedTapeServices;
         public bool FlashPhase => ((FrameCount / 16) & 1) != 0;
         public BorderFrame LastCompletedBorderFrame => lastCompletedBorderFrame;
+        private UlaTimingProfile TimingProfile => UlaTimingProfile.ForFrameLength(frameTStates);
 
         public bool HasMountedTape => mountedTape != null;
         public string? MountedTapeName => mountedTape?.DisplayName;
@@ -453,22 +448,20 @@ namespace Spectrum128kEmulator
             }
         }
 
-        private ulong Get48kContentionDelay(ulong tStates)
+        private ulong GetUlaContentionDelay(ulong tStates)
         {
-            int timingFrameTStates = frameTStates == FrameTStates48 ? FrameTStates48 : FrameTStates128;
-            int contentionStartTStates = timingFrameTStates == FrameTStates48 ? 14335 : 14361;
-            int lineTStates = timingFrameTStates == FrameTStates48 ? 224 : 228;
+            UlaTimingProfile timing = TimingProfile;
 
-            ulong frameOffset = tStates % (ulong)timingFrameTStates;
-            if (frameOffset < (ulong)contentionStartTStates)
+            ulong frameOffset = tStates % (ulong)timing.FrameTStates;
+            if (frameOffset < (ulong)timing.ContentionStartTState)
                 return 0;
 
-            ulong displayOffset = frameOffset - (ulong)contentionStartTStates;
-            if (displayOffset >= (ulong)(lineTStates * DisplayAreaLineCount))
+            ulong displayOffset = frameOffset - (ulong)timing.ContentionStartTState;
+            if (displayOffset >= (ulong)(timing.LineTStates * timing.DisplayLineCount))
                 return 0;
 
-            int lineTState = (int)(displayOffset % (ulong)lineTStates);
-            if (lineTState >= DisplayAreaVisibleLineTStates)
+            int lineTState = (int)(displayOffset % (ulong)timing.LineTStates);
+            if (lineTState >= timing.DisplayFetchTStatesPerLine)
                 return 0;
 
             int phase = lineTState & 0x07;
@@ -488,7 +481,7 @@ namespace Spectrum128kEmulator
             if (!Is48kContendedMemoryAddress(addr))
                 return;
 
-            ulong delay = Get48kContentionDelay(cpu.TStates);
+            ulong delay = GetUlaContentionDelay(cpu.TStates);
             if (delay != 0)
                 cpu.AddTStates(delay);
         }
@@ -509,7 +502,7 @@ namespace Spectrum128kEmulator
 
             void ApplyContendedSegment(int advanceTStates)
             {
-                ulong delay = Get48kContentionDelay(currentTStates);
+                ulong delay = GetUlaContentionDelay(currentTStates);
                 totalDelay += delay;
                 currentTStates += delay + (ulong)advanceTStates;
             }
@@ -980,10 +973,10 @@ namespace Spectrum128kEmulator
             byte value;
             if ((port & 0x0001) == 0)
                 value = ReadKeyboardEarPort(port, cpu.TStates);
-            else if (frameTStates == FrameTStates48)
-                value = ReadFloatingBus48(cpu.TStates);
+            else if (IsAyRegisterReadPort(port))
+                value = ay.ReadRegister(ay.CurrentRegister);
             else
-                value = 0xFF;
+                value = ReadFloatingBus(cpu.TStates);
 
             if (debugEventCaptureEnabled)
                 RecordPortEvent($"T={cpu.TStates,10} IN  {port:X4}={value:X2} PC={cpu.Regs.PC:X4} SP={cpu.Regs.SP:X4}");
@@ -1004,21 +997,31 @@ namespace Spectrum128kEmulator
 
             if ((port & 0x0001) == 0)
             {
-                byte value = ReadKeyboardEarPort(port, sampleTStates);
+                byte keyboardValue = ReadKeyboardEarPort(port, sampleTStates);
                 if (debugEventCaptureEnabled)
-                    RecordPortEvent($"T={sampleTStates,10} IN  {port:X4}={value:X2} PC={cpu.Regs.PC:X4} SP={cpu.Regs.SP:X4}");
-                return value;
+                    RecordPortEvent($"T={sampleTStates,10} IN  {port:X4}={keyboardValue:X2} PC={cpu.Regs.PC:X4} SP={cpu.Regs.SP:X4}");
+                return keyboardValue;
             }
 
-            if (frameTStates == FrameTStates48)
+            byte value;
+            if (IsAyRegisterReadPort(port))
+            {
+                value = ay.ReadRegister(ay.CurrentRegister);
+            }
+            else
             {
                 long adjustedSampleTStates = (long)sampleTStates + floatingBusSampleAdjustTStates;
                 ulong floatingBusSampleTStates = adjustedSampleTStates > 0 ? (ulong)adjustedSampleTStates : 0UL;
-                return ReadFloatingBus48(floatingBusSampleTStates);
+                value = ReadFloatingBus(floatingBusSampleTStates);
             }
 
-            return 0xFF;
+            if (debugEventCaptureEnabled)
+                RecordPortEvent($"T={sampleTStates,10} IN  {port:X4}={value:X2} PC={cpu.Regs.PC:X4} SP={cpu.Regs.SP:X4}");
+            return value;
         }
+
+        private bool IsAyRegisterReadPort(ushort port) =>
+            IsAyHardwareEnabled && (port & 0xC002) == 0xC000;
 
         private byte ReadKeyboardEarPort(ushort port, ulong sampleTStates)
         {
@@ -1137,24 +1140,25 @@ namespace Spectrum128kEmulator
             mountedTapeHandoffFrames = 0;
         }
 
-        private byte ReadFloatingBus48(ulong sampleTStates)
+        private byte ReadFloatingBus(ulong sampleTStates)
         {
-            long adjustedFrameOffset = (long)(sampleTStates % (ulong)FrameTStates48) - floatingBusDisplayStartAdjustTStates;
+            UlaTimingProfile timing = TimingProfile;
+            long adjustedFrameOffset = (long)(sampleTStates % (ulong)timing.FrameTStates) - floatingBusDisplayStartAdjustTStates;
             if (adjustedFrameOffset < 0)
-                adjustedFrameOffset += FrameTStates48;
+                adjustedFrameOffset += timing.FrameTStates;
 
             ulong frameOffset = (ulong)adjustedFrameOffset;
-            if (frameOffset < DisplayAreaStartTStates48)
+            if (frameOffset < (ulong)timing.DisplayFetchStartTState)
                 return 0xFF;
 
-            int displayOffset = (int)(frameOffset - DisplayAreaStartTStates48);
-            int displaySpan = DisplayLineTStates * DisplayAreaLineCount;
+            int displayOffset = (int)(frameOffset - (ulong)timing.DisplayFetchStartTState);
+            int displaySpan = timing.LineTStates * timing.DisplayLineCount;
             if (displayOffset >= displaySpan)
                 return 0xFF;
 
-            int line = displayOffset / DisplayLineTStates;
-            int lineTState = displayOffset % DisplayLineTStates;
-            if (lineTState >= DisplayAreaVisibleLineTStates)
+            int line = displayOffset / timing.LineTStates;
+            int lineTState = displayOffset % timing.LineTStates;
+            if (lineTState >= timing.DisplayFetchTStatesPerLine)
                 return 0xFF;
 
             int fetchPhase = lineTState & 0x07;

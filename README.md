@@ -35,7 +35,7 @@ Manually tested titles, formats, and reached checkpoints are tracked in
 
 Current limitations and active work:
 
-- original 128K/+2 floating-bus reads and AY selected-register reads are planned for Milestone 16
+- ULA bus-cycle timestamps and exact border/raster alignment remain active Milestone 16 work
 - active-screen rendering is frame-snapshot based rather than beam-aware; Milestone 17 addresses this
 - protected live-tape audio handoff still needs polish in some titles
 - broader protected/custom TZX compatibility remains ongoing
@@ -51,11 +51,12 @@ Current limitations and active work:
 - Mounted-loader continuation state, BASIC workspace preservation, resume gating, and Quick State capture are isolated from the machine in a dedicated controller.
 - The background emulation loop owns mutable machine state; the UI consumes copied snapshots and uses nested pause leases for safe inspection.
 - The undocumented Z80 Q latch is tracked by flag-writing semantics, including prefix and interrupt boundaries, with focused regressions alongside ZEXDOC/ZEXALL.
+- Model-specific ULA profiles now drive contention, floating-bus fetches, frame timing, and raster mapping; original 128K/+2 floating-bus reads follow the selected bank 5 or bank 7 screen, and `IN (0xFFFD)` reads the selected AY register.
 
 ## Development Priorities
 
-Each feature is developed on its own branch. The next ordered work is ULA/port
-conformance (Milestone 16), beam-aware video (17), debugger execution controls
+Each feature is developed on its own branch. Current work is ULA/port conformance
+(Milestone 16), followed by beam-aware video (17), debugger execution controls
 (18), and bank-aware symbolic disassembly (19). Tape compatibility and the
 turbo-to-realtime audio transition continue in parallel, with the verified media
 matrix plus ZEXDOC/ZEXALL used as regression gates.
@@ -78,6 +79,7 @@ Spectrum128kEmulator/
 |   |   |-- TapeLoadContracts.cs           load plans, results, and transport state
 |   |   `-- MountedLoadContinuationController.cs  ROM-profile-aware loader resume policy
 |   |-- Z80/                               CPU execution plus side-effect-free instruction decoding
+|   |-- Ula/                               model timing profiles and ULA timing policy
 |   |-- Spectrum128Machine.cs              machine orchestration, memory, paging, ULA timing, and input
 |   |-- Spectrum128Machine.Diagnostics.cs  trace capture, watches, and diagnostic dumps
 |   |-- SpectrumRomProfile.cs              fingerprinted ROM capabilities and internal entry points
@@ -195,7 +197,9 @@ Test coverage includes:
 - banked tape-loader regression coverage
 - Tape transport pause/resume and 48K stop-marker behaviour
 - 48K/128K machine-model behavior
-- AY register behaviour
+- complete 48K/128K contention phases, boundaries, I/O cases, and contended-bank behavior
+- 48K/128K floating-bus fetches, including 128K shadow-screen bank selection
+- AY register write and selected-register port-read behaviour
 - Audio sample generation
 - Audio pipeline behaviour
 - Z80 instruction decoding, disassembly navigation/search, listing export, settings, and snapshot behavior
@@ -288,13 +292,14 @@ compatibility and polish; completed milestones remain regression baselines.
 | 13 | Complete | Paused read-only mapped-64K disassembler window |
 | 14 | Complete | Deterministic temporary in-memory Quick State |
 | 15 | Complete | Disassembler history, search, navigation, persistence, copy, and export |
+| 16 | In progress | Central ULA profiles, contention conformance, 128K floating bus, and AY port reads implemented; bus-cycle and border/raster precision remain |
 
-### Milestone 16 - ULA Timing Conformance And Port Accuracy Planned
-- Introduce one model-specific timing profile for frame length, scanline length, contention start, display fetches, visible raster mapping, and the documented timing convention
-- Add table-driven contention coverage across complete 48K and original 128K display phases, line/frame boundaries, contended memory banks, and all four I/O contention cases
+### Milestone 16 - ULA Timing Conformance And Port Accuracy In Progress
+- Implemented one model-specific timing profile for frame length, scanline length, contention start, display fetches, visible raster mapping, and the documented timing convention
+- Added table-driven contention coverage across complete 48K and original 128K display phases, line/frame boundaries, contended memory banks, and all four I/O contention cases
 - Timestamp CPU memory and I/O bus accesses at their actual machine-cycle positions where required, rather than relying on instruction-total timing
-- Generalize the existing floating-bus model for the original Spectrum 128K and grey +2, including normal bank 5 and shadow bank 7 screen selection
-- Decode attached input devices before the floating-bus fallback, including `IN (0xFFFD)` reading the selected AY register
+- Generalized the floating-bus model for the original Spectrum 128K and grey +2, including normal bank 5 and shadow bank 7 screen selection
+- Decoded attached input devices before the floating-bus fallback, including `IN (0xFFFD)` reading the selected AY register
 - Correct and test border-latch timestamps and visible pixel/T-state mapping without claiming +2A/+3 behavior
 - Validate with published contention and floating-bus diagnostics plus the existing tape, snapshot, RZX, ZEXDOC, and ZEXALL regression matrix
 

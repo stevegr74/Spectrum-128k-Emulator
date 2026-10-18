@@ -80,11 +80,10 @@ namespace Spectrum128kEmulator
 
         private void RenderBorder(BorderFrame borderFrame)
         {
-            int lineTStates = borderFrame.FrameTStates == Spectrum128Machine.FrameTStates48 ? 224 : 228;
-            int activeDisplayStart = borderFrame.FrameTStates == Spectrum128Machine.FrameTStates48 ? 14347 : 14361;
-            int firstVisibleTState = activeDisplayStart -
-                                     (Spectrum128Machine.BorderTopHeight * lineTStates) -
-                                     ((Spectrum128Machine.BorderLeftWidth * lineTStates) / Width);
+            UlaTimingProfile timing = UlaTimingProfile.ForFrameLength(borderFrame.FrameTStates);
+            int firstVisibleTState = timing.VisibleDisplayStartTState -
+                                     (Spectrum128Machine.BorderTopHeight * timing.LineTStates) -
+                                     ((Spectrum128Machine.BorderLeftWidth * timing.LineTStates) / Width);
             int eventIndex = 0;
             int color = borderFrame.InitialColor;
             IReadOnlyList<BorderEvent> events = borderFrame.Events;
@@ -94,7 +93,7 @@ namespace Spectrum128kEmulator
                 int rowOffset = y * Width;
                 for (int x = 0; x < Width; x++)
                 {
-                    int tState = firstVisibleTState + (y * lineTStates) + ((x * lineTStates) / Width);
+                    int tState = firstVisibleTState + (y * timing.LineTStates) + ((x * timing.LineTStates) / Width);
                     while (eventIndex < events.Count && events[eventIndex].TStateOffset <= tState)
                     {
                         color = events[eventIndex].Color;
