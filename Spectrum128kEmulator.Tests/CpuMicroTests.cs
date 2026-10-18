@@ -427,10 +427,107 @@ namespace Spectrum128kEmulator.Tests
 
             Assert.Equal((ushort)0x0038, cpu.Regs.PC);
             Assert.False(cpu.IFF1);
-            Assert.True(cpu.IFF2);
+            Assert.False(cpu.IFF2);
             Assert.False(cpu.InterruptPending);
             Assert.Equal((byte)0x02, memory[0xFFFD]);
             Assert.Equal((byte)0x00, memory[0xFFFE]);
+        }
+
+        [Fact]
+        public void ExecuteInstructionFetches_MaskableInterruptClearsBothInterruptFlipFlops()
+        {
+            var memory = new byte[65536];
+            var cpu = new Z80Cpu
+            {
+                ReadMemory = addr => memory[addr],
+                WriteMemory = (addr, value) => memory[addr] = value
+            };
+
+            cpu.Reset();
+            cpu.RestoreInterruptState(iff1: true, iff2: true, interruptMode: 1);
+            cpu.InterruptPending = true;
+
+            cpu.ExecuteInstructionFetches(1);
+
+            Assert.False(cpu.IFF1);
+            Assert.False(cpu.IFF2);
+            Assert.Equal((ushort)0x0039, cpu.Regs.PC);
+        }
+
+        [Theory]
+        [InlineData(0x57)] // LD A,I
+        [InlineData(0x5F)] // LD A,R
+        public void InterruptHandler_LdAIOrR_ReportsClearedIff2ThroughParity(byte opcode)
+        {
+            var memory = new byte[65536];
+            var cpu = new Z80Cpu
+            {
+                ReadMemory = addr => memory[addr],
+                WriteMemory = (addr, value) => memory[addr] = value
+            };
+
+            memory[0x0038] = 0xED;
+            memory[0x0039] = opcode;
+
+            cpu.Reset();
+            cpu.Regs.F = 0x04;
+            cpu.RestoreInterruptState(iff1: true, iff2: true, interruptMode: 1);
+            cpu.InterruptPending = true;
+
+            cpu.ExecuteCycles(22);
+
+            Assert.False(FlagSet(cpu.Regs.F, 2));
+        }
+
+        [Theory]
+        [InlineData(0x45)] // RETN
+        [InlineData(0x4D)] // RETI
+        public void InterruptReturn_WithoutEi_DoesNotReenableInterrupts(byte opcode)
+        {
+            var memory = new byte[65536];
+            var cpu = new Z80Cpu
+            {
+                ReadMemory = addr => memory[addr],
+                WriteMemory = (addr, value) => memory[addr] = value
+            };
+
+            memory[0x0038] = 0xED;
+            memory[0x0039] = opcode;
+
+            cpu.Reset();
+            cpu.RestoreInterruptState(iff1: true, iff2: true, interruptMode: 1);
+            cpu.InterruptPending = true;
+
+            cpu.ExecuteCycles(27);
+
+            Assert.Equal((ushort)0x0000, cpu.Regs.PC);
+            Assert.False(cpu.IFF1);
+            Assert.False(cpu.IFF2);
+        }
+
+        [Fact]
+        public void InterruptReturn_AfterEi_ReenablesInterrupts()
+        {
+            var memory = new byte[65536];
+            var cpu = new Z80Cpu
+            {
+                ReadMemory = addr => memory[addr],
+                WriteMemory = (addr, value) => memory[addr] = value
+            };
+
+            memory[0x0038] = 0xFB; // EI
+            memory[0x0039] = 0xED;
+            memory[0x003A] = 0x4D; // RETI
+
+            cpu.Reset();
+            cpu.RestoreInterruptState(iff1: true, iff2: true, interruptMode: 1);
+            cpu.InterruptPending = true;
+
+            cpu.ExecuteCycles(31);
+
+            Assert.Equal((ushort)0x0000, cpu.Regs.PC);
+            Assert.True(cpu.IFF1);
+            Assert.True(cpu.IFF2);
         }
 
         [Fact]
