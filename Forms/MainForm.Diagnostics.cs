@@ -98,12 +98,12 @@ namespace Spectrum128kEmulator
 
         private string DescribeBridgeState(Keys key)
         {
-            return spectrumKeyInputBridge.DescribeKeyState(key, machine.GetKeyboardRowScanCount);
+            return keyboardInputController.DescribeKeyState(key, machine.GetKeyboardRowScanCount);
         }
 
         private string DescribeKeyboardMatrix(Keys key)
         {
-            int[] rows = GetSpectrumKeyRows(key);
+            int[] rows = SpectrumKeyboardMapping.GetRows(key);
             if (rows.Length == 0)
                 return "matrixRows=[]";
 
@@ -124,7 +124,7 @@ namespace Spectrum128kEmulator
                 string keyPart = key.HasValue ? $" key={key.Value}" : string.Empty;
                 string matrixPart = key.HasValue ? $" {DescribeKeyboardMatrix(key.Value)}" : string.Empty;
                 inputDiagnosticsWriter.WriteLine(
-                    $"{DateTime.Now:HH:mm:ss.fff} phase={phase}{keyPart} tick={inputBridgeTick} frame={machine.FrameCount} tstates={machine.Cpu.TStates} pc=0x{machine.Cpu.Regs.PC:X4}{matrixPart} {extra}");
+                    $"{DateTime.Now:HH:mm:ss.fff} phase={phase}{keyPart} inputTStates={inputEmulatedTStates} frame={machine.FrameCount} tstates={machine.Cpu.TStates} pc=0x{machine.Cpu.Regs.PC:X4}{matrixPart} {extra}");
             }
         }
 

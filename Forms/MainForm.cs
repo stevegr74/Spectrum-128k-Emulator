@@ -73,12 +73,14 @@ namespace Spectrum128kEmulator
         private readonly object machineLock = new();
         private readonly object inputStateLock = new();
         private readonly object audioPipelineLock = new();
-        private readonly HashSet<Keys> pressedSpectrumKeys = new();
         private readonly Queue<SpectrumHostKeyEvent> pendingSpectrumHostKeyEvents = new();
-        private readonly SpectrumKeyInputBridge spectrumKeyInputBridge = new(8, 40, 90);
+        private readonly SpectrumKeyboardInputController keyboardInputController = new();
+        private SpectrumKeyboardMessageFilter? keyboardMessageFilter;
         private readonly EmulationLoopController emulationLoop = new();
+        private Exception? emulationLoopFailure;
+        private string? emulationLoopFailureReportPath;
         private AudioPipeline audioPipeline;
-        private int inputBridgeTick;
+        private ulong inputEmulatedTStates;
         private readonly object inputDiagnosticsLock = new();
         private StreamWriter? inputDiagnosticsWriter;
         private string? inputDiagnosticsPath;
@@ -604,7 +606,7 @@ namespace Spectrum128kEmulator
                                 }
 
                                 actualExecutedTStates += executedSliceTStates;
-                                inputBridgeTick++;
+                                inputEmulatedTStates += (ulong)Math.Max(0, executedSliceTStates);
                                 ProcessPendingSpectrumKeyReleases();
 
                                 if (!suppressAudioSubmission)
@@ -673,13 +675,36 @@ namespace Spectrum128kEmulator
             }
             catch (Exception ex)
             {
+                string? crashPath = null;
                 try
                 {
                     string debugFolder = Path.Combine(AppContext.BaseDirectory, "debug");
                     Directory.CreateDirectory(debugFolder);
                     string fileName = $"emulation-loop-crash-{DateTime.Now:yyyyMMdd-HHmmssfff}.txt";
-                    string path = Path.Combine(debugFolder, fileName);
-                    File.WriteAllText(path, $"Exception: {ex}{Environment.NewLine}");
+                    crashPath = Path.Combine(debugFolder, fileName);
+                    File.WriteAllText(crashPath, $"Exception: {ex}{Environment.NewLine}");
+                }
+                catch
+                {
+                }
+
+                Volatile.Write(ref emulationLoopFailure, ex);
+                Volatile.Write(ref emulationLoopFailureReportPath, crashPath);
+                try
+                {
+                    BeginInvoke(new Action(() =>
+                    {
+                        frameTimer.Stop();
+                        string reportDetail = crashPath == null
+                            ? string.Empty
+                            : $"\n\nDiagnostic saved to:\n{crashPath}";
+                        MessageBox.Show(
+                            this,
+                            $"The emulation loop stopped:\n{ex.Message}{reportDetail}",
+                            "Emulator Crash",
+                            MessageBoxButtons.OK,
+                            MessageBoxIcon.Error);
+                    }));
                 }
                 catch
                 {
@@ -695,6 +720,16 @@ namespace Spectrum128kEmulator
 
         private IDisposable AcquireEmulationPauseLease()
         {
+            Exception? failure = Volatile.Read(ref emulationLoopFailure);
+            if (failure != null)
+            {
+                string? reportPath = Volatile.Read(ref emulationLoopFailureReportPath);
+                string reportDetail = reportPath == null ? string.Empty : $" Diagnostic: {reportPath}";
+                throw new InvalidOperationException(
+                    $"The emulation loop stopped: {failure.Message}.{reportDetail}",
+                    failure);
+            }
+
             return emulationLoop.AcquirePause(
                 () =>
                 {
@@ -715,7 +750,7 @@ namespace Spectrum128kEmulator
             ResetInputBridgeState();
             lock (machineLock)
             {
-                inputBridgeTick = 0;
+                inputEmulatedTStates = 0;
                 machine.ClearKeyboard();
             }
         }
@@ -820,7 +855,7 @@ namespace Spectrum128kEmulator
                 accumulatedEmulationTStates = 0;
                 currentTurboTapeLoadFactor = TurboTapeLoadFactor;
                 tapeTurboPlaybackPolicy.Reset();
-                inputBridgeTick = 0;
+                inputEmulatedTStates = 0;
                 lastObservedTapeTransportState = machine.TapeTransportState;
                 lastObservedTapeMarkerStop = machine.IsTapeStoppedAtMarker;
             }
@@ -1118,6 +1153,11 @@ namespace Spectrum128kEmulator
         {
             if (disposing)
             {
+                if (keyboardMessageFilter != null)
+                {
+                    Application.RemoveMessageFilter(keyboardMessageFilter);
+                    keyboardMessageFilter = null;
+                }
                 emulationLoop.Dispose();
                 lock (inputDiagnosticsLock)
                 {
@@ -1141,6 +1181,6 @@ namespace Spectrum128kEmulator
             base.Dispose(disposing);
         }
 
-        private readonly record struct SpectrumHostKeyEvent(Keys Key, bool IsDown);
+        private readonly record struct SpectrumHostKeyEvent(Keys Key, bool IsDown, bool Reset = false);
     }
 }
