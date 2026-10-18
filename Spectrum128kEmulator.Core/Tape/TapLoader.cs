@@ -870,6 +870,9 @@ namespace Spectrum128kEmulator.Tap
             if (firstHeader.Type != ProgramType || firstHeader.AutoStartLine >= 32768)
                 return false;
 
+            if (HasNonContiguousBasicProgramStage(blocks, index + 2))
+                return true;
+
             InitializeMachineForFakeTapeLoad(machine, use128kMode);
             LoadBasicProgram(machine, firstHeader, blocks[index + 1].Payload!);
             if (!BasicBootstrapExecutor.RequiresMountedLoadSemantics(
@@ -893,6 +896,40 @@ namespace Spectrum128kEmulator.Tap
                 return false;
 
             return !CanBootstrapLoadedBasicProgram(machine, nextHeader, blocks[index + 1].Payload!, use128kMode);
+        }
+
+        private static bool HasNonContiguousBasicProgramStage(
+            IReadOnlyList<TapeBlock> blocks,
+            int index)
+        {
+            bool sawNonBasicPair = false;
+            while (index < blocks.Count)
+            {
+                while (index < blocks.Count && blocks[index].Kind == TapeBlockKind.Metadata)
+                    index++;
+
+                if (index + 1 >= blocks.Count ||
+                    !IsStandardHeaderBlock(blocks[index]) ||
+                    blocks[index + 1].Flag != DataFlag)
+                {
+                    return false;
+                }
+
+                TapHeaderInfo header = ParseHeaderInfo(blocks[index]);
+                if (header.Type == ProgramType)
+                {
+                    if (sawNonBasicPair)
+                        return true;
+                }
+                else
+                {
+                    sawNonBasicPair = true;
+                }
+
+                index += 2;
+            }
+
+            return false;
         }
 
         private static bool RequiresRomDrivenBootstrapForMixedTape(

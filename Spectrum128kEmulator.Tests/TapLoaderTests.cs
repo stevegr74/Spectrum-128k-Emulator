@@ -2241,6 +2241,18 @@ namespace Spectrum128kEmulator.Tests
                 object romDrivenPlan = createPlan.Invoke(null, new[] { romDrivenMachine, romDrivenBlocks })!;
                 Assert.Equal("RomBootstrapMounted", strategyProperty.GetValue(romDrivenPlan)!.ToString());
 
+                byte[] nonContiguousBasicTape = BuildTap(
+                    BuildHeaderBlock(type: 0, fileName: "BOOT", dataLength: (ushort)romDrivenProgram.Length, parameter1: 10, parameter2: (ushort)romDrivenProgram.Length),
+                    BuildDataBlock(romDrivenProgram),
+                    BuildHeaderBlock(type: 3, fileName: "SCREEN", dataLength: 1, parameter1: 0x4000, parameter2: 0),
+                    BuildDataBlock(new byte[] { 0xAA }),
+                    BuildHeaderBlock(type: 0, fileName: "GAME", dataLength: (ushort)opaqueBasicStage.Length, parameter1: 0, parameter2: (ushort)opaqueBasicStage.Length),
+                    BuildDataBlock(opaqueBasicStage));
+                var nonContiguousBasicBlocks = parseBlocks.Invoke(null, new object[] { nonContiguousBasicTape })!;
+                var nonContiguousBasicMachine = new Spectrum128Machine(tempFolder);
+                object nonContiguousBasicPlan = createPlan.Invoke(null, new[] { nonContiguousBasicMachine, nonContiguousBasicBlocks })!;
+                Assert.Equal("RomBootstrapMounted", strategyProperty.GetValue(nonContiguousBasicPlan)!.ToString());
+
                 byte[] hybridProgram = BuildBasicProgram(
                     BuildBasicLine(10,
                         Token(244), Ascii("23624"), NumberMarker(23624), Ascii(","), Ascii("0"), NumberMarker(0),
