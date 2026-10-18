@@ -218,7 +218,7 @@ Test coverage includes:
 - AY register write and selected-register port-read behaviour
 - Audio sample generation
 - Audio pipeline behaviour
-- Z80 instruction decoding, bank-aware disassembly navigation/search, labels, symbol import/export, listing export, settings, and snapshot behavior
+- Z80 instruction decoding, bank-aware disassembly navigation/search, labels, symbol import/export, listing export, settings, snapshot behavior, and STA WinForms interaction
 - Quick State deterministic machine, tape-cursor, and RZX-cursor restoration
 - ZEXDOC and ZEXALL compliance validation via the dedicated runner
 
