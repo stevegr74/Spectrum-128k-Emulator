@@ -141,24 +141,29 @@ namespace Spectrum128kEmulator
             captureStateLabel.Location = new Point(20, 42);
             header.Controls.Add(captureStateLabel);
 
+            var memoryViewPanel = new Panel
+            {
+                Dock = DockStyle.Right,
+                Width = 205,
+                BackColor = Ink
+            };
             var addressSpaceLabel = new Label
             {
                 AutoSize = true,
                 Text = "MEMORY VIEW",
                 Font = new Font(FontFamily.GenericSansSerif, 7.5f, FontStyle.Bold),
                 ForeColor = Color.FromArgb(190, 205, 207),
-                Location = new Point(755, 9),
-                Anchor = AnchorStyles.Top | AnchorStyles.Right
+                Location = new Point(0, 0)
             };
-            header.Controls.Add(addressSpaceLabel);
+            memoryViewPanel.Controls.Add(addressSpaceLabel);
             addressSpaceComboBox.DropDownStyle = ComboBoxStyle.DropDownList;
             addressSpaceComboBox.Font = new Font("Consolas", 9.0f);
-            addressSpaceComboBox.Location = new Point(755, 31);
+            addressSpaceComboBox.Location = new Point(0, 22);
             addressSpaceComboBox.Size = new Size(185, 25);
-            addressSpaceComboBox.Anchor = AnchorStyles.Top | AnchorStyles.Right;
             PopulateAddressSpaceChoices();
             addressSpaceComboBox.SelectedIndexChanged += (_, _) => SelectAddressSpaceFromComboBox();
-            header.Controls.Add(addressSpaceComboBox);
+            memoryViewPanel.Controls.Add(addressSpaceComboBox);
+            header.Controls.Add(memoryViewPanel);
             UpdateCaptureState();
             return header;
         }
