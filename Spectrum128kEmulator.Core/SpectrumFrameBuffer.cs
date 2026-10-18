@@ -56,26 +56,52 @@ namespace Spectrum128kEmulator
 
                     byte pixelByte = screenRam[pixelOffset];
                     byte attr = screenRam[attrOffset];
-                    int paper = (attr >> 3) & 0x07;
-                    int ink = attr & 0x07;
-
-                    if ((attr & 0x80) != 0 && flashPhase)
-                        (ink, paper) = (paper, ink);
-
-                    uint inkArgb = GetSpectrumColorArgb(ink, (attr & 0x40) != 0);
-                    uint paperArgb = GetSpectrumColorArgb(paper, (attr & 0x40) != 0);
                     int pixelIndex = rowOffset + x;
-
-                    pixels[pixelIndex + 0] = (pixelByte & 0x80) != 0 ? inkArgb : paperArgb;
-                    pixels[pixelIndex + 1] = (pixelByte & 0x40) != 0 ? inkArgb : paperArgb;
-                    pixels[pixelIndex + 2] = (pixelByte & 0x20) != 0 ? inkArgb : paperArgb;
-                    pixels[pixelIndex + 3] = (pixelByte & 0x10) != 0 ? inkArgb : paperArgb;
-                    pixels[pixelIndex + 4] = (pixelByte & 0x08) != 0 ? inkArgb : paperArgb;
-                    pixels[pixelIndex + 5] = (pixelByte & 0x04) != 0 ? inkArgb : paperArgb;
-                    pixels[pixelIndex + 6] = (pixelByte & 0x02) != 0 ? inkArgb : paperArgb;
-                    pixels[pixelIndex + 7] = (pixelByte & 0x01) != 0 ? inkArgb : paperArgb;
+                    RenderCell(pixelIndex, pixelByte, attr, flashPhase);
                 }
             }
+        }
+
+        public void Render(UlaFrame ulaFrame, BorderFrame borderFrame, bool flashPhase)
+        {
+            if (ulaFrame == null)
+                throw new ArgumentNullException(nameof(ulaFrame));
+            if (borderFrame == null)
+                throw new ArgumentNullException(nameof(borderFrame));
+
+            RenderBorder(borderFrame);
+
+            for (int y = 0; y < Spectrum128Machine.ActiveDisplayHeight; y++)
+            {
+                int rowOffset = (y + Spectrum128Machine.BorderTopHeight) * Width + Spectrum128Machine.BorderLeftWidth;
+                for (int column = 0; column < UlaFrame.CellsPerLine; column++)
+                {
+                    byte pixelByte = ulaFrame.GetBitmapByte(y, column);
+                    byte attr = ulaFrame.GetAttributeByte(y, column);
+                    RenderCell(rowOffset + (column * 8), pixelByte, attr, flashPhase);
+                }
+            }
+        }
+
+        private void RenderCell(int pixelIndex, byte pixelByte, byte attr, bool flashPhase)
+        {
+            int paper = (attr >> 3) & 0x07;
+            int ink = attr & 0x07;
+
+            if ((attr & 0x80) != 0 && flashPhase)
+                (ink, paper) = (paper, ink);
+
+            uint inkArgb = GetSpectrumColorArgb(ink, (attr & 0x40) != 0);
+            uint paperArgb = GetSpectrumColorArgb(paper, (attr & 0x40) != 0);
+
+            pixels[pixelIndex + 0] = (pixelByte & 0x80) != 0 ? inkArgb : paperArgb;
+            pixels[pixelIndex + 1] = (pixelByte & 0x40) != 0 ? inkArgb : paperArgb;
+            pixels[pixelIndex + 2] = (pixelByte & 0x20) != 0 ? inkArgb : paperArgb;
+            pixels[pixelIndex + 3] = (pixelByte & 0x10) != 0 ? inkArgb : paperArgb;
+            pixels[pixelIndex + 4] = (pixelByte & 0x08) != 0 ? inkArgb : paperArgb;
+            pixels[pixelIndex + 5] = (pixelByte & 0x04) != 0 ? inkArgb : paperArgb;
+            pixels[pixelIndex + 6] = (pixelByte & 0x02) != 0 ? inkArgb : paperArgb;
+            pixels[pixelIndex + 7] = (pixelByte & 0x01) != 0 ? inkArgb : paperArgb;
         }
 
         private void RenderBorder(BorderFrame borderFrame)

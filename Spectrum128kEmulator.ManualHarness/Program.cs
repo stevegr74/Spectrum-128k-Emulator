@@ -832,7 +832,10 @@ static void WriteHarnessArtifacts(Spectrum128Machine machine, string dump, strin
 
     string imagePath = Path.Combine(debugFolder, $"harness-{tag}-{stamp}.bmp");
     var frameBuffer = new SpectrumFrameBuffer();
-    frameBuffer.Render(machine.GetScreenBankData(), machine.BorderColor, machine.FlashPhase);
+    if (machine.LastCompletedUlaFrame != null)
+        frameBuffer.Render(machine.LastCompletedUlaFrame, machine.LastCompletedBorderFrame, machine.FlashPhase);
+    else
+        frameBuffer.Render(machine.GetScreenBankData(), machine.BorderColor, machine.FlashPhase);
     DiagnosticBitmapWriter.Write(imagePath, frameBuffer.Pixels.Span, SpectrumFrameBuffer.Width, SpectrumFrameBuffer.Height);
 
     Console.WriteLine($"Harness artifacts: {dumpPath}");

@@ -10,7 +10,7 @@ This project focuses on correctness, clean architecture, and incremental develop
 
 - Z80 CPU with passing ZEXDOC and ZEXALL instruction groups
 - Explicit 48K and 128K models, 128K paging, keyboard matrix, interrupts, and a model-specific timing baseline
-- Spectrum display with INK, PAPER, BRIGHT, FLASH, borders, and fixed 1x/Scale2x/Scale3x modes
+- Beam-latched Spectrum display with INK, PAPER, BRIGHT, FLASH, timestamped borders, and fixed 1x/Scale2x/Scale3x modes
 - 48K beeper and AY-3-8912 tone, noise, envelope, and mixing through a clock-driven audio pipeline
 - 48K/128K `.sna`, `.z80` v1/v2/v3, and `.rzx` loading/replay
 - `.tap` and `.tzx` parsing, fast bootstrap, ROM-driven loading, protected/mounted playback, VERIFY, and multi-block sequencing
@@ -36,7 +36,7 @@ Manually tested titles, formats, and reached checkpoints are tracked in
 Current limitations and active work:
 
 - opcode/immediate fetches, ordinary/indexed/block/stack memory accesses, port I/O, border, and floating-bus timing use model-specific machine-cycle positions validated against published 48K and 128K diagnostics
-- active-screen rendering is frame-snapshot based rather than beam-aware; Milestone 17 addresses this
+- beam-aware active-screen capture is implemented for 48K and original 128K/+2 timing; Milestone 17 validation and border-path unification remain active
 - exact audio timing and turbo-to-real-time tape handoff still need polish in some titles
 - broader protected/custom TZX compatibility remains ongoing
 
@@ -55,6 +55,7 @@ Current limitations and active work:
 - Border, beeper, and AY writes are timestamped at the completed I/O cycle, including contended and repeating block-I/O paths; border changes are reconstructed in hardware-sized eight-pixel latch groups without stretching visible pixels across horizontal flyback.
 - Contended opcode, prefix, and immediate-byte fetches use their individual machine-cycle offsets; corrected indexed-instruction totals cover ignored `DD`/`FD` prefixes, absolute IX/IY loads and stores, stack exchange, and stack-pointer transfer.
 - Interrupt scheduling carries instruction-boundary overshoot into the next frame, preserving the 69,888-T-state 48K and 70,908-T-state 128K frame cadence without truncating instructions.
+- An event-driven ULA raster latches bitmap and per-scanline attribute bytes at their fetch times, including mid-frame 128K bank 5/bank 7 screen switches; the UI consumes the resulting immutable completed frame.
 
 ## Development Priorities
 
@@ -82,7 +83,7 @@ Spectrum128kEmulator/
 |   |   |-- TapeLoadContracts.cs           load plans, results, and transport state
 |   |   `-- MountedLoadContinuationController.cs  ROM-profile-aware loader resume policy
 |   |-- Z80/                               CPU execution plus side-effect-free instruction decoding
-|   |-- Ula/                               model timing profiles and ULA timing policy
+|   |-- Ula/                               timing profiles plus event-driven raster capture and immutable frames
 |   |-- Spectrum128Machine.cs              machine orchestration, memory, paging, ULA timing, and input
 |   |-- Spectrum128Machine.Diagnostics.cs  trace capture, watches, and diagnostic dumps
 |   |-- SpectrumRomProfile.cs              fingerprinted ROM capabilities and internal entry points
@@ -304,6 +305,7 @@ compatibility and polish; completed milestones remain regression baselines.
 | 14 | Complete | Deterministic temporary in-memory Quick State |
 | 15 | Complete | Disassembler history, search, navigation, persistence, copy, and export |
 | 16 | Complete | Central ULA profiles, contention conformance, 128K floating bus, exact port events, border-latch mapping, timed CPU bus cycles, and published diagnostic validation |
+| 17 | In progress | Event-driven beam capture for bitmap, per-line attributes, and 128K shadow-screen changes; game validation and border-path unification remain |
 
 ### Milestone 16 - ULA Timing Conformance And Port Accuracy Complete
 - Implemented one model-specific timing profile for frame length, scanline length, contention start, display fetches, visible raster mapping, and the documented timing convention
@@ -316,13 +318,14 @@ compatibility and polish; completed milestones remain regression baselines.
 - Matched the Patrik Rak Timing Test 0.3 reference captures pixel-for-pixel for 48K/128K contended NOP, snow-effect NOP, and all six even/odd I/O contention cases
 - Matched the Mark Woodmass Float48K and Float128K reference address/value sequences, with the repeatable external-media procedure recorded under `test-assets/ula`
 
-### Milestone 17 - Beam-Aware Video Pipeline Planned
-- Add an event-driven ULA raster that advances to timed machine events; a literal per-T-state host loop is not required when the observable result is equivalent
-- Latch bitmap and attribute bytes when the ULA fetches them instead of rendering the active display from final end-of-frame RAM
-- Apply border changes and 128K normal/shadow screen switches at their raster positions through the same timing model
-- Preserve FLASH, palette, scaling, and the platform-neutral frame-buffer boundary while replacing only the frame's source data
-- Implement and validate the 48K fetch path first, then original 128K/+2 timing and shadow-screen behavior
-- Add deterministic mid-frame bitmap, attribute, border, and paging tests, followed by representative multicolour and racing-beam validation; Arkanoid's erase/redraw flicker is a primary acceptance case
+### Milestone 17 - Beam-Aware Video Pipeline In Progress
+- Implemented an event-driven ULA raster that advances to timed machine events without requiring a literal per-T-state host loop
+- Bitmap bytes and attributes are latched at their individual ULA fetches; attributes are fetched independently on every pixel line rather than read from final frame RAM
+- Original 128K/+2 bank 5 and shadow bank 7 screen changes take effect at their timed paging event, so one frame can contain output from both banks
+- Completed raster frames are immutable across the background-loop/UI boundary and survive Quick State capture and restore
+- Preserved FLASH, palette, border reconstruction, display scaling, and the platform-neutral frame-buffer boundary
+- Added deterministic fetch-boundary, per-line attribute, shadow-screen, rendering, and no-screen-write frame tests; published 48K/128K contention captures remain pixel-identical
+- Validate Arkanoid and representative tape/snapshot titles, then bring border latching under the same completed-frame ownership model before marking the milestone complete
 
 ### Milestone 18 - Debug Execution Controls Planned
 - Keep opening the window paused by default, with an explicit Run/Pause control if live execution is enabled
