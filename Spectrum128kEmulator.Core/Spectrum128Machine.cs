@@ -107,7 +107,7 @@ namespace Spectrum128kEmulator
         public bool SpeakerEdge { get; private set; }
         private bool IsAyHardwareEnabled => MachineModel == SpectrumMachineModel.Spectrum128K;
 
-        private void HandleAyPortWrite(ushort port, byte value)
+        private void HandleAyPortWrite(ushort port, byte value, ulong eventTStates)
         {
             if (!IsAyHardwareEnabled)
                 return;
@@ -124,7 +124,7 @@ namespace Spectrum128kEmulator
             if ((port & 0xC002) == 0x8000)
             {
                 ay.WriteRegister(value);
-                RecordAyWrite(lastAyRegister, value);
+                RecordAyWrite(lastAyRegister, value, eventTStates);
             }
         }
 
@@ -560,7 +560,8 @@ namespace Spectrum128kEmulator
             if (delay != 0)
                 cpu.AddTStates(delay);
 
-            WritePort(port, value);
+            const ulong portCycleTStates = 4;
+            WritePort(port, value, cpu.TStates + portCycleTStates);
         }
 
         public void ClearKeyboard()
@@ -1315,16 +1316,17 @@ namespace Spectrum128kEmulator
             completedAudioFrames.Clear();
         }
 
-        private void WritePort(ushort port, byte value)
+        private void WritePort(ushort port, byte value, ulong? eventTStates = null)
         {
+            ulong writeTStates = eventTStates ?? cpu.TStates;
             if (debugEventCaptureEnabled)
-                RecordPortEvent($"T={cpu.TStates,10} OUT {port:X4}={value:X2} PC={cpu.Regs.PC:X4} SP={cpu.Regs.SP:X4}");
+                RecordPortEvent($"T={writeTStates,10} OUT {port:X4}={value:X2} PC={cpu.Regs.PC:X4} SP={cpu.Regs.SP:X4}");
             SpeakerEdge = false;
 
             if ((port & 0x0001) == 0)
             {
                 BorderColor = value & 0x07;
-                RecordBorderEvent(BorderColor);
+                RecordBorderEvent(BorderColor, writeTStates);
                 micHigh = (value & 0x08) != 0;
 
                 bool newSpeakerHigh = (value & 0x10) != 0;
@@ -1332,14 +1334,14 @@ namespace Spectrum128kEmulator
                 {
                     speakerHigh = newSpeakerHigh;
                     SpeakerEdge = true;
-                    RecordBeeperEvent(newSpeakerHigh);
+                    RecordBeeperEvent(newSpeakerHigh, writeTStates);
                 }
 
-                HandleAyPortWrite(port, value);
+                HandleAyPortWrite(port, value, writeTStates);
                 return;
             }
 
-            HandleAyPortWrite(port, value);
+            HandleAyPortWrite(port, value, writeTStates);
 
             if ((port & 0x8002) == 0 && (port & 0x00FF) == 0xFD)
             {
@@ -1384,22 +1386,22 @@ namespace Spectrum128kEmulator
             borderEvents.Clear();
         }
 
-        private void RecordBeeperEvent(bool newSpeakerHigh)
+        private void RecordBeeperEvent(bool newSpeakerHigh, ulong eventTStates)
         {
             if (!captureAudioFramesEnabled)
                 return;
 
-            ulong elapsed = cpu.TStates - frameStartTStates;
+            ulong elapsed = eventTStates - frameStartTStates;
             int offset = (int)Math.Min((ulong)int.MaxValue, elapsed);
             beeperEvents.Add(new Audio.BeeperEvent(offset, newSpeakerHigh));
         }
 
-        private void RecordAyWrite(byte register, byte value)
+        private void RecordAyWrite(byte register, byte value, ulong eventTStates)
         {
             if (!captureAudioFramesEnabled || !IsAyHardwareEnabled)
                 return;
 
-            ulong elapsed = cpu.TStates - frameStartTStates;
+            ulong elapsed = eventTStates - frameStartTStates;
             int offset = (int)Math.Min((ulong)int.MaxValue, elapsed);
             ayWrites.Add(new Audio.AyRegisterWrite(offset, register, value));
         }
@@ -1414,9 +1416,9 @@ namespace Spectrum128kEmulator
             return IsAyHardwareEnabled ? ayWrites : Array.Empty<Audio.AyRegisterWrite>();
         }
 
-        private void RecordBorderEvent(int color)
+        private void RecordBorderEvent(int color, ulong eventTStates)
         {
-            ulong elapsed = cpu.TStates - frameStartTStates;
+            ulong elapsed = eventTStates - frameStartTStates;
             int offset = (int)Math.Min((ulong)int.MaxValue, elapsed);
             borderEvents.Add(new BorderEvent(offset, color));
         }

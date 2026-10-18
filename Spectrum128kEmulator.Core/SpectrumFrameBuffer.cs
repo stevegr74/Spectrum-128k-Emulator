@@ -83,7 +83,7 @@ namespace Spectrum128kEmulator
             UlaTimingProfile timing = UlaTimingProfile.ForFrameLength(borderFrame.FrameTStates);
             int firstVisibleTState = timing.VisibleDisplayStartTState -
                                      (Spectrum128Machine.BorderTopHeight * timing.LineTStates) -
-                                     ((Spectrum128Machine.BorderLeftWidth * timing.LineTStates) / Width);
+                                     (Spectrum128Machine.BorderLeftWidth / 2);
             int eventIndex = 0;
             int color = borderFrame.InitialColor;
             IReadOnlyList<BorderEvent> events = borderFrame.Events;
@@ -93,8 +93,14 @@ namespace Spectrum128kEmulator
                 int rowOffset = y * Width;
                 for (int x = 0; x < Width; x++)
                 {
-                    int tState = firstVisibleTState + (y * timing.LineTStates) + ((x * timing.LineTStates) / Width);
-                    while (eventIndex < events.Count && events[eventIndex].TStateOffset <= tState)
+                    // The visible raster advances at two pixels per T-state. Border
+                    // colour is latched for each eight-pixel output group, while the
+                    // horizontal flyback remains outside the cropped host image.
+                    int outputGroupTState = firstVisibleTState +
+                                            (y * timing.LineTStates) +
+                                            ((x / 8) * 4);
+                    int borderLatchTState = outputGroupTState + timing.BorderLatchLeadTStates;
+                    while (eventIndex < events.Count && events[eventIndex].TStateOffset <= borderLatchTState)
                     {
                         color = events[eventIndex].Color;
                         eventIndex++;

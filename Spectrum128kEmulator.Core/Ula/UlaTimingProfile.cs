@@ -9,7 +9,8 @@ namespace Spectrum128kEmulator
             lineTStates: 224,
             contentionStartTState: 14335,
             displayFetchStartTState: 14338,
-            visibleDisplayStartTState: 14347);
+            visibleDisplayStartTState: 14336,
+            borderLatchLeadTStates: 6);
 
         public static readonly UlaTimingProfile Spectrum128K = new UlaTimingProfile(
             SpectrumMachineModel.Spectrum128K,
@@ -18,7 +19,8 @@ namespace Spectrum128kEmulator
             lineTStates: 228,
             contentionStartTState: 14361,
             displayFetchStartTState: 14364,
-            visibleDisplayStartTState: 14361);
+            visibleDisplayStartTState: 14364,
+            borderLatchLeadTStates: 4);
 
         private UlaTimingProfile(
             SpectrumMachineModel model,
@@ -27,7 +29,8 @@ namespace Spectrum128kEmulator
             int lineTStates,
             int contentionStartTState,
             int displayFetchStartTState,
-            int visibleDisplayStartTState)
+            int visibleDisplayStartTState,
+            int borderLatchLeadTStates)
         {
             Model = model;
             FrameTStates = frameTStates;
@@ -36,6 +39,7 @@ namespace Spectrum128kEmulator
             ContentionStartTState = contentionStartTState;
             DisplayFetchStartTState = displayFetchStartTState;
             VisibleDisplayStartTState = visibleDisplayStartTState;
+            BorderLatchLeadTStates = borderLatchLeadTStates;
         }
 
         public SpectrumMachineModel Model { get; }
@@ -45,6 +49,7 @@ namespace Spectrum128kEmulator
         public int ContentionStartTState { get; }
         public int DisplayFetchStartTState { get; }
         public int VisibleDisplayStartTState { get; }
+        public int BorderLatchLeadTStates { get; }
         public int DisplayLineCount => Spectrum128Machine.ActiveDisplayHeight;
         public int DisplayFetchTStatesPerLine => Spectrum128Machine.ActiveDisplayWidth / 2;
 

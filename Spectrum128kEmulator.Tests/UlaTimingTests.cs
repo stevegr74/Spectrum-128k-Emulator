@@ -16,7 +16,9 @@ namespace Spectrum128kEmulator.Tests
                 cpuClockHz: 3500000,
                 lineTStates: 224,
                 contentionStartTState: 14335,
-                displayFetchStartTState: 14338);
+                displayFetchStartTState: 14338,
+                visibleDisplayStartTState: 14336,
+                borderLatchLeadTStates: 6);
             AssertTimingProfile(
                 UlaTimingProfile.Spectrum128K,
                 SpectrumMachineModel.Spectrum128K,
@@ -24,7 +26,9 @@ namespace Spectrum128kEmulator.Tests
                 cpuClockHz: 3546900,
                 lineTStates: 228,
                 contentionStartTState: 14361,
-                displayFetchStartTState: 14364);
+                displayFetchStartTState: 14364,
+                visibleDisplayStartTState: 14364,
+                borderLatchLeadTStates: 4);
         }
 
         [Theory]
@@ -158,6 +162,96 @@ namespace Spectrum128kEmulator.Tests
                 Assert.Single(borderFrame.Events);
                 Assert.Equal(2, borderFrame.Events[0].Color);
                 Assert.InRange(borderFrame.Events[0].TStateOffset, 1, machine.FrameTStates);
+            }
+            finally
+            {
+                Directory.Delete(romFolder, true);
+            }
+        }
+
+        [Fact]
+        public void OutN_RecordsBorderAndBeeperAtTheEndOfTheIoCycle()
+        {
+            string romFolder = CreateTempRoms();
+            try
+            {
+                var machine = new Spectrum128Machine(romFolder);
+                machine.ConfigureFor48kSnapshot(borderColor: 0);
+                machine.SetDebugEventCaptureEnabled(true);
+                machine.PokeMemory(0x8000, 0xD3);
+                machine.PokeMemory(0x8001, 0xFE); // OUT (FEh),A
+                machine.Cpu.Regs.PC = 0x8000;
+                machine.Cpu.Regs.A = 0x12;
+
+                machine.ExecuteTimeSlice(1, out _);
+
+                Assert.Equal(11UL, machine.Cpu.TStates);
+                Assert.Contains("T=        11 OUT 12FE=12", machine.BuildDebugDump());
+                var audioFrame = machine.DrainAudioFrame();
+                Assert.Single(audioFrame.BeeperEvents);
+                Assert.Equal(11, audioFrame.BeeperEvents[0].TStateOffset);
+                Assert.True(audioFrame.BeeperEvents[0].SpeakerHigh);
+
+                machine.ExecuteTimeSlice(machine.FrameTStates);
+                Assert.Single(machine.LastCompletedBorderFrame.Events);
+                Assert.Equal(11, machine.LastCompletedBorderFrame.Events[0].TStateOffset);
+            }
+            finally
+            {
+                Directory.Delete(romFolder, true);
+            }
+        }
+
+        [Fact]
+        public void ContendedOutN_RecordsTheWriteAfterWaitStatesAndTheFullIoCycle()
+        {
+            string romFolder = CreateTempRoms();
+            try
+            {
+                var machine = new Spectrum128Machine(romFolder);
+                machine.ConfigureFor48kSnapshot(borderColor: 0);
+                machine.SetDebugEventCaptureEnabled(true);
+                machine.PokeMemory(0x8000, 0xD3);
+                machine.PokeMemory(0x8001, 0xFE); // OUT (FEh),A
+                machine.Cpu.Regs.PC = 0x8000;
+                machine.Cpu.Regs.A = 0x00;
+                machine.SetSnapshotResumeFramePhase(
+                    UlaTimingProfile.Spectrum48K.ContentionStartTState - 7);
+
+                machine.ExecuteTimeSlice(1, out _);
+
+                Assert.Equal(14344UL, machine.Cpu.TStates);
+                Assert.Contains("T=     14344 OUT 00FE=00", machine.BuildDebugDump());
+            }
+            finally
+            {
+                Directory.Delete(romFolder, true);
+            }
+        }
+
+        [Fact]
+        public void OutC_RecordsAyWriteAtTheEndOfTheIoCycle()
+        {
+            string romFolder = CreateTempRoms();
+            try
+            {
+                var machine = new Spectrum128Machine(romFolder);
+                machine.ConfigureFor128kSnapshot(last7ffdValue: 0, borderColor: 0);
+                machine.DebugWritePort(0xFFFD, 0x00);
+                machine.PokeMemory(0x8000, 0xED);
+                machine.PokeMemory(0x8001, 0x79); // OUT (C),A
+                machine.Cpu.Regs.PC = 0x8000;
+                machine.Cpu.Regs.BC = 0xBFFD;
+                machine.Cpu.Regs.A = 0x66;
+
+                machine.ExecuteTimeSlice(1, out _);
+
+                Assert.Equal(12UL, machine.Cpu.TStates);
+                var audioFrame = machine.DrainAudioFrame();
+                Assert.Single(audioFrame.AyWrites);
+                Assert.Equal(12, audioFrame.AyWrites[0].TState);
+                Assert.Equal((byte)0, audioFrame.AyWrites[0].Register);
+                Assert.Equal((byte)0x66, audioFrame.AyWrites[0].Value);
             }
             finally
             {
@@ -504,7 +598,9 @@ namespace Spectrum128kEmulator.Tests
             int cpuClockHz,
             int lineTStates,
             int contentionStartTState,
-            int displayFetchStartTState)
+            int displayFetchStartTState,
+            int visibleDisplayStartTState,
+            int borderLatchLeadTStates)
         {
             Assert.Equal(model, profile.Model);
             Assert.Equal(frameTStates, profile.FrameTStates);
@@ -512,6 +608,8 @@ namespace Spectrum128kEmulator.Tests
             Assert.Equal(lineTStates, profile.LineTStates);
             Assert.Equal(contentionStartTState, profile.ContentionStartTState);
             Assert.Equal(displayFetchStartTState, profile.DisplayFetchStartTState);
+            Assert.Equal(visibleDisplayStartTState, profile.VisibleDisplayStartTState);
+            Assert.Equal(borderLatchLeadTStates, profile.BorderLatchLeadTStates);
             Assert.Equal(192, profile.DisplayLineCount);
             Assert.Equal(128, profile.DisplayFetchTStatesPerLine);
         }

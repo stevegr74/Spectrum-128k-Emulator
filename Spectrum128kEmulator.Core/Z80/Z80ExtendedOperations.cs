@@ -294,7 +294,7 @@ namespace Spectrum128kEmulator.Z80
         {
             // INI/IND use two opcode M1 cycles followed by the four-T-state
             // I/O read. The ULA samples on the third I/O T-state.
-            byte value = ReadPortTimed?.Invoke(Regs.BC, 11) ?? ReadPort(Regs.BC);
+            byte value = ReadPortTimed?.Invoke(Regs.BC, 12) ?? ReadPort(Regs.BC);
             WriteMemory(Regs.HL, value);
 
             Regs.HL = increment ? (ushort)(Regs.HL + 1) : (ushort)(Regs.HL - 1);
@@ -320,18 +320,17 @@ namespace Spectrum128kEmulator.Z80
             Regs.B = (byte)(Regs.B - 1);
             ApplyBlockIoFlags(value, Regs.L);
 
-            int instructionTStates;
-            if (repeat && Regs.B != 0)
+            bool repeats = repeat && Regs.B != 0;
+            if (repeats)
             {
                 Regs.PC = (ushort)(Regs.PC - 2);
-                instructionTStates = 21;
-            }
-            else
-            {
-                instructionTStates = 16;
             }
 
-            WritePortTimed(Regs.BC, value, instructionTStates);
+            // The port cycle completes at T16. Repeating forms spend their
+            // additional five T-states after the write has reached the bus.
+            WritePortTimed(Regs.BC, value, 16);
+            if (repeats)
+                TStates += 5;
         }
 
         private void ApplyBlockIoFlags(byte value, int adjustment)
