@@ -116,6 +116,63 @@ namespace Spectrum128kEmulator.Tests
         }
 
         [Theory]
+        [InlineData(SpectrumMachineModel.Spectrum48K, 14334)]
+        [InlineData(SpectrumMachineModel.Spectrum128K, 14360)]
+        public void ImmediateOperandFetch_UsesItsMachineCycleOffset(
+            SpectrumMachineModel model,
+            int phaseBeforeContention)
+        {
+            string romFolder = CreateTempRoms();
+            try
+            {
+                var machine = new Spectrum128Machine(romFolder);
+                machine.Reset(model);
+                machine.PokeMemory(0x4000, 0x3E); // LD A,n
+                machine.PokeMemory(0x4001, 0x55);
+                machine.Cpu.Regs.PC = 0x4000;
+                machine.SetSnapshotResumeFramePhase(phaseBeforeContention);
+
+                ulong before = machine.Cpu.TStates;
+                machine.ExecuteTimeSlice(1, out _);
+
+                Assert.Equal((byte)0x55, machine.Cpu.Regs.A);
+                Assert.Equal(10UL, machine.Cpu.TStates - before);
+            }
+            finally
+            {
+                Directory.Delete(romFolder, true);
+            }
+        }
+
+        [Theory]
+        [InlineData(SpectrumMachineModel.Spectrum48K, 14334)]
+        [InlineData(SpectrumMachineModel.Spectrum128K, 14360)]
+        public void CbOpcodeFetch_UsesItsSecondM1CycleOffset(
+            SpectrumMachineModel model,
+            int phaseBeforeContention)
+        {
+            string romFolder = CreateTempRoms();
+            try
+            {
+                var machine = new Spectrum128Machine(romFolder);
+                machine.Reset(model);
+                machine.PokeMemory(0x4000, 0xCB);
+                machine.PokeMemory(0x4001, 0x00); // RLC B
+                machine.Cpu.Regs.PC = 0x4000;
+                machine.SetSnapshotResumeFramePhase(phaseBeforeContention);
+
+                ulong before = machine.Cpu.TStates;
+                machine.ExecuteTimeSlice(1, out _);
+
+                Assert.Equal(11UL, machine.Cpu.TStates - before);
+            }
+            finally
+            {
+                Directory.Delete(romFolder, true);
+            }
+        }
+
+        [Theory]
         [InlineData(0x00, 4UL)]
         [InlineData(0x01, 10UL)]
         [InlineData(0x02, 4UL)]

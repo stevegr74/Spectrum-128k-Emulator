@@ -13,19 +13,20 @@ namespace Spectrum128kEmulator.Z80
                 {
                     Trace?.Invoke($"UNIMPL DD 0x{op:X2} at PC=0x{(ushort)(Regs.PC - 2):X4} IX=0x{Regs.IX:X4}");
                     opcodeTable[op]();
+                    TStates += 4;
                 };
             }
 
             // 16-bit IX core
             ddOpcodeTable[0x09] = () => { Regs.IX = Add16(Regs.IX, Regs.BC); TStates += 15; };
             ddOpcodeTable[0x19] = () => { Regs.IX = Add16(Regs.IX, Regs.DE); TStates += 15; };
-            ddOpcodeTable[0x21] = () => { Regs.IX = FetchWord(); TStates += 10; };
+            ddOpcodeTable[0x21] = () => { Regs.IX = FetchWord(); TStates += 14; };
             ddOpcodeTable[0x22] = () =>
             {
                 ushort addr = FetchWord();
                 WriteMemory(addr, (byte)(Regs.IX & 0xFF));
                 WriteMemory((ushort)(addr + 1), (byte)(Regs.IX >> 8));
-                TStates += 16;
+                TStates += 20;
             };
             ddOpcodeTable[0x23] = () => { Regs.IX++; TStates += 10; };
             ddOpcodeTable[0x24] = () => { IXH = Inc8(IXH); TStates += 8; };
@@ -38,7 +39,7 @@ namespace Spectrum128kEmulator.Z80
                 byte low = ReadMemory(addr);
                 byte high = ReadMemory((ushort)(addr + 1));
                 Regs.IX = (ushort)(low | (high << 8));
-                TStates += 16;
+                TStates += 20;
             };
             ddOpcodeTable[0x2B] = () => { Regs.IX--; TStates += 10; };
             ddOpcodeTable[0x2C] = () => { IXL = Inc8(IXL); TStates += 8; };
@@ -177,11 +178,11 @@ namespace Spectrum128kEmulator.Z80
                 WriteMemory(Regs.SP, (byte)(Regs.IX & 0xFF));
                 WriteMemory((ushort)(Regs.SP + 1), (byte)(Regs.IX >> 8));
                 Regs.IX = (ushort)(low | (high << 8));
-                TStates += 19;
+                TStates += 23;
             };
             ddOpcodeTable[0xE5] = () => { TStates += 9; Push(Regs.IX); };
             ddOpcodeTable[0xE9] = () => { Regs.PC = Regs.IX; TStates += 8; };
-            ddOpcodeTable[0xF9] = () => { Regs.SP = Regs.IX; TStates += 6; };
+            ddOpcodeTable[0xF9] = () => { Regs.SP = Regs.IX; TStates += 10; };
         }
 
         private void InitializeFDTable()
@@ -193,19 +194,20 @@ namespace Spectrum128kEmulator.Z80
                 {
                     Trace?.Invoke($"UNIMPL FD 0x{op:X2} at PC=0x{(ushort)(Regs.PC - 2):X4} IY=0x{Regs.IY:X4}");
                     opcodeTable[op]();
+                    TStates += 4;
                 };
             }
 
             // 16-bit IY core
             fdOpcodeTable[0x09] = () => { Regs.IY = Add16(Regs.IY, Regs.BC); TStates += 15; };
             fdOpcodeTable[0x19] = () => { Regs.IY = Add16(Regs.IY, Regs.DE); TStates += 15; };
-            fdOpcodeTable[0x21] = () => { Regs.IY = FetchWord(); TStates += 10; };
+            fdOpcodeTable[0x21] = () => { Regs.IY = FetchWord(); TStates += 14; };
             fdOpcodeTable[0x22] = () =>
             {
                 ushort addr = FetchWord();
                 WriteMemory(addr, (byte)(Regs.IY & 0xFF));
                 WriteMemory((ushort)(addr + 1), (byte)(Regs.IY >> 8));
-                TStates += 16;
+                TStates += 20;
             };
             fdOpcodeTable[0x23] = () => { Regs.IY++; TStates += 10; };
             fdOpcodeTable[0x24] = () => { IYH = Inc8(IYH); TStates += 8; };
@@ -218,7 +220,7 @@ namespace Spectrum128kEmulator.Z80
                 byte low = ReadMemory(addr);
                 byte high = ReadMemory((ushort)(addr + 1));
                 Regs.IY = (ushort)(low | (high << 8));
-                TStates += 16;
+                TStates += 20;
             };
             fdOpcodeTable[0x2B] = () => { Regs.IY--; TStates += 10; };
             fdOpcodeTable[0x2C] = () => { IYL = Inc8(IYL); TStates += 8; };
@@ -356,11 +358,11 @@ namespace Spectrum128kEmulator.Z80
                 WriteMemory(Regs.SP, (byte)(Regs.IY & 0xFF));
                 WriteMemory((ushort)(Regs.SP + 1), (byte)(Regs.IY >> 8));
                 Regs.IY = (ushort)(low | (high << 8));
-                TStates += 19;
+                TStates += 23;
             };
             fdOpcodeTable[0xE5] = () => { TStates += 9; Push(Regs.IY); };
             fdOpcodeTable[0xE9] = () => { Regs.PC = Regs.IY; TStates += 8; };
-            fdOpcodeTable[0xF9] = () => { Regs.SP = Regs.IY; TStates += 6; };
+            fdOpcodeTable[0xF9] = () => { Regs.SP = Regs.IY; TStates += 10; };
         }
     }
 }

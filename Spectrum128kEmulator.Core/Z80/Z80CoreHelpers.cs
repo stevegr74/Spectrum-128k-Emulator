@@ -108,10 +108,11 @@ namespace Spectrum128kEmulator.Z80
         // prefix bytes, but not on ordinary operand bytes.
         private byte FetchOpcodeByte()
         {
-            byte b = ReadMemory(Regs.PC);
+            byte b = ReadMemoryAtInstructionOffset(Regs.PC, instructionFetchOffsetTStates);
             Regs.PC = (ushort)(Regs.PC + 1);
             IncrementRefreshRegister();
             InstructionFetchCount++;
+            instructionFetchOffsetTStates += 4;
             return b;
         }
 
@@ -122,10 +123,14 @@ namespace Spectrum128kEmulator.Z80
 
         private byte FetchByte()
         {
-            byte b = ReadMemory(Regs.PC);
+            byte b = ReadMemoryAtInstructionOffset(Regs.PC, instructionFetchOffsetTStates);
             Regs.PC = (ushort)(Regs.PC + 1);
+            instructionFetchOffsetTStates += 3;
             return b;
         }
+
+        private byte ReadMemoryAtInstructionOffset(ushort address, int offsetTStates) =>
+            ReadMemoryTimed?.Invoke(address, offsetTStates) ?? ReadMemory(address);
 
         private ushort FetchWord()
         {

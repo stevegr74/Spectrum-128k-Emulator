@@ -11,6 +11,7 @@ namespace Spectrum128kEmulator.Z80
         public ulong InstructionFetchCount { get; private set; } = 0;
 
         public Func<ushort, byte> ReadMemory { get; set; } = _ => 0xFF;
+        public Func<ushort, int, byte>? ReadMemoryTimed { get; set; }
         public Action<ushort, byte> WriteMemory { get; set; } = (_, _) => { };
         public Func<ushort, byte> ReadPort { get; set; } = _ => 0xFF;
         public Func<ushort, int, byte>? ReadPortTimed { get; set; }
@@ -56,6 +57,7 @@ namespace Spectrum128kEmulator.Z80
         private const int RecentTraceCapacity = 256;
         private const int RecentInterruptEventCapacity = 8192;
         private bool instructionTraceCaptureEnabled;
+        private int instructionFetchOffsetTStates;
 
         private byte IXH
         {
@@ -318,6 +320,7 @@ namespace Spectrum128kEmulator.Z80
         {
             ushort pcBefore = Regs.PC;
             flagsWrittenThisInstruction = false;
+            instructionFetchOffsetTStates = 0;
 
             byte op = FetchOpcodeByte();
             RecordTrace(pcBefore, op);

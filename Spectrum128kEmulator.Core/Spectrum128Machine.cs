@@ -159,6 +159,7 @@ namespace Spectrum128kEmulator
             ClearKeyboard();
 
             cpu.ReadMemory = ReadMemoryWithContention;
+            cpu.ReadMemoryTimed = ReadMemoryWithContentionAtOffset;
             cpu.WriteMemory = WriteMemoryWithContention;
             cpu.ReadPort = ReadPortWithContention;
             cpu.ReadPortTimed = ReadPortTimed;
@@ -536,6 +537,19 @@ namespace Spectrum128kEmulator
         private byte ReadMemoryWithContention(ushort addr)
         {
             Apply48kMemoryContention(addr);
+            return ReadMemory(addr);
+        }
+
+        private byte ReadMemoryWithContentionAtOffset(ushort addr, int offsetTStates)
+        {
+            if (Is48kContendedMemoryAddress(addr))
+            {
+                ulong delay = GetUlaContentionDelay(
+                    cpu.TStates + (ulong)Math.Max(0, offsetTStates));
+                if (delay != 0)
+                    cpu.AddTStates(delay);
+            }
+
             return ReadMemory(addr);
         }
 
