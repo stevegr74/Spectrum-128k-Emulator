@@ -16,7 +16,7 @@ This project focuses on correctness, clean architecture, and incremental develop
 - `.tap` and `.tzx` parsing, fast bootstrap, ROM-driven loading, protected/mounted playback, VERIFY, and multi-block sequencing
 - Manual/resumable tape transport with 48K stop-marker support and persistent status feedback
 - Platform-neutral headless core with Windows presentation/audio adapters
-- Paused `F6` debugger with immutable captures, CPU/stack context, Step Into, Run/Pause, run to cursor, persistent breakpoints, search, navigation, copy, and export
+- Paused `F6` debugger with immutable captures, CPU/stack context, Step Into/Over/Out, Run/Pause, run to cursor, persistent breakpoints, search, navigation, copy, and export
 - In-memory `F7`/`F8` Quick State save and restore
 - Headless manual diagnostics and Z80 compliance runners
 
@@ -172,10 +172,11 @@ discarded on exit.
 
 The debugger captures the mapped logical 64K plus registers, flags, interrupt
 state, stack context, model, ROM, and paging state; it does not yet expose every
-physical bank. It opens paused and supports Run/Pause, Step Into, run to cursor,
-and persistent enabled/disabled address breakpoints. The listing remains frozen
-while execution runs and refreshes only after the machine stops safely at an
-instruction boundary. Help and file choosers use nested-safe pause ownership.
+physical bank. It opens paused and supports Run/Pause, Step Into, Step Over,
+Step Out, run to cursor, and persistent enabled/disabled address breakpoints.
+The listing remains frozen while execution runs and refreshes only after the
+machine stops safely at an instruction boundary. Help and file choosers use
+nested-safe pause ownership.
 
 ---
 
@@ -308,7 +309,7 @@ compatibility and polish; completed milestones remain regression baselines.
 | 15 | Complete | Disassembler history, search, navigation, persistence, copy, and export |
 | 16 | Complete | Central ULA profiles, contention conformance, 128K floating bus, exact port events, border-latch mapping, timed CPU bus cycles, and published diagnostic validation |
 | 17 | Complete | Event-driven beam capture for bitmap, per-line attributes, border timing, and 128K shadow-screen changes, validated against Arkanoid and published diagnostics |
-| 18 | In progress | Instruction-boundary execution controls, CPU context, and persistent breakpoints; Step Over and Step Out remain |
+| 18 | In progress | Instruction-boundary Run/Pause, Step Into/Over/Out, run to cursor, CPU context, and persistent breakpoints; manual validation remains |
 | 19 | Planned | Bank-aware disassembly, labels, symbols, cross-references, and code/data analysis |
 
 ### Milestone 16 - ULA Timing Conformance And Port Accuracy Complete
@@ -333,7 +334,7 @@ compatibility and polish; completed milestones remain regression baselines.
 
 ### Milestone 18 - Debug Execution Controls In Progress
 - Opens paused by default, with explicit Run/Pause controls and a visibly frozen capture while execution is active
-- Implements Step Into and Run to Cursor at instruction boundaries; Step Over and Step Out remain next
+- Implements Step Into, call-aware Step Over, stack-aware Step Out, and Run to Cursor at instruction boundaries
 - Provides persistent enabled/disabled address breakpoints with a compact list and listing highlights
 - Shows main and alternate registers, flags, interrupt state, stack context, timing, and the instruction at the current `PC`
 - Keeps execution and breakpoint policy in a platform-neutral debugger service, with deterministic controller, interrupt-boundary, CPU, and scheduler tests

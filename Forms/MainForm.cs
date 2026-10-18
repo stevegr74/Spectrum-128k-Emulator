@@ -8,6 +8,7 @@ using Spectrum128kEmulator.Audio;
 using Spectrum128kEmulator.Debugging;
 using Spectrum128kEmulator.Tap;
 using Spectrum128kEmulator.Tape;
+using Spectrum128kEmulator.Z80;
 
 namespace Spectrum128kEmulator
 {
@@ -425,6 +426,7 @@ namespace Spectrum128kEmulator
                 {
                     machine.Cpu.StopBeforeInstruction = cpu => debuggerExecutionController.ShouldStopBeforeInstruction(
                         cpu.Regs.PC,
+                        cpu.Regs.SP,
                         cpu.InstructionFetchCount);
                 }
 
@@ -479,6 +481,32 @@ namespace Spectrum128kEmulator
 
                     case DebuggerExecutionCommand.StepInto:
                         debuggerExecutionController.BeginStepInto(programCounter, instructionFetchCount);
+                        break;
+
+                    case DebuggerExecutionCommand.StepOver:
+                        Z80Instruction instruction = Z80InstructionDisassembler.Disassemble(
+                            programCounter,
+                            machine.PeekMemory);
+                        bool isCallLike = instruction.Mnemonic.StartsWith("CALL ", StringComparison.Ordinal) ||
+                            instruction.Mnemonic.StartsWith("RST ", StringComparison.Ordinal);
+                        debuggerExecutionController.BeginStepOver(
+                            programCounter,
+                            machine.Cpu.Regs.SP,
+                            instructionFetchCount,
+                            instruction.Length,
+                            isCallLike);
+                        break;
+
+                    case DebuggerExecutionCommand.StepOut:
+                        ushort stackPointer = machine.Cpu.Regs.SP;
+                        ushort returnAddress = (ushort)(
+                            machine.PeekMemory(stackPointer) |
+                            (machine.PeekMemory((ushort)(stackPointer + 1)) << 8));
+                        debuggerExecutionController.BeginStepOut(
+                            programCounter,
+                            stackPointer,
+                            instructionFetchCount,
+                            returnAddress);
                         break;
 
                     case DebuggerExecutionCommand.RunToCursor when address.HasValue:

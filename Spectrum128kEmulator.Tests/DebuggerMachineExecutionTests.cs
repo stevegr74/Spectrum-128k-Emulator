@@ -41,6 +41,7 @@ namespace Spectrum128kEmulator.Tests
                 controller.BeginStepInto(machine.Cpu.Regs.PC, machine.Cpu.InstructionFetchCount);
                 machine.Cpu.StopBeforeInstruction = cpu => controller.ShouldStopBeforeInstruction(
                     cpu.Regs.PC,
+                    cpu.Regs.SP,
                     cpu.InstructionFetchCount);
 
                 machine.ExecuteTimeSlice(100, out int executedTStates);
@@ -70,6 +71,7 @@ namespace Spectrum128kEmulator.Tests
                 controller.BeginRun(machine.Cpu.Regs.PC, machine.Cpu.InstructionFetchCount);
                 machine.Cpu.StopBeforeInstruction = cpu => controller.ShouldStopBeforeInstruction(
                     cpu.Regs.PC,
+                    cpu.Regs.SP,
                     cpu.InstructionFetchCount);
 
                 machine.ExecuteTimeSlice(100, out int executedTStates);
@@ -79,6 +81,77 @@ namespace Spectrum128kEmulator.Tests
                 Assert.Equal((ushort)0x0002, machine.Cpu.Regs.PC);
                 Assert.True(controller.TryConsumeStop(out DebuggerStop? stop));
                 Assert.Equal(DebuggerStopReason.Breakpoint, stop!.Reason);
+            }
+            finally
+            {
+                Directory.Delete(romFolder, true);
+            }
+        }
+
+        [Fact]
+        public void StepOver_CallRunsSubroutineAndStopsAtFollowingInstruction()
+        {
+            string romFolder = CreateTempRoms();
+            try
+            {
+                var machine = new Spectrum128Machine(romFolder);
+                var controller = new DebuggerExecutionController();
+                machine.Cpu.Regs.PC = 0x8000;
+                machine.Cpu.Regs.SP = 0xFF00;
+                machine.PokeMemory(0x8000, 0xCD);
+                machine.PokeMemory(0x8001, 0x05);
+                machine.PokeMemory(0x8002, 0x80);
+                machine.PokeMemory(0x8005, 0x00);
+                machine.PokeMemory(0x8006, 0xC9);
+                controller.BeginStepOver(0x8000, 0xFF00, 0, instructionLength: 3, isCallLike: true);
+                machine.Cpu.StopBeforeInstruction = cpu => controller.ShouldStopBeforeInstruction(
+                    cpu.Regs.PC,
+                    cpu.Regs.SP,
+                    cpu.InstructionFetchCount);
+
+                machine.ExecuteTimeSlice(100, out int executedTStates);
+
+                Assert.True(machine.Cpu.ExecutionStopped);
+                Assert.Equal(31, executedTStates);
+                Assert.Equal((ushort)0x8003, machine.Cpu.Regs.PC);
+                Assert.Equal((ushort)0xFF00, machine.Cpu.Regs.SP);
+                Assert.True(controller.TryConsumeStop(out DebuggerStop? stop));
+                Assert.Equal(DebuggerStopReason.StepOverComplete, stop!.Reason);
+            }
+            finally
+            {
+                Directory.Delete(romFolder, true);
+            }
+        }
+
+        [Fact]
+        public void StepOut_RunsUntilReturnAddressIsPoppedFromStack()
+        {
+            string romFolder = CreateTempRoms();
+            try
+            {
+                var machine = new Spectrum128Machine(romFolder);
+                var controller = new DebuggerExecutionController();
+                machine.Cpu.Regs.PC = 0x8005;
+                machine.Cpu.Regs.SP = 0xFEFE;
+                machine.PokeMemory(0x8005, 0x00);
+                machine.PokeMemory(0x8006, 0xC9);
+                machine.PokeMemory(0xFEFE, 0x03);
+                machine.PokeMemory(0xFEFF, 0x80);
+                controller.BeginStepOut(0x8005, 0xFEFE, 0, returnAddress: 0x8003);
+                machine.Cpu.StopBeforeInstruction = cpu => controller.ShouldStopBeforeInstruction(
+                    cpu.Regs.PC,
+                    cpu.Regs.SP,
+                    cpu.InstructionFetchCount);
+
+                machine.ExecuteTimeSlice(100, out int executedTStates);
+
+                Assert.True(machine.Cpu.ExecutionStopped);
+                Assert.Equal(14, executedTStates);
+                Assert.Equal((ushort)0x8003, machine.Cpu.Regs.PC);
+                Assert.Equal((ushort)0xFF00, machine.Cpu.Regs.SP);
+                Assert.True(controller.TryConsumeStop(out DebuggerStop? stop));
+                Assert.Equal(DebuggerStopReason.StepOutComplete, stop!.Reason);
             }
             finally
             {
