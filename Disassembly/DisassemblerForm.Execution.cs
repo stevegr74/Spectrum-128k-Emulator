@@ -8,6 +8,8 @@ namespace Spectrum128kEmulator
         Run,
         Pause,
         StepInto,
+        StepOver,
+        StepOut,
         RunToCursor
     }
 
@@ -165,6 +167,8 @@ namespace Spectrum128kEmulator
             runButton.Enabled = !executionRunning;
             pauseButton.Enabled = executionRunning;
             stepIntoButton.Enabled = !executionRunning;
+            stepOverButton.Enabled = !executionRunning;
+            stepOutButton.Enabled = !executionRunning;
             runToCursorButton.Enabled = !executionRunning;
             toggleBreakpointButton.Enabled = !executionRunning;
             breakpointList.Enabled = !executionRunning;
@@ -198,6 +202,8 @@ namespace Spectrum128kEmulator
         private static string FormatStopStatus(DebuggerStop stop) => stop.Reason switch
         {
             DebuggerStopReason.StepComplete => $"Step complete at {stop.Address:X4}H.",
+            DebuggerStopReason.StepOverComplete => $"Step over complete at {stop.Address:X4}H.",
+            DebuggerStopReason.StepOutComplete => $"Step out complete at {stop.Address:X4}H.",
             DebuggerStopReason.Breakpoint => $"Breakpoint reached at {stop.Address:X4}H.",
             DebuggerStopReason.RunToAddress => $"Run to cursor reached {stop.Address:X4}H.",
             _ => $"Paused at {stop.Address:X4}H."

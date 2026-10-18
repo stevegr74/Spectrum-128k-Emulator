@@ -5,6 +5,8 @@ namespace Spectrum128kEmulator.Debugging
         Paused,
         Running,
         StepInto,
+        StepOver,
+        StepOut,
         RunToAddress
     }
 
@@ -12,6 +14,8 @@ namespace Spectrum128kEmulator.Debugging
     {
         PauseRequested,
         StepComplete,
+        StepOverComplete,
+        StepOutComplete,
         Breakpoint,
         RunToAddress
     }
@@ -28,6 +32,7 @@ namespace Spectrum128kEmulator.Debugging
         private ulong resumeInstructionFetchCount;
         private ushort resumeProgramCounter;
         private ushort? runToAddress;
+        private ushort? expectedStackPointer;
         private DebuggerStop? pendingStop;
         private bool pauseWasRequested;
 
@@ -76,17 +81,55 @@ namespace Spectrum128kEmulator.Debugging
 
         public void BeginRun(ushort programCounter, ulong instructionFetchCount)
         {
-            BeginExecution(DebuggerExecutionMode.Running, programCounter, instructionFetchCount, null);
+            BeginExecution(DebuggerExecutionMode.Running, programCounter, instructionFetchCount, null, null);
         }
 
         public void BeginStepInto(ushort programCounter, ulong instructionFetchCount)
         {
-            BeginExecution(DebuggerExecutionMode.StepInto, programCounter, instructionFetchCount, null);
+            BeginExecution(DebuggerExecutionMode.StepInto, programCounter, instructionFetchCount, null, null);
+        }
+
+        public void BeginStepOver(
+            ushort programCounter,
+            ushort stackPointer,
+            ulong instructionFetchCount,
+            int instructionLength,
+            bool isCallLike)
+        {
+            if (instructionLength <= 0)
+                throw new ArgumentOutOfRangeException(nameof(instructionLength));
+
+            if (!isCallLike)
+            {
+                BeginStepInto(programCounter, instructionFetchCount);
+                return;
+            }
+
+            BeginExecution(
+                DebuggerExecutionMode.StepOver,
+                programCounter,
+                instructionFetchCount,
+                (ushort)(programCounter + instructionLength),
+                stackPointer);
+        }
+
+        public void BeginStepOut(
+            ushort programCounter,
+            ushort stackPointer,
+            ulong instructionFetchCount,
+            ushort returnAddress)
+        {
+            BeginExecution(
+                DebuggerExecutionMode.StepOut,
+                programCounter,
+                instructionFetchCount,
+                returnAddress,
+                (ushort)(stackPointer + 2));
         }
 
         public void BeginRunToAddress(ushort address, ushort programCounter, ulong instructionFetchCount)
         {
-            BeginExecution(DebuggerExecutionMode.RunToAddress, programCounter, instructionFetchCount, address);
+            BeginExecution(DebuggerExecutionMode.RunToAddress, programCounter, instructionFetchCount, address, null);
         }
 
         public void RequestPause()
@@ -99,10 +142,14 @@ namespace Spectrum128kEmulator.Debugging
                 mode = DebuggerExecutionMode.Paused;
                 pauseWasRequested = true;
                 runToAddress = null;
+                expectedStackPointer = null;
             }
         }
 
-        public bool ShouldStopBeforeInstruction(ushort programCounter, ulong instructionFetchCount)
+        public bool ShouldStopBeforeInstruction(
+            ushort programCounter,
+            ushort stackPointer,
+            ulong instructionFetchCount)
         {
             lock (gate)
             {
@@ -121,6 +168,20 @@ namespace Spectrum128kEmulator.Debugging
 
                 if (mode == DebuggerExecutionMode.StepInto)
                     return Stop(DebuggerStopReason.StepComplete, programCounter);
+
+                if (mode == DebuggerExecutionMode.StepOver &&
+                    programCounter == runToAddress &&
+                    stackPointer == expectedStackPointer)
+                {
+                    return Stop(DebuggerStopReason.StepOverComplete, programCounter);
+                }
+
+                if (mode == DebuggerExecutionMode.StepOut &&
+                    programCounter == runToAddress &&
+                    stackPointer == expectedStackPointer)
+                {
+                    return Stop(DebuggerStopReason.StepOutComplete, programCounter);
+                }
 
                 if (mode == DebuggerExecutionMode.RunToAddress && programCounter == runToAddress)
                     return Stop(DebuggerStopReason.RunToAddress, programCounter);
@@ -146,7 +207,8 @@ namespace Spectrum128kEmulator.Debugging
             DebuggerExecutionMode executionMode,
             ushort programCounter,
             ulong instructionFetchCount,
-            ushort? temporaryAddress)
+            ushort? temporaryAddress,
+            ushort? stackPointer)
         {
             lock (gate)
             {
@@ -154,6 +216,7 @@ namespace Spectrum128kEmulator.Debugging
                 resumeProgramCounter = programCounter;
                 resumeInstructionFetchCount = instructionFetchCount;
                 runToAddress = temporaryAddress;
+                expectedStackPointer = stackPointer;
                 pendingStop = null;
                 pauseWasRequested = false;
             }
@@ -163,6 +226,7 @@ namespace Spectrum128kEmulator.Debugging
         {
             mode = DebuggerExecutionMode.Paused;
             runToAddress = null;
+            expectedStackPointer = null;
             pendingStop = new DebuggerStop(reason, address);
             return true;
         }

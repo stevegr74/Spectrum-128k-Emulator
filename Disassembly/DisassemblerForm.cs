@@ -29,6 +29,8 @@ namespace Spectrum128kEmulator
         private Button runButton = null!;
         private Button pauseButton = null!;
         private Button stepIntoButton = null!;
+        private Button stepOverButton = null!;
+        private Button stepOutButton = null!;
         private Button runToCursorButton = null!;
         private Button toggleBreakpointButton = null!;
         private readonly Font listingFont = new("Consolas", 10.0f, FontStyle.Regular);
@@ -184,19 +186,25 @@ namespace Spectrum128kEmulator
             toolbar.Controls.Add(mappingLabel);
 
             toolbar.Controls.Add(CreateToolbarLabel("EXECUTION", 18, 65));
-            runButton = CreateButton("Run", 18, 82, 62);
+            runButton = CreateButton("Run", 18, 82, 54);
             runButton.Click += (_, _) => BeginExecution(DebuggerExecutionCommand.Run);
             toolbar.Controls.Add(runButton);
-            pauseButton = CreateButton("Pause", 88, 82, 62);
+            pauseButton = CreateButton("Pause", 78, 82, 60);
             pauseButton.Click += (_, _) => RequestPause();
             toolbar.Controls.Add(pauseButton);
-            stepIntoButton = CreateButton("Step Into", 158, 82, 78);
+            stepIntoButton = CreateButton("Step Into", 144, 82, 74);
             stepIntoButton.Click += (_, _) => BeginExecution(DebuggerExecutionCommand.StepInto);
             toolbar.Controls.Add(stepIntoButton);
-            runToCursorButton = CreateButton("Run to Cursor", 244, 82, 104);
+            stepOverButton = CreateButton("Step Over", 224, 82, 78);
+            stepOverButton.Click += (_, _) => BeginExecution(DebuggerExecutionCommand.StepOver);
+            toolbar.Controls.Add(stepOverButton);
+            stepOutButton = CreateButton("Step Out", 308, 82, 72);
+            stepOutButton.Click += (_, _) => BeginExecution(DebuggerExecutionCommand.StepOut);
+            toolbar.Controls.Add(stepOutButton);
+            runToCursorButton = CreateButton("Run to Cursor", 386, 82, 102);
             runToCursorButton.Click += (_, _) => RunToCursor();
             toolbar.Controls.Add(runToCursorButton);
-            toggleBreakpointButton = CreateButton("Toggle Breakpoint", 356, 82, 126);
+            toggleBreakpointButton = CreateButton("Toggle Breakpoint", 494, 82, 126);
             toggleBreakpointButton.Click += (_, _) => ToggleBreakpointAtSelection();
             toolbar.Controls.Add(toggleBreakpointButton);
 
@@ -221,7 +229,7 @@ namespace Spectrum128kEmulator
             toolbar.Controls.Add(new Label
             {
                 AutoSize = true,
-                Text = "F5 run/pause | F9 breakpoint | F11 step | Ctrl+F10 run to cursor",
+                Text = "F5 run/pause | F9 breakpoint | F10 over | F11 into | Shift+F11 out",
                 Font = new Font(FontFamily.GenericSansSerif, 8.0f),
                 ForeColor = Color.FromArgb(65, 75, 75),
                 Location = new Point(510, 137)
@@ -632,6 +640,10 @@ namespace Spectrum128kEmulator
             }
             else if (e.KeyCode == Keys.F9)
                 ToggleBreakpointAtSelection();
+            else if (e.KeyCode == Keys.F10 && !e.Control)
+                BeginExecution(DebuggerExecutionCommand.StepOver);
+            else if (e.Shift && e.KeyCode == Keys.F11)
+                BeginExecution(DebuggerExecutionCommand.StepOut);
             else if (e.KeyCode == Keys.F11)
                 BeginExecution(DebuggerExecutionCommand.StepInto);
             else if (e.Control && e.KeyCode == Keys.F10)
