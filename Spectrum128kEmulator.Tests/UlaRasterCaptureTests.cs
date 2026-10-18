@@ -66,20 +66,48 @@ namespace Spectrum128kEmulator.Tests
         }
 
         [Fact]
+        public void CompletedFrame_OwnsItsMatchingBorderTimeline()
+        {
+            byte[][] banks = CreateBanks();
+            int screenBank = 5;
+            int borderColor = 1;
+            var capture = new UlaRasterCapture(
+                UlaTimingProfile.Spectrum48K,
+                () => screenBank,
+                () => borderColor,
+                (bank, offset) => banks[bank][offset]);
+
+            capture.AdvanceTo(0);
+            capture.RecordBorderChange(12000, 4);
+            borderColor = 4;
+            capture.AdvanceTo(Spectrum128Machine.FrameTStates48);
+
+            UlaFrame frame = Assert.IsType<UlaFrame>(capture.LastCompletedFrame);
+            Assert.Equal(1, frame.BorderFrame.InitialColor);
+            BorderEvent borderEvent = Assert.Single(frame.BorderFrame.Events);
+            Assert.Equal(12000, borderEvent.TStateOffset);
+            Assert.Equal(4, borderEvent.Color);
+        }
+
+        [Fact]
         public void FrameBuffer_RendersCapturedBytesInsteadOfFinalScreenRam()
         {
             byte[] bitmap = new byte[UlaFrame.CellCount];
             byte[] attributes = new byte[UlaFrame.CellCount];
             bitmap[0] = 0x80;
             attributes[0] = 0x02;
-            var ulaFrame = new UlaFrame(Spectrum128Machine.FrameTStates48, bitmap, attributes);
             var borderFrame = new BorderFrame(
                 Spectrum128Machine.FrameTStates48,
                 initialColor: 0,
                 Array.Empty<BorderEvent>());
+            var ulaFrame = new UlaFrame(
+                Spectrum128Machine.FrameTStates48,
+                bitmap,
+                attributes,
+                borderFrame);
             var frameBuffer = new SpectrumFrameBuffer();
 
-            frameBuffer.Render(ulaFrame, borderFrame, flashPhase: false);
+            frameBuffer.Render(ulaFrame, flashPhase: false);
 
             int firstDisplayPixel =
                 (Spectrum128Machine.BorderTopHeight * SpectrumFrameBuffer.Width) +
@@ -148,7 +176,11 @@ namespace Spectrum128kEmulator.Tests
             UlaTimingProfile timing,
             byte[][] banks,
             Func<int> getScreenBank) =>
-            new UlaRasterCapture(timing, getScreenBank, (bank, offset) => banks[bank][offset]);
+            new UlaRasterCapture(
+                timing,
+                getScreenBank,
+                () => 0,
+                (bank, offset) => banks[bank][offset]);
 
         private static byte[][] CreateBanks()
         {

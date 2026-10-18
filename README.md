@@ -36,7 +36,7 @@ Manually tested titles, formats, and reached checkpoints are tracked in
 Current limitations and active work:
 
 - opcode/immediate fetches, ordinary/indexed/block/stack memory accesses, port I/O, border, and floating-bus timing use model-specific machine-cycle positions validated against published 48K and 128K diagnostics
-- beam-aware active-screen capture is implemented for 48K and original 128K/+2 timing; Milestone 17 validation and border-path unification remain active
+- beam-aware 48K and original 128K/+2 video is implemented and validated; broader timing-sensitive software coverage remains ongoing
 - exact audio timing and turbo-to-real-time tape handoff still need polish in some titles
 - broader protected/custom TZX compatibility remains ongoing
 
@@ -55,13 +55,12 @@ Current limitations and active work:
 - Border, beeper, and AY writes are timestamped at the completed I/O cycle, including contended and repeating block-I/O paths; border changes are reconstructed in hardware-sized eight-pixel latch groups without stretching visible pixels across horizontal flyback.
 - Contended opcode, prefix, and immediate-byte fetches use their individual machine-cycle offsets; corrected indexed-instruction totals cover ignored `DD`/`FD` prefixes, absolute IX/IY loads and stores, stack exchange, and stack-pointer transfer.
 - Interrupt scheduling carries instruction-boundary overshoot into the next frame, preserving the 69,888-T-state 48K and 70,908-T-state 128K frame cadence without truncating instructions.
-- An event-driven ULA raster latches bitmap and per-scanline attribute bytes at their fetch times, including mid-frame 128K bank 5/bank 7 screen switches; the UI consumes the resulting immutable completed frame.
+- An event-driven ULA raster latches bitmap and per-scanline attribute bytes at their fetch times, including mid-frame 128K bank 5/bank 7 screen switches; each immutable completed frame owns its matching border timeline across the background-loop/UI boundary.
 
 ## Development Priorities
 
-Each feature is developed on its own branch. Current work is beam-aware video
-(Milestone 17), followed by debugger execution controls (18), and bank-aware
-symbolic disassembly (19). Tape compatibility and the
+Each feature is developed on its own branch. Current work is debugger execution
+controls (Milestone 18), followed by bank-aware symbolic disassembly (19). Tape compatibility and the
 turbo-to-realtime audio transition continue in parallel, with the verified media
 matrix plus ZEXDOC/ZEXALL used as regression gates.
 
@@ -305,7 +304,7 @@ compatibility and polish; completed milestones remain regression baselines.
 | 14 | Complete | Deterministic temporary in-memory Quick State |
 | 15 | Complete | Disassembler history, search, navigation, persistence, copy, and export |
 | 16 | Complete | Central ULA profiles, contention conformance, 128K floating bus, exact port events, border-latch mapping, timed CPU bus cycles, and published diagnostic validation |
-| 17 | In progress | Event-driven beam capture for bitmap, per-line attributes, and 128K shadow-screen changes; game validation and border-path unification remain |
+| 17 | Complete | Event-driven beam capture for bitmap, per-line attributes, border timing, and 128K shadow-screen changes, validated against Arkanoid and published diagnostics |
 
 ### Milestone 16 - ULA Timing Conformance And Port Accuracy Complete
 - Implemented one model-specific timing profile for frame length, scanline length, contention start, display fetches, visible raster mapping, and the documented timing convention
@@ -318,14 +317,14 @@ compatibility and polish; completed milestones remain regression baselines.
 - Matched the Patrik Rak Timing Test 0.3 reference captures pixel-for-pixel for 48K/128K contended NOP, snow-effect NOP, and all six even/odd I/O contention cases
 - Matched the Mark Woodmass Float48K and Float128K reference address/value sequences, with the repeatable external-media procedure recorded under `test-assets/ula`
 
-### Milestone 17 - Beam-Aware Video Pipeline In Progress
+### Milestone 17 - Beam-Aware Video Pipeline Complete
 - Implemented an event-driven ULA raster that advances to timed machine events without requiring a literal per-T-state host loop
 - Bitmap bytes and attributes are latched at their individual ULA fetches; attributes are fetched independently on every pixel line rather than read from final frame RAM
 - Original 128K/+2 bank 5 and shadow bank 7 screen changes take effect at their timed paging event, so one frame can contain output from both banks
-- Completed raster frames are immutable across the background-loop/UI boundary and survive Quick State capture and restore
-- Preserved FLASH, palette, border reconstruction, display scaling, and the platform-neutral frame-buffer boundary
-- Added deterministic fetch-boundary, per-line attribute, shadow-screen, rendering, and no-screen-write frame tests; published 48K/128K contention captures remain pixel-identical
-- Validate Arkanoid and representative tape/snapshot titles, then bring border latching under the same completed-frame ownership model before marking the milestone complete
+- Completed raster frames own their matching timestamped border timeline, remain immutable across the background-loop/UI boundary, and survive Quick State capture and restore
+- Preserved FLASH, palette, display scaling, and the platform-neutral frame-buffer boundary
+- Added deterministic fetch-boundary, per-line attribute, shadow-screen, border ownership, rendering, and no-screen-write frame tests; published 48K/128K contention captures remain pixel-identical
+- Eliminated the previously observed Arkanoid ship flicker while preserving CD Player and Cybernoid snapshot rendering and protected tape execution
 
 ### Milestone 18 - Debug Execution Controls Planned
 - Keep opening the window paused by default, with an explicit Run/Pause control if live execution is enabled

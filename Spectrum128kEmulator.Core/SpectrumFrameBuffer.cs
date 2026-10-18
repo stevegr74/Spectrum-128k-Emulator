@@ -62,14 +62,12 @@ namespace Spectrum128kEmulator
             }
         }
 
-        public void Render(UlaFrame ulaFrame, BorderFrame borderFrame, bool flashPhase)
+        public void Render(UlaFrame ulaFrame, bool flashPhase)
         {
             if (ulaFrame == null)
                 throw new ArgumentNullException(nameof(ulaFrame));
-            if (borderFrame == null)
-                throw new ArgumentNullException(nameof(borderFrame));
 
-            RenderBorder(borderFrame);
+            RenderBorder(ulaFrame.BorderFrame);
 
             for (int y = 0; y < Spectrum128Machine.ActiveDisplayHeight; y++)
             {

@@ -161,6 +161,7 @@ namespace Spectrum128kEmulator
             ulaRaster = new UlaRasterCapture(
                 TimingProfile,
                 () => ScreenBank,
+                () => BorderColor,
                 (bank, offset) => ramBanks[bank][offset]);
 
             cpu.ReadMemory = ReadMemoryWithContention;
@@ -1381,7 +1382,9 @@ namespace Spectrum128kEmulator
 
             if ((port & 0x0001) == 0)
             {
-                BorderColor = value & 0x07;
+                int newBorderColor = value & 0x07;
+                ulaRaster.RecordBorderChange(writeTStates, newBorderColor);
+                BorderColor = newBorderColor;
                 RecordBorderEvent(BorderColor, writeTStates);
                 micHigh = (value & 0x08) != 0;
 

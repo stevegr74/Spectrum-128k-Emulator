@@ -751,7 +751,7 @@ namespace Spectrum128kEmulator
             if (borderFrame == null)
                 presentationFrameBuffer.Render(screenBankCopy, borderColor, flashPhase);
             else if (ulaFrame != null)
-                presentationFrameBuffer.Render(ulaFrame, borderFrame, flashPhase);
+                presentationFrameBuffer.Render(ulaFrame, flashPhase);
             else
                 presentationFrameBuffer.Render(screenBankCopy, borderFrame, flashPhase);
             SpectrumDisplayLayout layout = SpectrumDisplayModes.GetLayout(displayMode);
