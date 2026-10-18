@@ -60,8 +60,8 @@ Current limitations and active work:
 
 ## Development Priorities
 
-Each feature is developed on its own branch. Current work is debugger execution
-controls (Milestone 18), followed by bank-aware symbolic disassembly (19). Tape compatibility and the
+Each feature is developed on its own branch. Current work is bank-aware symbolic
+disassembly (Milestone 19). Tape compatibility and the
 turbo-to-realtime audio transition continue in parallel, with the verified media
 matrix plus ZEXDOC/ZEXALL used as regression gates.
 
@@ -309,7 +309,7 @@ compatibility and polish; completed milestones remain regression baselines.
 | 15 | Complete | Disassembler history, search, navigation, persistence, copy, and export |
 | 16 | Complete | Central ULA profiles, contention conformance, 128K floating bus, exact port events, border-latch mapping, timed CPU bus cycles, and published diagnostic validation |
 | 17 | Complete | Event-driven beam capture for bitmap, per-line attributes, border timing, and 128K shadow-screen changes, validated against Arkanoid and published diagnostics |
-| 18 | In progress | Instruction-boundary Run/Pause, Step Into/Over/Out, run to cursor, CPU context, and persistent breakpoints; manual validation remains |
+| 18 | Complete | Instruction-boundary Run/Pause, Step Into/Over/Out, run to cursor, CPU context, and persistent breakpoints |
 | 19 | Planned | Bank-aware disassembly, labels, symbols, cross-references, and code/data analysis |
 
 ### Milestone 16 - ULA Timing Conformance And Port Accuracy Complete
@@ -332,13 +332,13 @@ compatibility and polish; completed milestones remain regression baselines.
 - Added deterministic fetch-boundary, per-line attribute, shadow-screen, border ownership, rendering, and no-screen-write frame tests; published 48K/128K contention captures remain pixel-identical
 - Eliminated the previously observed Arkanoid ship flicker while preserving CD Player and Cybernoid snapshot rendering and protected tape execution
 
-### Milestone 18 - Debug Execution Controls In Progress
+### Milestone 18 - Debug Execution Controls Complete
 - Opens paused by default, with explicit Run/Pause controls and a visibly frozen capture while execution is active
 - Implements Step Into, call-aware Step Over, stack-aware Step Out, and Run to Cursor at instruction boundaries
 - Provides persistent enabled/disabled address breakpoints with a compact list and listing highlights
 - Shows main and alternate registers, flags, interrupt state, stack context, timing, and the instruction at the current `PC`
 - Keeps execution and breakpoint policy in a platform-neutral debugger service, with deterministic controller, interrupt-boundary, CPU, and scheduler tests
-- Refreshes the immutable capture only after a safe stop; optional throttled live refresh remains deferred
+- Refreshes the immutable capture only after a safe stop, avoiding mutable-state inspection while execution is active
 
 ### Milestone 19 - Bank-Aware Disassembly And Symbolic Analysis Planned
 - Allow inspection of physical ROM and RAM banks independently of the currently mapped 64K address space
