@@ -203,42 +203,7 @@ namespace Spectrum128kEmulator.Z80
 
                 if (InterruptPending && IFF1)
                 {
-                    ushort returnPc = Regs.PC;
-                    RecordInterruptEvent($"INT_ACCEPT return={returnPc:X4}", true);
-                    RecordInterruptEvent("INT_ACCEPT");
-                    LastInterruptProgressTStates = TStates;
-                    InterruptPending = false;
-                    halted = false;
-                    qFlags = 0;
-
-                    IFF1 = false;
-                    // Preserve IFF2 on maskable interrupt acknowledge.
-                    // RETN/RETI restore IFF1 from IFF2.
-
-                    IncrementRefreshRegister();
-                    TStates += 7;
-                    Push(Regs.PC);
-
-                    switch (interruptMode)
-                    {
-                        case 0:
-                        case 1:
-                            Regs.PC = 0x0038;
-                            RecordInterruptEvent($"INT_VECTOR target={Regs.PC:X4}");
-                            break;
-
-                        case 2:
-                            ushort vector = (ushort)((Regs.I << 8) | 0xFF);
-                            byte low = ReadMemory(vector);
-                            TStates += 3;
-                            byte high = ReadMemory((ushort)(vector + 1));
-                            TStates += 3;
-                            Regs.PC = (ushort)(low | (high << 8));
-                            RecordInterruptEvent($"INT_VECTOR target={Regs.PC:X4}");
-                            break;
-                    }
-
-                    RecordInterruptEvent($"INT_VECTOR {Regs.PC:X4}");
+                    AcceptMaskableInterrupt();
                     continue;
                 }
 
@@ -272,40 +237,7 @@ namespace Spectrum128kEmulator.Z80
 
                 if (InterruptPending && IFF1)
                 {
-                    ushort returnPc = Regs.PC;
-                    RecordInterruptEvent($"INT_ACCEPT return={returnPc:X4}", true);
-                    RecordInterruptEvent("INT_ACCEPT");
-                    LastInterruptProgressTStates = TStates;
-                    InterruptPending = false;
-                    halted = false;
-                    qFlags = 0;
-
-                    IFF1 = false;
-
-                    IncrementRefreshRegister();
-                    TStates += 7;
-                    Push(Regs.PC);
-
-                    switch (interruptMode)
-                    {
-                        case 0:
-                        case 1:
-                            Regs.PC = 0x0038;
-                            RecordInterruptEvent($"INT_VECTOR target={Regs.PC:X4}");
-                            break;
-
-                        case 2:
-                            ushort vector = (ushort)((Regs.I << 8) | 0xFF);
-                            byte low = ReadMemory(vector);
-                            TStates += 3;
-                            byte high = ReadMemory((ushort)(vector + 1));
-                            TStates += 3;
-                            Regs.PC = (ushort)(low | (high << 8));
-                            RecordInterruptEvent($"INT_VECTOR target={Regs.PC:X4}");
-                            break;
-                    }
-
-                    RecordInterruptEvent($"INT_VECTOR {Regs.PC:X4}");
+                    AcceptMaskableInterrupt();
                     continue;
                 }
 
@@ -319,6 +251,45 @@ namespace Spectrum128kEmulator.Z80
 
                 Step();
             }
+        }
+
+        private void AcceptMaskableInterrupt()
+        {
+            ushort returnPc = Regs.PC;
+            RecordInterruptEvent($"INT_ACCEPT return={returnPc:X4}", true);
+            RecordInterruptEvent("INT_ACCEPT");
+            LastInterruptProgressTStates = TStates;
+            InterruptPending = false;
+            halted = false;
+            qFlags = 0;
+
+            IFF1 = false;
+            IFF2 = false;
+
+            IncrementRefreshRegister();
+            TStates += 7;
+            Push(Regs.PC);
+
+            switch (interruptMode)
+            {
+                case 0:
+                case 1:
+                    Regs.PC = 0x0038;
+                    RecordInterruptEvent($"INT_VECTOR target={Regs.PC:X4}");
+                    break;
+
+                case 2:
+                    ushort vector = (ushort)((Regs.I << 8) | 0xFF);
+                    byte low = ReadMemory(vector);
+                    TStates += 3;
+                    byte high = ReadMemory((ushort)(vector + 1));
+                    TStates += 3;
+                    Regs.PC = (ushort)(low | (high << 8));
+                    RecordInterruptEvent($"INT_VECTOR target={Regs.PC:X4}");
+                    break;
+            }
+
+            RecordInterruptEvent($"INT_VECTOR {Regs.PC:X4}");
         }
 
         public void Step()
