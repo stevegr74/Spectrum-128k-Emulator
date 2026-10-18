@@ -22,6 +22,18 @@ This project focuses on correctness, clean architecture, and incremental develop
 
 ---
 
+## Screenshots
+
+### Spectrum 128K Startup
+
+![Spectrum 128K emulator showing the 128K ROM menu](docs/images/emulator-128k-basic.png)
+
+### Bank-Aware Debugger
+
+![Paused Z80 debugger showing mapped memory, paging context, labels, and execution controls](docs/images/debugger-bank-aware.png)
+
+---
+
 ## Current Status
 
 `master` is a stable, playable baseline with a headless core, clock-driven audio,
@@ -60,10 +72,11 @@ Current limitations and active work:
 
 ## Development Priorities
 
-Each feature is developed on its own branch. Current work is bank-aware symbolic
-disassembly (Milestone 19). Tape compatibility and the turbo-to-realtime audio
-transition continue in parallel, with the verified media matrix plus
-ZEXDOC/ZEXALL used as regression gates.
+Each feature is developed on its own branch. Current Milestone 19 work is
+cross-reference and code/data analysis on top of the completed bank-aware symbol
+foundation. Tape compatibility and the turbo-to-realtime audio transition continue
+in parallel, with the verified media matrix plus ZEXDOC/ZEXALL used as regression
+gates.
 
 ---
 
@@ -100,6 +113,7 @@ Spectrum128kEmulator/
 |-- Forms/                                 main window partials and shortcut-reference dialog
 |-- Input/                                 WinForms-to-Spectrum keyboard bridge
 |-- Video/                                 display modes, pixel-art scaling, and presentation adapter
+|-- docs/images/                           README screenshots of the emulator and debugger
 |-- Program.cs                             Windows application entry point
 |-- Spectrum128kEmulator.csproj            net10.0-windows frontend project
 |-- VERIFIED_GAMES.md                      manual media compatibility record
