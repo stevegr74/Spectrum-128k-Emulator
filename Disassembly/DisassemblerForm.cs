@@ -13,6 +13,7 @@ namespace Spectrum128kEmulator
         private readonly DebuggerExecutionController executionController;
         private readonly Action<DebuggerExecutionCommand, ushort?> requestExecution;
         private readonly DisassemblyNavigationHistory navigationHistory = new();
+        private readonly DisassemblySymbolTable symbols;
         private readonly DisassemblerWindowSettingsStore settingsStore;
         private readonly DisassemblerWindowSettings settings;
         private readonly TextBox addressTextBox = new();
@@ -80,6 +81,11 @@ namespace Spectrum128kEmulator
             this.requestExecution = requestExecution ?? throw new ArgumentNullException(nameof(requestExecution));
             this.settingsStore = settingsStore ?? throw new ArgumentNullException(nameof(settingsStore));
             settings = settingsStore.Load();
+            symbols = new DisassemblySymbolTable(settings.Symbols.Select(symbol => new DisassemblySymbol(
+                new DisassemblyAddressSpace(symbol.AddressSpaceKind, symbol.Bank),
+                symbol.Address,
+                symbol.Name,
+                symbol.IsAutomatic)));
             executionController.ReplaceBreakpoints(settings.Breakpoints.Select(
                 breakpoint => new DebuggerBreakpoint(breakpoint.Address, breakpoint.Enabled)));
             snapshot = captureSnapshot();
@@ -289,8 +295,9 @@ namespace Spectrum128kEmulator
             instructionList.BackColor = Color.FromArgb(251, 250, 245);
             instructionList.ForeColor = Ink;
             instructionList.Columns.Add("Address", 112, HorizontalAlignment.Left);
-            instructionList.Columns.Add("Bytes", 170, HorizontalAlignment.Left);
-            instructionList.Columns.Add("Instruction", 480, HorizontalAlignment.Left);
+            instructionList.Columns.Add("Label", 145, HorizontalAlignment.Left);
+            instructionList.Columns.Add("Bytes", 130, HorizontalAlignment.Left);
+            instructionList.Columns.Add("Instruction", 375, HorizontalAlignment.Left);
             instructionList.Columns.Add("Target", 100, HorizontalAlignment.Left);
             instructionList.DoubleClick += (_, _) => NavigateToSelectedTarget();
             instructionList.ContextMenuStrip = CreateListingContextMenu();
@@ -320,21 +327,30 @@ namespace Spectrum128kEmulator
         private ContextMenuStrip CreateListingContextMenu()
         {
             var menu = new ContextMenuStrip();
-            menu.Items.Add("Follow Target", null, (_, _) => NavigateToSelectedTarget());
-            menu.Items.Add("Run to Cursor", null, (_, _) => RunToCursor());
-            menu.Items.Add("Toggle Breakpoint", null, (_, _) => ToggleBreakpointAtSelection());
+            ToolStripItem followTargetItem = menu.Items.Add("Follow Target", null, (_, _) => NavigateToSelectedTarget());
+            ToolStripItem editLabelItem = menu.Items.Add("Add/Edit Label...", null, (_, _) => EditLabelAtSelection());
+            ToolStripItem removeLabelItem = menu.Items.Add("Remove Label", null, (_, _) => RemoveLabelAtSelection());
+            menu.Items.Add(new ToolStripSeparator());
+            ToolStripItem runToCursorItem = menu.Items.Add("Run to Cursor", null, (_, _) => RunToCursor());
+            ToolStripItem breakpointItem = menu.Items.Add("Toggle Breakpoint", null, (_, _) => ToggleBreakpointAtSelection());
             menu.Items.Add(new ToolStripSeparator());
             menu.Items.Add("Copy Selected", null, (_, _) => CopyListing(selectedOnly: true));
             menu.Items.Add("Copy All Displayed", null, (_, _) => CopyListing(selectedOnly: false));
             menu.Items.Add("Export Complete View...", null, (_, _) => ExportListing());
+            menu.Items.Add(new ToolStripSeparator());
+            menu.Items.Add("Import Symbols...", null, (_, _) => ImportSymbols());
+            menu.Items.Add("Export Symbols...", null, (_, _) => ExportSymbols());
             menu.Opening += (_, _) =>
             {
-                menu.Items[0].Enabled = SelectedInstruction()?.BranchTarget is ushort target &&
+                followTargetItem.Enabled = SelectedInstruction()?.BranchTarget is ushort target &&
                     target < selectedAddressSpace.Length;
+                editLabelItem.Enabled = SelectedInstruction() != null;
+                removeLabelItem.Enabled = SelectedInstruction() is Z80Instruction selected &&
+                    symbols.GetName(selectedAddressSpace, selected.Address) != null;
                 bool mappedSelection = selectedAddressSpace.Kind == DisassemblyAddressSpaceKind.Mapped &&
                     SelectedInstruction() != null;
-                menu.Items[1].Enabled = !executionRunning && mappedSelection;
-                menu.Items[2].Enabled = !executionRunning && mappedSelection;
+                runToCursorItem.Enabled = !executionRunning && mappedSelection;
+                breakpointItem.Enabled = !executionRunning && mappedSelection;
             };
             return menu;
         }
@@ -387,7 +403,16 @@ namespace Spectrum128kEmulator
         {
             if (!DisassemblyAddressParser.TryParse(addressTextBox.Text, out ushort address))
             {
-                statusLabel.Text = "Enter a hexadecimal address from 0000 to FFFF.";
+                if (symbols.TryFind(addressTextBox.Text, out DisassemblySymbol? symbol) &&
+                    snapshot.AvailableAddressSpaces.Contains(symbol!.AddressSpace))
+                {
+                    PreserveCurrentHistorySelection();
+                    SetSelectedAddressSpace(symbol.AddressSpace);
+                    NavigateTo(symbol.Address, status: $"Showing label {symbol.Name} at {symbol.AddressSpace.FormatAddress(symbol.Address)}.");
+                    return;
+                }
+
+                statusLabel.Text = "Enter a hexadecimal address or label name.";
                 addressTextBox.SelectAll();
                 addressTextBox.Focus();
                 return;
@@ -589,9 +614,10 @@ namespace Spectrum128kEmulator
                         ? instruction.Address.ToString("X4")
                         : $"{AddressSpacePrefix(selectedAddressSpace)}:{instruction.Address:X4}";
                     var item = new ListViewItem(addressText) { Tag = instruction };
+                    item.SubItems.Add(symbols.GetName(selectedAddressSpace, instruction.Address) ?? string.Empty);
                     item.SubItems.Add(instruction.BytesText);
                     item.SubItems.Add(instruction.Mnemonic);
-                    item.SubItems.Add(instruction.BranchTarget is ushort target ? target.ToString("X4") : string.Empty);
+                    item.SubItems.Add(FormatTarget(instruction));
                     if (selectedAddressSpace.Kind == DisassemblyAddressSpaceKind.Mapped &&
                         instruction.Address == snapshot.ProgramCounter)
                     {
@@ -648,7 +674,11 @@ namespace Spectrum128kEmulator
                     statusLabel.Text = $"Target {target:X4}H is outside {selectedAddressSpace.DisplayName}; switch to Mapped 64K to follow its logical address.";
                     return;
                 }
+                bool isCall = SelectedInstruction()!.Mnemonic.StartsWith("CALL ", StringComparison.OrdinalIgnoreCase) ||
+                    SelectedInstruction()!.Mnemonic.StartsWith("RST ", StringComparison.OrdinalIgnoreCase);
+                DisassemblySymbol symbol = symbols.EnsureAutomatic(selectedAddressSpace, target, isCall);
                 NavigateTo(target);
+                statusLabel.Text = $"Followed target {symbol.Name} at {selectedAddressSpace.FormatAddress(target)}.";
             }
             else
                 statusLabel.Text = "The selected instruction has no direct branch target.";
@@ -661,10 +691,129 @@ namespace Spectrum128kEmulator
                 : null;
         }
 
+        private string FormatTarget(Z80Instruction instruction)
+        {
+            if (instruction.BranchTarget is not ushort target)
+                return string.Empty;
+
+            string? label = target < selectedAddressSpace.Length
+                ? symbols.GetName(selectedAddressSpace, target)
+                : null;
+            return label == null ? target.ToString("X4") : $"{label} ({target:X4})";
+        }
+
+        private void EditLabelAtSelection()
+        {
+            if (SelectedInstruction() is not Z80Instruction instruction)
+                return;
+
+            string location = selectedAddressSpace.FormatAddress(instruction.Address);
+            string? currentName = symbols.GetName(selectedAddressSpace, instruction.Address);
+            while (DisassemblyLabelDialog.TryShow(this, location, currentName, out string name))
+            {
+                if (symbols.TrySet(selectedAddressSpace, instruction.Address, name, isAutomatic: false, out string? error))
+                {
+                    PopulateListing(instruction.Address);
+                    statusLabel.Text = $"Label {name} assigned to {location}.";
+                    return;
+                }
+
+                MessageBox.Show(this, error, "Invalid Label", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                currentName = name;
+            }
+        }
+
+        private void RemoveLabelAtSelection()
+        {
+            if (SelectedInstruction() is not Z80Instruction instruction ||
+                !symbols.Remove(selectedAddressSpace, instruction.Address))
+            {
+                return;
+            }
+
+            PopulateListing(instruction.Address);
+            statusLabel.Text = $"Removed label from {selectedAddressSpace.FormatAddress(instruction.Address)}.";
+        }
+
+        private void ImportSymbols()
+        {
+            using var dialog = new OpenFileDialog
+            {
+                Title = "Import Debugger Symbols",
+                Filter = "Symbol files (*.sym;*.txt)|*.sym;*.txt|All files (*.*)|*.*",
+                CheckFileExists = true,
+                Multiselect = false
+            };
+            if (dialog.ShowDialog(this) != DialogResult.OK)
+                return;
+
+            try
+            {
+                string text = File.ReadAllText(dialog.FileName);
+                if (!DisassemblySymbolFile.TryParse(text, out IReadOnlyList<DisassemblySymbol> imported, out string? parseError))
+                {
+                    MessageBox.Show(this, parseError, "Symbol Import Failed", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                    return;
+                }
+                if (!symbols.TryMerge(imported, out string? mergeError))
+                {
+                    MessageBox.Show(this, mergeError, "Symbol Import Failed", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                    return;
+                }
+
+                PopulateListing(SelectedInstruction()?.Address ?? listingAddress);
+                statusLabel.Text = $"Imported {imported.Count} symbol(s) from {Path.GetFileName(dialog.FileName)}.";
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show(this, ex.Message, "Symbol Import Failed", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            }
+        }
+
+        private void ExportSymbols()
+        {
+            if (symbols.Symbols.Count == 0)
+            {
+                statusLabel.Text = "There are no symbols to export.";
+                return;
+            }
+
+            using var dialog = new SaveFileDialog
+            {
+                Title = "Export Debugger Symbols",
+                Filter = "Symbol file (*.sym)|*.sym|Text file (*.txt)|*.txt|All files (*.*)|*.*",
+                FileName = "debugger-symbols.sym",
+                AddExtension = true,
+                OverwritePrompt = true
+            };
+            if (dialog.ShowDialog(this) != DialogResult.OK)
+                return;
+
+            try
+            {
+                File.WriteAllText(dialog.FileName, DisassemblySymbolFile.Format(symbols.Symbols));
+                statusLabel.Text = $"Exported {symbols.Symbols.Count} symbol(s) to {Path.GetFileName(dialog.FileName)}.";
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show(this, ex.Message, "Symbol Export Failed", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            }
+        }
+
         private void FindNext()
         {
             var mode = (DisassemblySearchMode)searchModeComboBox.SelectedIndex;
             string query = searchTextBox.Text.Trim();
+            if (mode == DisassemblySearchMode.Address &&
+                symbols.TryFind(query, out DisassemblySymbol? symbol) &&
+                snapshot.AvailableAddressSpaces.Contains(symbol!.AddressSpace))
+            {
+                PreserveCurrentHistorySelection();
+                SetSelectedAddressSpace(symbol.AddressSpace);
+                NavigateTo(symbol.Address, status: $"Found label {symbol.Name} at {symbol.AddressSpace.FormatAddress(symbol.Address)}.");
+                instructionList.Focus();
+                return;
+            }
             bool sameSearch = lastSearchMode == mode &&
                 lastSearchAddressSpace == selectedAddressSpace &&
                 string.Equals(lastSearchQuery, query, StringComparison.OrdinalIgnoreCase);
@@ -706,7 +855,8 @@ namespace Spectrum128kEmulator
                 selectedAddressSpace,
                 listingAddress,
                 instructions,
-                includeHeader: true));
+                includeHeader: true,
+                symbols));
             statusLabel.Text = $"Copied {instructions.Count} instruction(s) with capture metadata.";
         }
 
@@ -730,7 +880,8 @@ namespace Spectrum128kEmulator
                 selectedAddressSpace,
                 listingAddress,
                 instructions,
-                includeHeader: true));
+                includeHeader: true,
+                symbols));
             statusLabel.Text = $"Exported complete {selectedAddressSpace.DisplayName} listing ({instructions.Count} instructions) to {Path.GetFileName(dialog.FileName)}.";
         }
 
@@ -774,6 +925,14 @@ namespace Spectrum128kEmulator
                     Enabled = breakpoint.Enabled
                 })
                 .ToList();
+            settings.Symbols = symbols.Symbols.Select(symbol => new DisassemblerSymbolSetting
+            {
+                AddressSpaceKind = symbol.AddressSpace.Kind,
+                Bank = symbol.AddressSpace.Bank,
+                Address = symbol.Address,
+                Name = symbol.Name,
+                IsAutomatic = symbol.IsAutomatic
+            }).ToList();
             try
             {
                 settingsStore.Save(settings);
@@ -822,6 +981,8 @@ namespace Spectrum128kEmulator
             }
             else if (e.KeyCode == Keys.F3)
                 FindNext();
+            else if (e.Control && e.KeyCode == Keys.L)
+                EditLabelAtSelection();
             else if (e.KeyCode == Keys.F5)
             {
                 if (executionRunning)

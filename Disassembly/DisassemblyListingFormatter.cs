@@ -56,7 +56,8 @@ namespace Spectrum128kEmulator
             DisassemblyAddressSpace addressSpace,
             ushort listingAddress,
             IEnumerable<Z80Instruction> instructions,
-            bool includeHeader)
+            bool includeHeader,
+            DisassemblySymbolTable? symbols = null)
         {
             ArgumentNullException.ThrowIfNull(snapshot);
             ArgumentNullException.ThrowIfNull(instructions);
@@ -75,14 +76,22 @@ namespace Spectrum128kEmulator
 
             foreach (Z80Instruction instruction in instructions)
             {
+                string? label = symbols?.GetName(addressSpace, instruction.Address);
+                if (label != null)
+                    builder.AppendLine($"{label}:");
+
+                string targetComment = instruction.BranchTarget is ushort target &&
+                    symbols?.GetName(addressSpace, target) is string targetLabel
+                        ? $"  ; -> {targetLabel}"
+                        : string.Empty;
                 if (addressSpace.Kind == DisassemblyAddressSpaceKind.Mapped)
                 {
-                    builder.AppendLine($"{instruction.Address:X4}:  {instruction.BytesText,-14}  {instruction.Mnemonic}");
+                    builder.AppendLine($"{instruction.Address:X4}:  {instruction.BytesText,-14}  {instruction.Mnemonic}{targetComment}");
                 }
                 else
                 {
                     string addressText = $"{addressSpace.DisplayName}:{instruction.Address:X4}:";
-                    builder.AppendLine($"{addressText,-13}  {instruction.BytesText,-14}  {instruction.Mnemonic}");
+                    builder.AppendLine($"{addressText,-13}  {instruction.BytesText,-14}  {instruction.Mnemonic}{targetComment}");
                 }
             }
 

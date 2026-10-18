@@ -95,6 +95,7 @@ namespace Spectrum128kEmulator
                 ("Ctrl+C", "Copy selected rows with capture metadata"),
                 ("Ctrl+Shift+C", "Copy every displayed row with capture metadata"),
                 ("Memory view", "Inspect mapped 64K, ROM banks, or RAM banks from the immutable capture"),
+                ("Ctrl+L / Right-click", "Add or edit a bank-qualified label; the menu also imports and exports symbols"),
                 ("Ctrl+E", "Export a complete 64K mapped or 16K physical-bank listing")
             }));
             content.Controls.Add(CreateShortcutSection("Spectrum Keyboard", new[]

@@ -218,6 +218,17 @@ namespace Spectrum128kEmulator.Tests
                     Breakpoints =
                     [
                         new DisassemblerBreakpointSetting { Address = 0x8123, Enabled = false }
+                    ],
+                    Symbols =
+                    [
+                        new DisassemblerSymbolSetting
+                        {
+                            AddressSpaceKind = DisassemblyAddressSpaceKind.Rom,
+                            Bank = 1,
+                            Address = 0x1234,
+                            Name = "RomRoutine",
+                            IsAutomatic = true
+                        }
                     ]
                 });
 
@@ -231,6 +242,9 @@ namespace Spectrum128kEmulator.Tests
                 Assert.Single(loaded.Breakpoints);
                 Assert.Equal((ushort)0x8123, loaded.Breakpoints[0].Address);
                 Assert.False(loaded.Breakpoints[0].Enabled);
+                Assert.Single(loaded.Symbols);
+                Assert.Equal("RomRoutine", loaded.Symbols[0].Name);
+                Assert.True(loaded.Symbols[0].IsAutomatic);
 
                 File.WriteAllText(path, "not-json");
                 Assert.Null(store.Load().LastListingAddress);

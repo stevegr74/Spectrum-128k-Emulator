@@ -174,6 +174,9 @@ The debugger captures the mapped logical 64K, both ROM banks, all eight RAM
 banks, registers, flags, interrupt state, stack context, model, and paging state.
 Its memory-view selector keeps mapped addresses distinct from bank-qualified
 physical offsets; search, history, copy, and export follow the selected view.
+Bank-qualified labels persist between sessions, can be imported or exported as
+plain-text symbol files, and are created automatically when an unlabeled direct
+call or branch target is followed.
 It opens paused and supports Run/Pause, Step Into, Step Over, Step Out, run to
 cursor, and persistent enabled/disabled mapped-address breakpoints. The listing
 remains frozen while execution runs and refreshes only after the machine stops
@@ -215,7 +218,7 @@ Test coverage includes:
 - AY register write and selected-register port-read behaviour
 - Audio sample generation
 - Audio pipeline behaviour
-- Z80 instruction decoding, disassembly navigation/search, listing export, settings, and snapshot behavior
+- Z80 instruction decoding, bank-aware disassembly navigation/search, labels, symbol import/export, listing export, settings, and snapshot behavior
 - Quick State deterministic machine, tape-cursor, and RZX-cursor restoration
 - ZEXDOC and ZEXALL compliance validation via the dedicated runner
 
@@ -312,7 +315,7 @@ compatibility and polish; completed milestones remain regression baselines.
 | 16 | Complete | Central ULA profiles, contention conformance, 128K floating bus, exact port events, border-latch mapping, timed CPU bus cycles, and published diagnostic validation |
 | 17 | Complete | Event-driven beam capture for bitmap, per-line attributes, border timing, and 128K shadow-screen changes, validated against Arkanoid and published diagnostics |
 | 18 | Complete | Instruction-boundary Run/Pause, Step Into/Over/Out, run to cursor, CPU context, and persistent breakpoints |
-| 19 | In progress | Physical-bank inspection and export complete; labels, symbols, cross-references, and code/data analysis remain |
+| 19 | In progress | Physical-bank inspection, labels, and symbol import/export complete; cross-references and code/data analysis remain |
 
 ### Milestone 16 - ULA Timing Conformance And Port Accuracy Complete
 - Implemented one model-specific timing profile for frame length, scanline length, contention start, display fetches, visible raster mapping, and the documented timing convention
@@ -345,8 +348,8 @@ compatibility and polish; completed milestones remain regression baselines.
 ### Milestone 19 - Bank-Aware Disassembly And Symbolic Analysis In Progress
 - Completed immutable inspection of both ROM banks and all eight RAM banks independently of the currently mapped 64K address space
 - Completed explicit mapped versus bank-qualified offset context across navigation history, search, copy, and 64K/16K export
+- Completed persistent user labels, automatic followed-target labels, symbol-aware navigation, and bank-qualified symbol import/export
 - Keep paging changes visible in refreshed snapshots without conflating physical offsets with logical CPU addresses
-- Add user labels, symbol import/export, and automatic labels for followed branch and call targets
 - Add cross-references for jumps, calls, and data references without treating arbitrary data as executable code
 - Add code/data marking, hexadecimal memory inspection, and navigation from registers, stack entries, and branch targets
 - Export stable bank-qualified listings suitable for diagnostics and comparison between emulator runs
