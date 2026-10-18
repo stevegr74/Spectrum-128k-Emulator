@@ -22,7 +22,7 @@ that every level, control path, or hardware edge case has been tested.
 | Rambo (Ocean) | `.tzx` | Speedlock BASIC handoff uses real-ROM bootstrap; protected pulse loading completes without initial screen corruption |
 | Roller Coaster (Elite) | `.tzx` | End-of-load transition starts the game correctly |
 | Scuba Dive (Durell) | `.tzx` | Nonstandard leading tape structure mounts and loads correctly |
-| Target Renegade | `128k.tzx` | 128K mode loads the complete game; 48K mode follows the level-at-a-time path with resumable tape transport |
+| Target Renegade | `128k.tzx` | 128K mode loads the complete game; 48K mode follows the level-at-a-time path with resumable tape transport; both modes remain responsive with good audio after the Milestone 16 timing changes |
 | The New Zealand Story (Hit Squad) | `.tzx` | 128K protected loading reaches the menu; manually resuming at `SEARCHING. 01` loads level 1-1 and auto-stops at the next multiload boundary |
 | The Oracle's Cave (Doric Computer) | `.tzx` | ROM-driven multi-stage loading completes; maze generation and level selection lead into the playable cave |
 | Where Time Stood Still | `.tap` | Fast load completes and terminal tape state is detected |
@@ -31,6 +31,8 @@ that every level, control path, or hardware edge case has been tested.
 
 | Title / file | Format | Verified checkpoint and notes |
 | --- | --- | --- |
+| CD Player | `cdplayer.sna` | Snapshot loads and runs responsively with good audio after the Milestone 16 timing changes |
+| Cybernoid: The Fighting Machine | `Cybernoid_The_Fighting_Machine_1988_Hewson_Consultants_a_128K.z80` | 128K snapshot loads and runs responsively with good AY audio after the Milestone 16 timing changes |
 | Exolon | `.sna`, `.z80` | Both snapshot forms load and run with 128K audio |
 | Jet Set Willy April | `JSWAPRIL.Z80` | Snapshot loads and executes |
 | Robocop | `robocop128k.z80` | 128K snapshot loads and executes |

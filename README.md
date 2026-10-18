@@ -37,7 +37,7 @@ Current limitations and active work:
 
 - opcode/immediate fetches, port I/O, border, and floating-bus timing now use model-specific machine-cycle positions; broader data/stack memory bus-cycle conformance remains active Milestone 16 work
 - active-screen rendering is frame-snapshot based rather than beam-aware; Milestone 17 addresses this
-- protected live-tape audio handoff still needs polish in some titles
+- exact audio timing and turbo-to-real-time tape handoff still need polish in some titles
 - broader protected/custom TZX compatibility remains ongoing
 
 ### Implementation Notes
@@ -201,6 +201,8 @@ Test coverage includes:
 - 48K/128K machine-model behavior
 - complete 48K/128K contention phases, boundaries, I/O cases, and contended-bank behavior
 - 48K/128K floating-bus fetches, including 128K shadow-screen bank selection
+- exact port event timestamps, block-I/O timing, and border latch/raster mapping
+- timed opcode, prefix, and immediate fetch contention plus indexed-instruction timing regressions
 - AY register write and selected-register port-read behaviour
 - Audio sample generation
 - Audio pipeline behaviour
@@ -303,7 +305,7 @@ compatibility and polish; completed milestones remain regression baselines.
 - Generalized the floating-bus model for the original Spectrum 128K and grey +2, including normal bank 5 and shadow bank 7 screen selection
 - Decoded attached input devices before the floating-bus fallback, including `IN (0xFFFD)` reading the selected AY register
 - Corrected and tested border, beeper, and AY write timestamps plus eight-pixel border-latch and visible pixel/T-state mapping without claiming +2A/+3 behavior
-- Validate with published contention and floating-bus diagnostics plus the existing tape, snapshot, RZX, ZEXDOC, and ZEXALL regression matrix
+- Continue validation with published contention and floating-bus diagnostics plus the existing tape, snapshot, RZX, ZEXDOC, and ZEXALL regression matrix
 
 ### Milestone 17 - Beam-Aware Video Pipeline Planned
 - Add an event-driven ULA raster that advances to timed machine events; a literal per-T-state host loop is not required when the observable result is equivalent
@@ -334,7 +336,6 @@ compatibility and polish; completed milestones remain regression baselines.
 ## Longer-Term Improvements
 
 - Demo compatibility beyond the current validation matrix
-- Remaining menu/input responsiveness polish for games like Jet Set Willy
 - Broader real-game validation
 - Optional game library window with searchable artwork tiles, recent items, and an explicit file picker; prefer a scalable grid over a carousel-only interface
 - Additional platform frontends, including a browser/WebAssembly adapter using the established headless engine boundary
