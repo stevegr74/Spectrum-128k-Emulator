@@ -36,6 +36,7 @@ namespace Spectrum128kEmulator
             internal AyRegisterWrite[] AyWrites = null!;
             internal BorderEvent[] BorderEvents = null!;
             internal BorderFrame LastCompletedBorderFrame = null!;
+            internal UlaRasterCapture.QuickState UlaRasterState = null!;
             internal AyAudioState? FrameStartAyState;
             internal bool CaptureAudioFramesEnabled;
             internal int FloatingBusDisplayStartAdjustTStates;
@@ -103,6 +104,7 @@ namespace Spectrum128kEmulator
                     lastCompletedBorderFrame.FrameTStates,
                     lastCompletedBorderFrame.InitialColor,
                     lastCompletedBorderFrame.Events),
+                UlaRasterState = ulaRaster.CaptureQuickState(),
                 FrameStartAyState = frameStartAyState == null
                     ? null
                     : new AyAudioState(frameStartAyState.GetRegistersCopy()),
@@ -169,6 +171,8 @@ namespace Spectrum128kEmulator
 
             cpu.RestoreQuickState(state.CpuState);
             ay.RestoreQuickState(state.AyState);
+            ulaRaster.Reset(TimingProfile);
+            ulaRaster.RestoreQuickState(state.UlaRasterState);
             RestoreFrameCaptureState(state);
             RestoreMediaState(state);
             RestoreMountedLoadContinuation(state);

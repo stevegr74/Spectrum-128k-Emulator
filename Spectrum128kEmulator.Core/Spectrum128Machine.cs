@@ -85,6 +85,7 @@ namespace Spectrum128kEmulator
         private readonly List<Audio.AyRegisterWrite> ayWrites = new List<Audio.AyRegisterWrite>();
         private readonly List<BorderEvent> borderEvents = new List<BorderEvent>();
         private BorderFrame lastCompletedBorderFrame = new BorderFrame(FrameTStates128, 1, Array.Empty<BorderEvent>());
+        private readonly UlaRasterCapture ulaRaster;
         private Audio.AyAudioState? frameStartAyState;
         private readonly Queue<Audio.AudioFrame> completedAudioFrames = new Queue<Audio.AudioFrame>();
         private bool captureAudioFramesEnabled = true;
@@ -157,6 +158,11 @@ namespace Spectrum128kEmulator
             mountedLoadContinuation = new MountedLoadContinuationController(this);
             InitializeScreenRam();
             ClearKeyboard();
+            ulaRaster = new UlaRasterCapture(
+                TimingProfile,
+                () => ScreenBank,
+                () => BorderColor,
+                (bank, offset) => ramBanks[bank][offset]);
 
             cpu.ReadMemory = ReadMemoryWithContention;
             cpu.ReadMemoryTimed = ReadMemoryWithContentionAtOffset;
@@ -200,6 +206,7 @@ namespace Spectrum128kEmulator
         public bool SupportsRomTapeAcceleration => RomProfile.SupportsAddressBasedTapeServices;
         public bool FlashPhase => ((FrameCount / 16) & 1) != 0;
         public BorderFrame LastCompletedBorderFrame => lastCompletedBorderFrame;
+        public UlaFrame? LastCompletedUlaFrame => ulaRaster.LastCompletedFrame;
         private UlaTimingProfile TimingProfile => UlaTimingProfile.ForFrameLength(frameTStates);
 
         public bool HasMountedTape => mountedTape != null;
@@ -253,6 +260,7 @@ namespace Spectrum128kEmulator
             ayWrites.Clear();
             borderEvents.Clear();
             lastCompletedBorderFrame = new BorderFrame(frameTStates, BorderColor, Array.Empty<BorderEvent>());
+            ulaRaster.Reset(TimingProfile);
             currentFrameExecutedTStates = 0;
             completedAudioFrames.Clear();
             ClearDebugHistory();
@@ -283,6 +291,7 @@ namespace Spectrum128kEmulator
             }
 
             cpu.ExecuteInstructionFetches(instructionFetchCount);
+            ulaRaster.AdvanceTo(cpu.TStates);
             TriggerFrameInterrupt();
             lastAudioFrameTStates = (int)Math.Min((ulong)int.MaxValue, cpu.TStates - frameStartTStates);
             completedAudioFrames.Enqueue(new Audio.AudioFrame(
@@ -373,6 +382,7 @@ namespace Spectrum128kEmulator
                 int executionChunk = Math.Min(tStatesBudget, Math.Min(remainingFrameTStates, tStatesUntilNextInterrupt));
                 ulong tStatesBefore = cpu.TStates;
                 cpu.ExecuteCycles((ulong)executionChunk);
+                ulaRaster.AdvanceTo(cpu.TStates);
                 int actualExecutedTStates = (int)Math.Min((ulong)int.MaxValue, cpu.TStates - tStatesBefore);
                 executedTStates += actualExecutedTStates;
                 MountedTape? activeTape = mountedTape;
@@ -556,20 +566,38 @@ namespace Spectrum128kEmulator
         private void WriteMemoryWithContention(ushort addr, byte value)
         {
             Apply48kMemoryContention(addr);
+            const ulong memoryWriteCycleTStates = 3;
+            AdvanceUlaBeforeScreenWrite(addr, cpu.TStates + memoryWriteCycleTStates);
             WriteMemory(addr, value);
         }
 
         private void WriteMemoryWithContentionAtOffset(ushort addr, byte value, int offsetTStates)
         {
+            int safeOffsetTStates = Math.Max(0, offsetTStates);
             if (Is48kContendedMemoryAddress(addr))
             {
                 ulong delay = GetUlaContentionDelay(
-                    cpu.TStates + (ulong)Math.Max(0, offsetTStates));
+                    cpu.TStates + (ulong)safeOffsetTStates);
                 if (delay != 0)
                     cpu.AddTStates(delay);
             }
 
+            const ulong memoryWriteCycleTStates = 3;
+            AdvanceUlaBeforeScreenWrite(
+                addr,
+                cpu.TStates + (ulong)safeOffsetTStates + memoryWriteCycleTStates);
             WriteMemory(addr, value);
+        }
+
+        private void AdvanceUlaBeforeScreenWrite(ushort addr, ulong writeTStates)
+        {
+            if (addr < 0x4000)
+                return;
+
+            int bank = GetMappedRamBank(addr);
+            int offset = addr & 0x3FFF;
+            if ((bank == 5 || bank == 7) && offset < 0x1B00)
+                ulaRaster.AdvanceTo(writeTStates);
         }
 
         private byte ReadPortWithContention(ushort port)
@@ -910,6 +938,7 @@ namespace Spectrum128kEmulator
             completedAudioFrames.Clear();
             tStatesUntilNextInterrupt = 0;
             realignInterruptPhaseAfterNextAccept = false;
+            ulaRaster.Reset(TimingProfile);
         }
 
         private void LoadRoms(string romFolder)
@@ -950,12 +979,7 @@ namespace Spectrum128kEmulator
             if (addr < 0x4000)
                 return romBanks[CurrentRomBank][addr];
 
-            int bank = addr switch
-            {
-                < 0x8000 => 5,
-                < 0xC000 => 2,
-                _ => PagedRamBank
-            };
+            int bank = GetMappedRamBank(addr);
 
             return ramBanks[bank][addr & 0x3FFF];
         }
@@ -965,12 +989,7 @@ namespace Spectrum128kEmulator
             if (addr < 0x4000)
                 return;
 
-            int bank = addr switch
-            {
-                < 0x8000 => 5,
-                < 0xC000 => 2,
-                _ => PagedRamBank
-            };
+            int bank = GetMappedRamBank(addr);
 
             if (screenWriteDiagnosticsEnabled && addr >= 0x4000 && addr < 0x5B00)
             {
@@ -992,6 +1011,13 @@ namespace Spectrum128kEmulator
             if (debugEventCaptureEnabled)
                 RecordMemoryEvent($"T={cpu.TStates,10} W {addr:X4}={value:X2} bank={bank} PC={cpu.Regs.PC:X4} SP={cpu.Regs.SP:X4}");
         }
+
+        private int GetMappedRamBank(ushort addr) => addr switch
+        {
+            < 0x8000 => 5,
+            < 0xC000 => 2,
+            _ => PagedRamBank
+        };
 
         public byte ReadPort(ushort port)
         {
@@ -1238,6 +1264,7 @@ namespace Spectrum128kEmulator
             tStatesUntilNextInterrupt = 0;
             currentFrameExecutedTStates = 0;
             completedAudioFrames.Clear();
+            ulaRaster.Reset(TimingProfile);
         }
 
         public void ConfigureFor128kTapeLoad(int borderColor)
@@ -1262,6 +1289,7 @@ namespace Spectrum128kEmulator
             realignInterruptPhaseAfterNextAccept = false;
             currentFrameExecutedTStates = 0;
             completedAudioFrames.Clear();
+            ulaRaster.Reset(TimingProfile);
         }
 
         private void Configure48kSnapshotCore(int borderColor, SpectrumMachineModel hardwareModel, int targetFrameTStates)
@@ -1287,6 +1315,7 @@ namespace Spectrum128kEmulator
             realignInterruptPhaseAfterNextAccept = false;
             currentFrameExecutedTStates = 0;
             completedAudioFrames.Clear();
+            ulaRaster.Reset(TimingProfile);
         }
 
         public void Load48kSnapshotRam(byte[] ram48)
@@ -1341,6 +1370,7 @@ namespace Spectrum128kEmulator
             realignInterruptPhaseAfterNextAccept = false;
             currentFrameExecutedTStates = 0;
             completedAudioFrames.Clear();
+            ulaRaster.Reset(TimingProfile);
         }
 
         private void WritePort(ushort port, byte value, ulong? eventTStates = null)
@@ -1352,7 +1382,9 @@ namespace Spectrum128kEmulator
 
             if ((port & 0x0001) == 0)
             {
-                BorderColor = value & 0x07;
+                int newBorderColor = value & 0x07;
+                ulaRaster.RecordBorderChange(writeTStates, newBorderColor);
+                BorderColor = newBorderColor;
                 RecordBorderEvent(BorderColor, writeTStates);
                 micHigh = (value & 0x08) != 0;
 
@@ -1374,6 +1406,8 @@ namespace Spectrum128kEmulator
             {
                 if (PagingLocked)
                     return;
+
+                ulaRaster.AdvanceTo(writeTStates);
 
                 int oldRam = PagedRamBank;
                 int oldScreen = ScreenBank;
@@ -1404,6 +1438,7 @@ namespace Spectrum128kEmulator
 
         private void BeginFrameAudioCapture()
         {
+            ulaRaster.AdvanceTo(cpu.TStates);
             frameStartTStates = cpu.TStates;
             frameStartBorderColor = BorderColor;
             frameStartSpeakerHigh = speakerHigh;

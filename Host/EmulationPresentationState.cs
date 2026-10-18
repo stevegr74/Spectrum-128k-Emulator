@@ -6,6 +6,7 @@ namespace Spectrum128kEmulator
         private readonly byte[] screenBankData = new byte[0x4000];
         private int borderColor;
         private BorderFrame? borderFrame;
+        private UlaFrame? ulaFrame;
         private bool flashPhase;
         private bool hasValue;
 
@@ -29,6 +30,7 @@ namespace Spectrum128kEmulator
                 Buffer.BlockCopy(source, 0, screenBankData, 0, screenBankData.Length);
                 borderColor = machine.BorderColor;
                 borderFrame = machine.LastCompletedBorderFrame;
+                ulaFrame = machine.LastCompletedUlaFrame;
                 flashPhase = machine.FlashPhase;
                 hasValue = true;
             }
@@ -48,6 +50,7 @@ namespace Spectrum128kEmulator
                     (byte[])screenBankData.Clone(),
                     borderColor,
                     borderFrame,
+                    ulaFrame,
                     flashPhase);
                 return true;
             }
@@ -58,5 +61,6 @@ namespace Spectrum128kEmulator
         byte[] ScreenBankData,
         int BorderColor,
         BorderFrame? BorderFrame,
+        UlaFrame? UlaFrame,
         bool FlashPhase);
 }

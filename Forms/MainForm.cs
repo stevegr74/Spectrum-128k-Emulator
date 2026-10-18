@@ -744,11 +744,14 @@ namespace Spectrum128kEmulator
             byte[] screenBankCopy = snapshot.ScreenBankData;
             int borderColor = snapshot.BorderColor;
             BorderFrame? borderFrame = snapshot.BorderFrame;
+            UlaFrame? ulaFrame = snapshot.UlaFrame;
             bool flashPhase = snapshot.FlashPhase;
 
             long renderStartTicks = frameClock.ElapsedTicks;
             if (borderFrame == null)
                 presentationFrameBuffer.Render(screenBankCopy, borderColor, flashPhase);
+            else if (ulaFrame != null)
+                presentationFrameBuffer.Render(ulaFrame, flashPhase);
             else
                 presentationFrameBuffer.Render(screenBankCopy, borderFrame, flashPhase);
             SpectrumDisplayLayout layout = SpectrumDisplayModes.GetLayout(displayMode);
