@@ -675,6 +675,41 @@ namespace Spectrum128kEmulator.Tests
             }
         }
 
+        [Fact]
+        public void InterruptCadence_CarriesInstructionBoundaryOvershoot()
+        {
+            string romFolder = CreateTempRoms();
+            try
+            {
+                var machine = new Spectrum128Machine(romFolder);
+                machine.ConfigureFor48kSnapshot(borderColor: 0);
+                machine.Cpu.Regs.PC = 0x8000;
+                machine.PokeMemory(0x8000, 0x00);
+                machine.SetInitialInterruptDelay(513);
+                machine.Cpu.RestoreInterruptState(iff1: true, iff2: true, interruptMode: 1);
+                machine.Cpu.ClearRecentTrace();
+
+                machine.ExecuteFrame();
+                ulong firstAcceptTStates = ExtractFirstInterruptAcceptTStates(
+                    machine.Cpu.GetRecentInterruptEventsSnapshot());
+
+                machine.Cpu.RestoreInterruptState(iff1: true, iff2: true, interruptMode: 1);
+                machine.Cpu.ClearRecentTrace();
+                machine.ExecuteFrame();
+                ulong secondAcceptTStates = ExtractFirstInterruptAcceptTStates(
+                    machine.Cpu.GetRecentInterruptEventsSnapshot());
+
+                Assert.Equal(516UL, firstAcceptTStates);
+                Assert.Equal(
+                    513UL + (ulong)Spectrum128Machine.FrameTStates48,
+                    secondAcceptTStates);
+            }
+            finally
+            {
+                Directory.Delete(romFolder, true);
+            }
+        }
+
         private static void AssertTimingProfile(
             UlaTimingProfile profile,
             SpectrumMachineModel model,
@@ -696,6 +731,25 @@ namespace Spectrum128kEmulator.Tests
             Assert.Equal(borderLatchLeadTStates, profile.BorderLatchLeadTStates);
             Assert.Equal(192, profile.DisplayLineCount);
             Assert.Equal(128, profile.DisplayFetchTStatesPerLine);
+        }
+
+        private static ulong ExtractFirstInterruptAcceptTStates(string[] events)
+        {
+            foreach (string line in events)
+            {
+                if (!line.Contains("INT_ACCEPT return=", StringComparison.Ordinal))
+                    continue;
+
+                int marker = line.IndexOf("T=", StringComparison.Ordinal);
+                int pcMarker = line.IndexOf(" PC=", StringComparison.Ordinal);
+                if (marker >= 0 && pcMarker > marker &&
+                    ulong.TryParse(line[(marker + 2)..pcMarker].Trim(), out ulong tStates))
+                {
+                    return tStates;
+                }
+            }
+
+            throw new InvalidOperationException("No interrupt acceptance event was recorded.");
         }
 
         private static void AssertMemoryFetchDuration(
