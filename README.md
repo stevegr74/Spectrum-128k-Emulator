@@ -16,7 +16,7 @@ This project focuses on correctness, clean architecture, and incremental develop
 - `.tap` and `.tzx` parsing, fast bootstrap, ROM-driven loading, protected/mounted playback, VERIFY, and multi-block sequencing
 - Manual/resumable tape transport with 48K stop-marker support and persistent status feedback
 - Platform-neutral headless core with Windows presentation/audio adapters
-- Paused `F6` debugger with immutable mapped/physical-bank captures, CPU/stack context, Step Into/Over/Out, Run/Pause, run to cursor, persistent breakpoints, search, navigation, copy, and export
+- Paused `F6` debugger with immutable mapped/physical-bank captures, CPU/stack context, Step Into/Over/Out, Run/Pause, run to cursor, persistent breakpoints, bank-qualified labels, symbol files, search, navigation, copy, and export
 - In-memory `F7`/`F8` Quick State save and restore
 - Headless manual diagnostics and Z80 compliance runners
 
@@ -61,9 +61,9 @@ Current limitations and active work:
 ## Development Priorities
 
 Each feature is developed on its own branch. Current work is bank-aware symbolic
-disassembly (Milestone 19). Tape compatibility and the
-turbo-to-realtime audio transition continue in parallel, with the verified media
-matrix plus ZEXDOC/ZEXALL used as regression gates.
+disassembly (Milestone 19). Tape compatibility and the turbo-to-realtime audio
+transition continue in parallel, with the verified media matrix plus
+ZEXDOC/ZEXALL used as regression gates.
 
 ---
 
@@ -95,7 +95,7 @@ Spectrum128kEmulator/
 |   `-- RzxPlaybackSession.cs              RZX playback orchestration
 |
 |-- Audio/                                 Windows audio pipeline and output adapters
-|-- Disassembly/                           execution debugger UI, captures, navigation, and export
+|-- Disassembly/                           debugger UI, bank captures, symbols, navigation, and export
 |-- Host/                                  background loop, pause ownership, and UI snapshots
 |-- Forms/                                 main window partials and shortcut-reference dialog
 |-- Input/                                 WinForms-to-Spectrum keyboard bridge
@@ -118,9 +118,9 @@ Spectrum128kEmulator/
 `Spectrum128kEmulator.Core` has no WinForms, `System.Drawing`, or Windows
 audio-device dependency. The `net10.0-windows` frontend consumes Core for
 emulation state and produces Windows-specific video and audio output. The
-compliance runner depends only on Core, while the test and manual-harness
-projects also depend only on Core. Windows presentation and host behavior is
-isolated in `Spectrum128kEmulator.Windows.Tests`.
+compliance runner, `Spectrum128kEmulator.Tests`, and manual harness depend only
+on Core. Windows presentation, debugger UI, and host behavior are covered by
+`Spectrum128kEmulator.Windows.Tests`.
 
 ---
 
@@ -349,10 +349,10 @@ compatibility and polish; completed milestones remain regression baselines.
 - Completed immutable inspection of both ROM banks and all eight RAM banks independently of the currently mapped 64K address space
 - Completed explicit mapped versus bank-qualified offset context across navigation history, search, copy, and 64K/16K export
 - Completed persistent user labels, automatic followed-target labels, symbol-aware navigation, and bank-qualified symbol import/export
-- Keep paging changes visible in refreshed snapshots without conflating physical offsets with logical CPU addresses
+- Completed refreshed paging context without conflating physical offsets with logical CPU addresses
+- Completed stable bank-qualified listings suitable for diagnostics and comparison between emulator runs
 - Add cross-references for jumps, calls, and data references without treating arbitrary data as executable code
 - Add code/data marking, hexadecimal memory inspection, and navigation from registers, stack entries, and branch targets
-- Export stable bank-qualified listings suitable for diagnostics and comparison between emulator runs
 
 ---
 
