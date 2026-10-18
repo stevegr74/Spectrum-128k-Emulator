@@ -26,6 +26,7 @@ namespace Spectrum128kEmulator
         public const int ScreenHeight = ActiveDisplayHeight + (BorderTopHeight * 2);
         private const int TapeLoaderActivityReadsPerFrame = 64;
         private const int TapeLoaderHandoffFramesBeforeStop = 3;
+        private const int TapeLoaderReadsBeforeAutomaticResume = 64;
 
         private readonly Z80Cpu cpu = new Z80Cpu();
         private readonly byte[][] ramBanks = new byte[8][];
@@ -42,6 +43,8 @@ namespace Spectrum128kEmulator
         private ulong mountedTapeKeyboardOnlyPortReadCountAtFrameStart;
         private bool mountedTapeLoaderActivityObserved;
         private int mountedTapeHandoffFrames;
+        private bool mountedTapeAutoPausedAtHandoff;
+        private int mountedTapeAutomaticResumeReads;
         
         // AY-3-8912
         private readonly Audio.Ay8912 ay = new Audio.Ay8912();
@@ -1103,11 +1106,14 @@ namespace Spectrum128kEmulator
                 }
             }
 
+            bool keyboardOnlyRead = mountedTape != null && IsKeyboardOnlyAccumulatorRead();
             if (mountedTape != null)
             {
                 mountedTapePortReadCount++;
-                if (IsKeyboardOnlyAccumulatorRead())
+                if (keyboardOnlyRead)
                     mountedTapeKeyboardOnlyPortReadCount++;
+
+                TryAutomaticallyResumeTapeForLoaderRead(sampleTStates, keyboardOnlyRead);
             }
 
             bool tapeEarHigh = mountedTape?.ReadEarBit(sampleTStates) ?? true;
@@ -1120,6 +1126,33 @@ namespace Spectrum128kEmulator
                 result = (byte)(result & ~0x40);
 
             return result;
+        }
+
+        private void TryAutomaticallyResumeTapeForLoaderRead(ulong sampleTStates, bool keyboardOnlyRead)
+        {
+            MountedTape? activeTape = mountedTape;
+            if (activeTape == null ||
+                !mountedTapeAutoPausedAtHandoff ||
+                !activeTape.IsPlaybackPaused ||
+                activeTape.IsPausedByStopMarker)
+            {
+                mountedTapeAutomaticResumeReads = 0;
+                return;
+            }
+
+            if (keyboardOnlyRead)
+            {
+                mountedTapeAutomaticResumeReads = 0;
+                return;
+            }
+
+            mountedTapeAutomaticResumeReads++;
+            if (mountedTapeAutomaticResumeReads < TapeLoaderReadsBeforeAutomaticResume)
+                return;
+
+            if (activeTape.ResumePlayback(sampleTStates))
+                TapeTransportState = TapeTransportState.Playing;
+            ResetMountedTapeActivityTracking();
         }
 
         private bool IsKeyboardOnlyAccumulatorRead()
@@ -1192,7 +1225,11 @@ namespace Spectrum128kEmulator
                 return;
 
             if (activeTape.PausePlayback(cpu.TStates))
+            {
                 TapeTransportState = TapeTransportState.Stopped;
+                mountedTapeAutoPausedAtHandoff = true;
+                mountedTapeAutomaticResumeReads = 0;
+            }
             mountedTapeHandoffFrames = 0;
         }
 
@@ -1204,6 +1241,8 @@ namespace Spectrum128kEmulator
             mountedTapeKeyboardOnlyPortReadCountAtFrameStart = 0;
             mountedTapeLoaderActivityObserved = false;
             mountedTapeHandoffFrames = 0;
+            mountedTapeAutoPausedAtHandoff = false;
+            mountedTapeAutomaticResumeReads = 0;
         }
 
         private byte ReadFloatingBus(ulong sampleTStates)
