@@ -3971,7 +3971,7 @@ namespace Spectrum128kEmulator.Tests
             }
         }
 
-        [Fact(Skip = "Continuation chaining under active mounted loads is still under investigation.")]
+        [Fact]
         public void MountedLoadUsrContinuationResolver_Evaluates_FollowOn_Usr_From_Live_SystemVariables_For_MultiStep_Sequences()
         {
             string tempFolder = CreateTempRoms();
@@ -3988,7 +3988,7 @@ namespace Spectrum128kEmulator.Tests
                         Ascii("256"), NumberMarker(256),
                         Ascii("*"),
                         Token(190), Ascii("23632"), NumberMarker(23632),
-                        Token(203),
+                        Colon(),
                         Token(249), Ascii(" "), Token(192),
                         Ascii("("),
                         Token(190), Ascii("23633"), NumberMarker(23633),
@@ -3998,7 +3998,14 @@ namespace Spectrum128kEmulator.Tests
                         Token(190), Ascii("23634"), NumberMarker(23634),
                         Ascii(")")),
                     BuildBasicLine(30,
-                        Token(249), Ascii(" "), Token(192), Ascii("0"), NumberMarker(0)));
+                        Token(249), Ascii(" "), Token(192),
+                        Ascii("("),
+                        Token(190), Ascii("23633"), NumberMarker(23633),
+                        Ascii("+"),
+                        Ascii("256"), NumberMarker(256),
+                        Ascii("*"),
+                        Token(190), Ascii("23634"), NumberMarker(23634),
+                        Ascii(")")));
 
                 TapeBlock headerBlock = TapeBlock.CreateData(BuildHeaderBlock(
                     type: 0,
