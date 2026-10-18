@@ -22,6 +22,7 @@ that every level, control path, or hardware edge case has been tested.
 | Scuba Dive (Durell) | `.tzx` | Nonstandard leading tape structure mounts and loads correctly |
 | Target Renegade | `128k.tzx` | 128K mode loads the complete game; 48K mode follows the level-at-a-time path with resumable tape transport |
 | The New Zealand Story (Hit Squad) | `.tzx` | 128K protected loading reaches the menu; manually resuming at `SEARCHING. 01` loads level 1-1 and auto-stops at the next multiload boundary |
+| The Oracle's Cave (Doric Computer) | `.tzx` | ROM-driven multi-stage loading completes; maze generation and level selection lead into the playable cave |
 | Where Time Stood Still | `.tap` | Fast load completes and terminal tape state is detected |
 
 ## Snapshots
