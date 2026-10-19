@@ -25,6 +25,7 @@ namespace Spectrum128kEmulator
         private readonly Label statusLabel = new();
         private readonly Label cpuStateLabel = new();
         private readonly ListView instructionList = new();
+        private readonly ListBox crossReferenceList = new();
         private readonly CheckedListBox breakpointList = new();
         private readonly Button backButton;
         private readonly Button forwardButton;
@@ -49,6 +50,7 @@ namespace Spectrum128kEmulator
         private bool executionRunning;
         private bool refreshingBreakpointList;
         private bool changingAddressSpace;
+        private DisassemblyCrossReferenceIndex crossReferences = new();
 
         public DisassemblerForm(Func<DisassemblySnapshot> captureSnapshot)
             : this(
@@ -300,6 +302,7 @@ namespace Spectrum128kEmulator
             instructionList.Columns.Add("Instruction", 375, HorizontalAlignment.Left);
             instructionList.Columns.Add("Target", 100, HorizontalAlignment.Left);
             instructionList.DoubleClick += (_, _) => NavigateToSelectedTarget();
+            instructionList.SelectedIndexChanged += (_, _) => RefreshCrossReferenceList();
             instructionList.ContextMenuStrip = CreateListingContextMenu();
 
             cpuStateLabel.Dock = DockStyle.Top;
@@ -309,7 +312,7 @@ namespace Spectrum128kEmulator
             cpuStateLabel.BackColor = Color.FromArgb(232, 230, 219);
             cpuStateLabel.ForeColor = Ink;
 
-            Panel breakpointPanel = CreateBreakpointPanel();
+            Panel inspectorPanel = CreateInspectorPanel();
 
             statusLabel.Dock = DockStyle.Bottom;
             statusLabel.Height = 29;
@@ -318,7 +321,7 @@ namespace Spectrum128kEmulator
             statusLabel.TextAlign = ContentAlignment.MiddleLeft;
 
             content.Controls.Add(instructionList);
-            content.Controls.Add(breakpointPanel);
+            content.Controls.Add(inspectorPanel);
             content.Controls.Add(cpuStateLabel);
             content.Controls.Add(statusLabel);
             return content;
@@ -600,6 +603,7 @@ namespace Spectrum128kEmulator
 
         private void PopulateListing(ushort selectedAddress)
         {
+            BuildCrossReferenceIndex();
             IReadOnlyList<Z80Instruction> instructions = DisassembleVisibleInstructions();
             Dictionary<ushort, bool> breakpoints = executionController.GetBreakpoints()
                 .ToDictionary(breakpoint => breakpoint.Address, breakpoint => breakpoint.Enabled);
@@ -663,6 +667,7 @@ namespace Spectrum128kEmulator
                 : "Export 16K";
             UpdateCpuState();
             UpdateExecutionControls();
+            RefreshCrossReferenceList();
         }
 
         private void NavigateToSelectedTarget()
