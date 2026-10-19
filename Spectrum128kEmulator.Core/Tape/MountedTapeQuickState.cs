@@ -17,6 +17,7 @@ namespace Spectrum128kEmulator.Tap
             internal int PendingPrePlaybackPauseTStates;
             internal int RomStreamTrapBlockIndex;
             internal int RomStreamTrapByteIndex;
+            internal int CompletedRomLoadableBlockIndex;
             internal ulong LastEarSampleTStates;
             internal bool EarLevel;
             internal bool EarPlaybackStarted;
@@ -50,6 +51,7 @@ namespace Spectrum128kEmulator.Tap
                 PendingPrePlaybackPauseTStates = pendingPrePlaybackPauseTStates,
                 RomStreamTrapBlockIndex = romStreamTrapBlockIndex,
                 RomStreamTrapByteIndex = romStreamTrapByteIndex,
+                CompletedRomLoadableBlockIndex = completedRomLoadableBlockIndex,
                 LastEarSampleTStates = lastEarSampleTStates,
                 EarLevel = earLevel,
                 EarPlaybackStarted = earPlaybackStarted,
@@ -83,6 +85,7 @@ namespace Spectrum128kEmulator.Tap
             pendingPrePlaybackPauseTStates = state.PendingPrePlaybackPauseTStates;
             romStreamTrapBlockIndex = state.RomStreamTrapBlockIndex;
             romStreamTrapByteIndex = state.RomStreamTrapByteIndex;
+            completedRomLoadableBlockIndex = state.CompletedRomLoadableBlockIndex;
             lastEarSampleTStates = state.LastEarSampleTStates;
             earLevel = state.EarLevel;
             earPlaybackStarted = state.EarPlaybackStarted;

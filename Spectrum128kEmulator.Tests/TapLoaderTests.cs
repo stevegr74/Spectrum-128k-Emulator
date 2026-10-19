@@ -272,6 +272,151 @@ namespace Spectrum128kEmulator.Tests
         }
 
         [Fact]
+        public void Machine_AutoResumesHandoffPause_AfterStableRecognizedRomLoaderReads()
+        {
+            string tempFolder = CreateTempRoms();
+            try
+            {
+                var machine = new Spectrum128Machine(tempFolder);
+                TapeBlock dataBlock = TapeBlock.CreateData(
+                    BuildDataBlock(new byte[] { 0x11, 0x22, 0x33, 0x44 }),
+                    2168, 60000, 667, 735, 855, 1710, 8, 1000);
+                machine.MountTape(new MountedTape(
+                    "automatic-resume.tap",
+                    new[] { dataBlock },
+                    initialBlockIndex: 0,
+                    skipCustomHeaderForEarPlayback: false));
+
+                ushort pc = 0x8000;
+                for (int read = 0; read < 96; read++)
+                {
+                    machine.PokeMemory(pc++, 0xDB); // IN A,(FE)
+                    machine.PokeMemory(pc++, 0xFE);
+                }
+                machine.PokeMemory(pc++, 0xC3);
+                machine.PokeMemory(pc++, 0x00);
+                machine.PokeMemory(pc, 0x81);
+                machine.PokeMemory(0x8100, 0xAF); // XOR A
+                machine.PokeMemory(0x8101, 0xDB); // IN A,(FE)
+                machine.PokeMemory(0x8102, 0xFE);
+                machine.PokeMemory(0x8103, 0x2F); // CPL
+                machine.PokeMemory(0x8104, 0xE6); // AND 1F ignores EAR.
+                machine.PokeMemory(0x8105, 0x1F);
+                machine.PokeMemory(0x8106, 0x28);
+                machine.PokeMemory(0x8107, 0xF8);
+                machine.Cpu.Regs.PC = 0x8000;
+
+                machine.ExecuteFrame();
+                machine.ExecuteFrame();
+                machine.ExecuteFrame();
+                machine.ExecuteFrame();
+                Assert.Equal(TapeTransportState.Stopped, machine.TapeTransportState);
+
+                // The CPU callback observes PC after the ROM's IN A,(FE)
+                // operand has been fetched.
+                machine.Cpu.Regs.PC = 0x0564;
+                for (int read = 0; read < 63; read++)
+                    machine.DebugReadPort(0x00FE);
+
+                Assert.Equal(TapeTransportState.Stopped, machine.TapeTransportState);
+                Assert.True(machine.MountedTape!.IsPlaybackPaused);
+
+                machine.DebugReadPort(0x00FE);
+
+                Assert.Equal(TapeTransportState.Playing, machine.TapeTransportState);
+                Assert.False(machine.MountedTape!.IsPlaybackPaused);
+            }
+            finally
+            {
+                Directory.Delete(tempFolder, true);
+            }
+        }
+
+        [Fact]
+        public void Machine_DoesNotAutoResumeHandoffPause_ForGameCodeEarReads()
+        {
+            string tempFolder = CreateTempRoms();
+            try
+            {
+                var machine = new Spectrum128Machine(tempFolder);
+                TapeBlock dataBlock = TapeBlock.CreateData(
+                    BuildDataBlock(new byte[] { 0x11, 0x22, 0x33, 0x44 }),
+                    2168, 60000, 667, 735, 855, 1710, 8, 1000);
+                machine.MountTape(new MountedTape(
+                    "automatic-resume.tap",
+                    new[] { dataBlock },
+                    initialBlockIndex: 0,
+                    skipCustomHeaderForEarPlayback: false));
+
+                ushort pc = 0x8000;
+                for (int read = 0; read < 96; read++)
+                {
+                    machine.PokeMemory(pc++, 0xDB);
+                    machine.PokeMemory(pc++, 0xFE);
+                }
+                machine.PokeMemory(pc++, 0xC3);
+                machine.PokeMemory(pc++, 0x00);
+                machine.PokeMemory(pc, 0x81);
+                machine.PokeMemory(0x8100, 0xAF);
+                machine.PokeMemory(0x8101, 0xDB);
+                machine.PokeMemory(0x8102, 0xFE);
+                machine.PokeMemory(0x8103, 0x2F);
+                machine.PokeMemory(0x8104, 0xE6);
+                machine.PokeMemory(0x8105, 0x1F);
+                machine.PokeMemory(0x8106, 0x28);
+                machine.PokeMemory(0x8107, 0xF8);
+                machine.Cpu.Regs.PC = 0x8000;
+
+                for (int frame = 0; frame < 4; frame++)
+                    machine.ExecuteFrame();
+                Assert.Equal(TapeTransportState.Stopped, machine.TapeTransportState);
+
+                machine.Cpu.Regs.PC = 0x8002;
+                for (int read = 0; read < 128; read++)
+                    machine.DebugReadPort(0x00FE);
+
+                Assert.Equal(TapeTransportState.Stopped, machine.TapeTransportState);
+                Assert.True(machine.MountedTape!.IsPlaybackPaused);
+            }
+            finally
+            {
+                Directory.Delete(tempFolder, true);
+            }
+        }
+
+        [Fact]
+        public void Machine_DoesNotAutoResumeUserPause_WhenCodeReadsEar()
+        {
+            string tempFolder = CreateTempRoms();
+            try
+            {
+                var machine = new Spectrum128Machine(tempFolder);
+                machine.MountTape(new MountedTape(
+                    "manual-pause.tap",
+                    new[] { TapeBlock.CreatePureTone(pulseLength: 2168, pulseCount: 60000) }));
+                Assert.Equal(TapeTransportState.Stopped, machine.ToggleTapeTransport());
+
+                machine.PokeMemory(0x8000, 0xDB); // IN A,(FE)
+                machine.PokeMemory(0x8001, 0xFE);
+                machine.PokeMemory(0x8002, 0xE6); // AND 40 observes EAR.
+                machine.PokeMemory(0x8003, 0x40);
+                machine.PokeMemory(0x8004, 0xC3);
+                machine.PokeMemory(0x8005, 0x00);
+                machine.PokeMemory(0x8006, 0x80);
+                machine.Cpu.Regs.PC = 0x8000;
+
+                machine.ExecuteFrame();
+
+                Assert.Equal(TapeTransportState.Stopped, machine.TapeTransportState);
+                Assert.True(machine.MountedTape!.IsPlaybackPaused);
+            }
+            finally
+            {
+                Directory.Delete(tempFolder, true);
+            }
+        }
+
+        [Fact]
         public void LoadTap_CodeBlock_Writes_Bytes_To_Target_Address()
         {
             string tempFolder = CreateTempRoms();
@@ -1129,6 +1274,62 @@ namespace Spectrum128kEmulator.Tests
                 Assert.Equal(1, (int)GetPrivateField(tape, "nextBlockIndex"));
                 Assert.Equal(1, (int)GetPrivateField(tape, "earPlaybackBlockIndex"));
                 Assert.False(tape.IsPlaybackPaused);
+            }
+            finally
+            {
+                Directory.Delete(tempFolder, true);
+            }
+        }
+
+        [Fact]
+        public void MountedTape_RomTrap_Reclaims_ImmediatelyCompleted_StandardBlock()
+        {
+            string tempFolder = CreateTempRoms();
+
+            try
+            {
+                byte[] expectedPayload = { 0x11, 0x22, 0x33, 0x44 };
+                TapeBlock completedBlock = TapeBlock.CreateData(
+                    BuildDataBlock(expectedPayload, flag: 0x81),
+                    0, 0, 0, 0, 1, 1, 8, 0);
+                TapeBlock followingBlock = TapeBlock.CreateData(
+                    BuildDataBlock(new byte[] { 0x99 }, flag: 0xAA),
+                    2168, 60000, 667, 735, 855, 1710, 8, 1000);
+                var machine = new Spectrum128Machine(tempFolder);
+                var tape = new MountedTape(
+                    "completed-standard-block",
+                    new[] { completedBlock, followingBlock },
+                    initialBlockIndex: 0,
+                    skipCustomHeaderForEarPlayback: false);
+                machine.MountTape(tape);
+
+                _ = tape.ReadEarBit(0);
+                _ = tape.ReadEarBit(200);
+                Assert.Equal(1, (int)GetPrivateField(tape, "nextBlockIndex"));
+                Assert.Equal(1, (int)GetPrivateField(tape, "earPlaybackBlockIndex"));
+                MountedTape.QuickState savedState = tape.CaptureQuickState();
+                Assert.Equal(0, savedState.CompletedRomLoadableBlockIndex);
+                tape.RestoreQuickState(savedState);
+
+                machine.Cpu.Regs.PC = 0x056B;
+                machine.Cpu.Regs.SP = 0x9000;
+                machine.PokeMemory(0x9000, 0x00);
+                machine.PokeMemory(0x9001, 0x80);
+                machine.Cpu.Regs.IX = 0x7000;
+                machine.Cpu.Regs.DE = (ushort)expectedPayload.Length;
+                machine.Cpu.Regs.A = 0x02;
+                machine.Cpu.Regs.F = 0x00;
+                machine.Cpu.Regs.A_ = 0x81;
+                machine.Cpu.Regs.F_ = 0x01;
+
+                bool handled = tape.TryHandleRomLoadTrap(machine, machine.Cpu);
+
+                Assert.True(handled);
+                Assert.NotEqual(0, machine.Cpu.Regs.F & 0x01);
+                Assert.Equal(expectedPayload, expectedPayload.Select((_, index) =>
+                    machine.PeekMemory((ushort)(0x7000 + index))).ToArray());
+                Assert.Equal(1, (int)GetPrivateField(tape, "nextBlockIndex"));
+                Assert.Equal(-1, (int)GetPrivateField(tape, "completedRomLoadableBlockIndex"));
             }
             finally
             {
@@ -3665,6 +3866,80 @@ namespace Spectrum128kEmulator.Tests
                 Assert.Equal(1, (int)GetPrivateField(tape, "nextBlockIndex"));
                 Assert.Equal("Idle", GetPrivateField(tape, "state").ToString());
                 Assert.Equal("Idle", GetPrivateField(tape, "earPlaybackState").ToString());
+            }
+            finally
+            {
+                Directory.Delete(tempFolder, true);
+            }
+        }
+
+        [Fact]
+        public void LoadWithPolicy_PreloadedAutorunWithoutLoad_EntersRealRomBasicInterpreter()
+        {
+            string tempFolder = CreateTempRoms();
+            string tapePath = Path.Combine(tempFolder, "rom-autorun.tap");
+
+            try
+            {
+                byte[] rom = new byte[16384];
+                byte[] bootstrap =
+                {
+                    0x31, 0x58, 0xFF,
+                    0x21, 0x50, 0xFF,
+                    0x22, 0x3D, 0x5C,
+                    0xC3, 0xE7, 0x15
+                };
+                Buffer.BlockCopy(bootstrap, 0, rom, 0, bootstrap.Length);
+                File.WriteAllBytes(Path.Combine(tempFolder, "128-1.rom"), rom);
+
+                byte[] program = BuildBasicProgram(
+                    BuildBasicLine(10,
+                        Token(249), Ascii(" "), Token(192), Ascii("32768"), NumberMarker(32768)));
+                File.WriteAllBytes(tapePath, BuildTap(
+                    BuildHeaderBlock(type: 0, fileName: "ROMRUN", dataLength: (ushort)program.Length, parameter1: 10, parameter2: (ushort)program.Length),
+                    BuildDataBlock(program),
+                    BuildHeaderBlock(type: 3, fileName: "CODE", dataLength: 1, parameter1: 0x8000, parameter2: 0),
+                    BuildDataBlock(new byte[] { 0xC9 })));
+
+                var machine = new Spectrum128Machine(tempFolder, SpectrumRomProfile.SyntheticTest);
+                TapeExecutionResult result = TapLoader.LoadWithPolicy(machine, tapePath);
+
+                Assert.Equal(TapeLoadStrategy.FullFakeLoad, result.Strategy);
+                Assert.Equal((ushort)0x1B9E, machine.Cpu.Regs.PC);
+                Assert.Equal((ushort)10, ReadWord(machine, 23618));
+                Assert.Equal((byte)0xC9, machine.PeekMemory(0x8000));
+            }
+            finally
+            {
+                Directory.Delete(tempFolder, true);
+            }
+        }
+
+        [Fact]
+        public void LoadWithPolicy_PreloadedAutorunWithLoad_KeepsBootstrapLoadSkipping()
+        {
+            string tempFolder = CreateTempRoms();
+            string tapePath = Path.Combine(tempFolder, "bootstrap-autorun.tap");
+
+            try
+            {
+                byte[] program = BuildBasicProgram(
+                    BuildBasicLine(10,
+                        Token(239), QuoteQuote(), Ascii(" "), Token(175),
+                        Colon(),
+                        Token(249), Ascii(" "), Token(192), Ascii("32768"), NumberMarker(32768)));
+                File.WriteAllBytes(tapePath, BuildTap(
+                    BuildHeaderBlock(type: 0, fileName: "BOOTRUN", dataLength: (ushort)program.Length, parameter1: 10, parameter2: (ushort)program.Length),
+                    BuildDataBlock(program),
+                    BuildHeaderBlock(type: 3, fileName: "CODE", dataLength: 1, parameter1: 0x8000, parameter2: 0),
+                    BuildDataBlock(new byte[] { 0xC9 })));
+
+                var machine = new Spectrum128Machine(tempFolder);
+                TapeExecutionResult result = TapLoader.LoadWithPolicy(machine, tapePath);
+
+                Assert.Equal(TapeLoadStrategy.FullFakeLoad, result.Strategy);
+                Assert.Equal((ushort)0x8000, machine.Cpu.Regs.PC);
+                Assert.Equal((byte)0xC9, machine.PeekMemory(0x8000));
             }
             finally
             {

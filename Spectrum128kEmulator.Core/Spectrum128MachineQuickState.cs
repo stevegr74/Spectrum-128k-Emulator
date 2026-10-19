@@ -53,6 +53,8 @@ namespace Spectrum128kEmulator
             internal ulong MountedTapeKeyboardOnlyPortReadCountAtFrameStart;
             internal bool MountedTapeLoaderActivityObserved;
             internal int MountedTapeHandoffFrames;
+            internal bool MountedTapeAutoPausedAtHandoff;
+            internal int MountedTapeAutomaticResumeReads;
             internal RzxPlaybackSession? RzxPlayback;
             internal RzxPlaybackSession.QuickState? RzxPlaybackState;
             internal MountedLoadContinuationController.QuickState MountedLoadContinuationState = null!;
@@ -123,6 +125,8 @@ namespace Spectrum128kEmulator
                 MountedTapeKeyboardOnlyPortReadCountAtFrameStart = mountedTapeKeyboardOnlyPortReadCountAtFrameStart,
                 MountedTapeLoaderActivityObserved = mountedTapeLoaderActivityObserved,
                 MountedTapeHandoffFrames = mountedTapeHandoffFrames,
+                MountedTapeAutoPausedAtHandoff = mountedTapeAutoPausedAtHandoff,
+                MountedTapeAutomaticResumeReads = mountedTapeAutomaticResumeReads,
                 RzxPlayback = rzxPlayback,
                 RzxPlaybackState = rzxPlayback?.CaptureQuickState(),
                 MountedLoadContinuationState = mountedLoadContinuation.CaptureQuickState()
@@ -208,6 +212,8 @@ namespace Spectrum128kEmulator
             mountedTapeKeyboardOnlyPortReadCountAtFrameStart = state.MountedTapeKeyboardOnlyPortReadCountAtFrameStart;
             mountedTapeLoaderActivityObserved = state.MountedTapeLoaderActivityObserved;
             mountedTapeHandoffFrames = state.MountedTapeHandoffFrames;
+            mountedTapeAutoPausedAtHandoff = state.MountedTapeAutoPausedAtHandoff;
+            mountedTapeAutomaticResumeReads = state.MountedTapeAutomaticResumeReads;
 
             rzxPlayback = state.RzxPlayback;
             if (rzxPlayback != null && state.RzxPlaybackState != null)

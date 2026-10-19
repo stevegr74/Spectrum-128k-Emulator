@@ -43,6 +43,7 @@ namespace Spectrum128kEmulator.Tap
         private int pendingPrePlaybackPauseTStates;
         private int romStreamTrapBlockIndex;
         private int romStreamTrapByteIndex;
+        private int completedRomLoadableBlockIndex;
         private ulong lastEarSampleTStates;
         private bool earLevel;
         private bool earPlaybackStarted;
@@ -120,7 +121,8 @@ namespace Spectrum128kEmulator.Tap
             $"Pilot={earPilotPulsesRemaining} PulseLen={earPulseLengthTStates} PulseSeq={earPulseSequenceIndex} " +
             $"EarLevel={(earLevel ? 1 : 0)} Started={(earPlaybackStarted ? 1 : 0)} Retained={(retainedByteStreamTrapAvailable ? 1 : 0)} " +
             $"Paused={(playbackPaused ? 1 : 0)} Marker={(pausedByStopMarker ? 1 : 0)} Complete={(playbackCompleted ? 1 : 0)} " +
-            $"RomTrapBlock={romStreamTrapBlockIndex} RomTrapByte={romStreamTrapByteIndex}";
+            $"RomTrapBlock={romStreamTrapBlockIndex} RomTrapByte={romStreamTrapByteIndex} " +
+            $"CompletedRomBlock={completedRomLoadableBlockIndex}";
         public bool IsActivelyDrivingEarLine => !playbackPaused && earPlaybackState != EarPlaybackState.Idle;
         public bool HasCompletedPlayback => playbackCompleted;
         public bool IsExhaustedAndIdle =>
@@ -162,6 +164,7 @@ namespace Spectrum128kEmulator.Tap
             pendingPrePlaybackPauseTStates = ScaleToPlaybackClock(initialPrePlaybackPauseTStates);
             romStreamTrapBlockIndex = -1;
             romStreamTrapByteIndex = 0;
+            completedRomLoadableBlockIndex = -1;
             lastEarSampleTStates = 0;
             earLevel = initialEarLevelHigh;
             earPlaybackStarted = false;
@@ -434,7 +437,8 @@ namespace Spectrum128kEmulator.Tap
                     return false;
                 }
 
-                TapeBlock block = blocks[nextBlockIndex];
+                int consumedBlockIndex = nextBlockIndex;
+                TapeBlock block = blocks[consumedBlockIndex];
 
                 if (IsRomTrapByteStreamBlock(block))
                 {
@@ -575,6 +579,8 @@ namespace Spectrum128kEmulator.Tap
                 }
 
                 AdvanceBlockState(block);
+                if (completedRomLoadableBlockIndex == consumedBlockIndex)
+                    completedRomLoadableBlockIndex = -1;
                 SyncEarPlaybackToNextBlock(block.PauseAfterBlockMs);
 
                 if (romDrivenBasicAutoStartLine.HasValue)
@@ -898,19 +904,25 @@ namespace Spectrum128kEmulator.Tap
 
         private int GetActiveRomTrapPlaybackBlockIndex()
         {
-            if (earPlaybackBlockIndex < 0 || earPlaybackBlockIndex >= blocks.Count)
-                return -1;
-
-            if (!CanUseRomLoadTrap(blocks[earPlaybackBlockIndex]))
-                return -1;
-
-            return earPlaybackState switch
+            if (earPlaybackBlockIndex >= 0 &&
+                earPlaybackBlockIndex < blocks.Count &&
+                CanUseRomLoadTrap(blocks[earPlaybackBlockIndex]))
             {
-                EarPlaybackState.Data => earPlaybackBlockIndex,
-                EarPlaybackState.Pause => earPlaybackBlockIndex,
-                EarPlaybackState.Idle when earPlaybackStarted || retainedByteStreamTrapAvailable => earPlaybackBlockIndex,
-                _ => -1
-            };
+                int activeBlockIndex = earPlaybackState switch
+                {
+                    EarPlaybackState.Data => earPlaybackBlockIndex,
+                    EarPlaybackState.Pause => earPlaybackBlockIndex,
+                    EarPlaybackState.Idle when earPlaybackStarted || retainedByteStreamTrapAvailable => earPlaybackBlockIndex,
+                    _ => -1
+                };
+                if (activeBlockIndex >= 0)
+                    return activeBlockIndex;
+            }
+
+            return completedRomLoadableBlockIndex >= 0 &&
+                   nextBlockIndex == completedRomLoadableBlockIndex + 1
+                ? completedRomLoadableBlockIndex
+                : -1;
         }
 
         private int FindNextLoadableBlockIndex(int startIndex)
@@ -1182,7 +1194,10 @@ namespace Spectrum128kEmulator.Tap
             if (block.IsLoadableRomBlock)
             {
                 if (nextBlockIndex <= blockIndex)
+                {
                     AdvanceBlockState(block);
+                    completedRomLoadableBlockIndex = blockIndex;
+                }
 
                 return;
             }
