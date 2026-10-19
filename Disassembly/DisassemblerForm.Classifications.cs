@@ -17,21 +17,37 @@ namespace Spectrum128kEmulator
             foreach (Z80Instruction instruction in selected)
             {
                 int length = Math.Max(1, instruction.Length);
-                if (classification == DisassemblyClassification.Code)
+                if (classification == DisassemblyClassification.Code &&
+                    selected.Length == 1 &&
+                    classifications.Get(selectedAddressSpace, instruction.Address) == DisassemblyClassification.Data)
                 {
                     Z80Instruction decoded = Z80InstructionDisassembler.Disassemble(
                         instruction.Address,
                         value => snapshot.ReadMemory(selectedAddressSpace, value));
                     length = Math.Max(1, decoded.Length);
                 }
-                int end = Math.Min(
-                    selectedAddressSpace.Length - 1,
-                    instruction.Address + length - 1);
-                classifications.SetRange(
-                    selectedAddressSpace,
-                    instruction.Address,
-                    (ushort)end,
-                    classification);
+                int end = instruction.Address + length - 1;
+                if (selectedAddressSpace.Kind == DisassemblyAddressSpaceKind.Mapped && end >= selectedAddressSpace.Length)
+                {
+                    classifications.SetRange(
+                        selectedAddressSpace,
+                        instruction.Address,
+                        ushort.MaxValue,
+                        classification);
+                    classifications.SetRange(
+                        selectedAddressSpace,
+                        0,
+                        (ushort)(end - selectedAddressSpace.Length),
+                        classification);
+                }
+                else
+                {
+                    classifications.SetRange(
+                        selectedAddressSpace,
+                        instruction.Address,
+                        (ushort)Math.Min(selectedAddressSpace.Length - 1, end),
+                        classification);
+                }
             }
 
             ushort selection = selected[0].Address;

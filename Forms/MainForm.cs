@@ -604,7 +604,8 @@ namespace Spectrum128kEmulator
                     machine.ScreenBank,
                     cpuState: cpuState,
                     romBanks: romBanks,
-                    ramBanks: ramBanks);
+                    ramBanks: ramBanks,
+                    analysisContext: $"{machine.MachineModel}:{loadedMediaDisplayName ?? "(no media)"}");
             }
         }
 

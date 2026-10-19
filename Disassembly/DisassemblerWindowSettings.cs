@@ -19,6 +19,7 @@ namespace Spectrum128kEmulator
 
     public sealed class DisassemblerClassificationSetting
     {
+        public string Context { get; set; } = "default";
         public DisassemblyAddressSpaceKind AddressSpaceKind { get; set; }
         public int Bank { get; set; }
         public ushort StartAddress { get; set; }

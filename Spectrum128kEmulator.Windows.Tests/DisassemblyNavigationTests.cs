@@ -234,6 +234,7 @@ namespace Spectrum128kEmulator.Tests
                     [
                         new DisassemblerClassificationSetting
                         {
+                            Context = "game-a",
                             AddressSpaceKind = DisassemblyAddressSpaceKind.Ram,
                             Bank = 7,
                             StartAddress = 0x0200,
@@ -257,6 +258,7 @@ namespace Spectrum128kEmulator.Tests
                 Assert.Equal("RomRoutine", loaded.Symbols[0].Name);
                 Assert.True(loaded.Symbols[0].IsAutomatic);
                 DisassemblerClassificationSetting classification = Assert.Single(loaded.Classifications);
+                Assert.Equal("game-a", classification.Context);
                 Assert.Equal(DisassemblyAddressSpaceKind.Ram, classification.AddressSpaceKind);
                 Assert.Equal(7, classification.Bank);
                 Assert.Equal((ushort)0x0200, classification.StartAddress);

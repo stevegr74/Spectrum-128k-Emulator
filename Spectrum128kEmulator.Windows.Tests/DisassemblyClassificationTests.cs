@@ -43,6 +43,25 @@ namespace Spectrum128kEmulator.Tests
         }
 
         [Fact]
+        public void Map_ClassificationChecksWrapOnlyInMappedAddressSpace()
+        {
+            var map = new DisassemblyClassificationMap();
+            map.SetRange(DisassemblyAddressSpace.Mapped, 0x0000, 0x0000, DisassemblyClassification.Data);
+            map.SetRange(DisassemblyAddressSpace.Ram(7), 0x0000, 0x0000, DisassemblyClassification.Data);
+
+            Assert.True(map.Contains(
+                DisassemblyAddressSpace.Mapped,
+                0xFFFF,
+                length: 2,
+                DisassemblyClassification.Data));
+            Assert.False(map.Contains(
+                DisassemblyAddressSpace.Ram(7),
+                0x3FFF,
+                length: 2,
+                DisassemblyClassification.Data));
+        }
+
+        [Fact]
         public void CrossReferences_RecordTargetButDoNotDecodeConfirmedData()
         {
             var memory = new byte[65536];

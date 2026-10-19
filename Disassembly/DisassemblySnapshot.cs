@@ -70,7 +70,8 @@ namespace Spectrum128kEmulator
             DateTime? capturedAtUtc = null,
             DisassemblyCpuState? cpuState = null,
             IReadOnlyList<byte[]>? romBanks = null,
-            IReadOnlyList<byte[]>? ramBanks = null)
+            IReadOnlyList<byte[]>? ramBanks = null,
+            string? analysisContext = null)
         {
             ArgumentNullException.ThrowIfNull(memory);
             if (memory.Length != 65536)
@@ -84,6 +85,7 @@ namespace Spectrum128kEmulator
             CurrentRomBank = currentRomBank;
             PagedRamBank = pagedRamBank;
             ScreenBank = screenBank;
+            AnalysisContext = string.IsNullOrWhiteSpace(analysisContext) ? "default" : analysisContext.Trim();
             CapturedAtUtc = capturedAtUtc ?? DateTime.UtcNow;
             CpuState = cpuState is null
                 ? null
@@ -95,6 +97,7 @@ namespace Spectrum128kEmulator
         public int CurrentRomBank { get; }
         public int PagedRamBank { get; }
         public int ScreenBank { get; }
+        public string AnalysisContext { get; }
         public DateTime CapturedAtUtc { get; }
         public DisassemblyCpuState? CpuState { get; }
 

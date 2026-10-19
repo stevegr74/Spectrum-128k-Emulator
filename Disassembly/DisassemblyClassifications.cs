@@ -56,7 +56,7 @@ namespace Spectrum128kEmulator
             for (int offset = 0; offset < length; offset++)
             {
                 int address = startAddress + offset;
-                if (address >= addressSpace.Length)
+                if (addressSpace.Kind != DisassemblyAddressSpaceKind.Mapped && address >= addressSpace.Length)
                     break;
                 if (Get(addressSpace, (ushort)address) == classification)
                     return true;

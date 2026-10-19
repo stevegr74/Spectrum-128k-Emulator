@@ -15,6 +15,7 @@ namespace Spectrum128kEmulator
         private readonly DisassemblyNavigationHistory navigationHistory = new();
         private readonly DisassemblySymbolTable symbols;
         private readonly DisassemblyClassificationMap classifications;
+        private readonly string classificationContext;
         private readonly DisassemblerWindowSettingsStore settingsStore;
         private readonly DisassemblerWindowSettings settings;
         private readonly TextBox addressTextBox = new();
@@ -89,15 +90,20 @@ namespace Spectrum128kEmulator
                 symbol.Address,
                 symbol.Name,
                 symbol.IsAutomatic)));
-            classifications = new DisassemblyClassificationMap(settings.Classifications.Select(classification =>
-                new DisassemblyClassificationRange(
+            snapshot = captureSnapshot();
+            classificationContext = snapshot.AnalysisContext;
+            classifications = new DisassemblyClassificationMap(settings.Classifications
+                .Where(classification => string.Equals(
+                    classification.Context,
+                    classificationContext,
+                    StringComparison.Ordinal))
+                .Select(classification => new DisassemblyClassificationRange(
                     new DisassemblyAddressSpace(classification.AddressSpaceKind, classification.Bank),
                     classification.StartAddress,
                     classification.EndAddress,
                     classification.Classification)));
             executionController.ReplaceBreakpoints(settings.Breakpoints.Select(
                 breakpoint => new DebuggerBreakpoint(breakpoint.Address, breakpoint.Enabled)));
-            snapshot = captureSnapshot();
             selectedAddressSpace = RestoreAddressSpace(settings, snapshot);
             backButton = CreateButton("< Back", 18, 29, 68);
             forwardButton = CreateButton("Forward >", 94, 29, 82);
@@ -966,14 +972,21 @@ namespace Spectrum128kEmulator
                 Name = symbol.Name,
                 IsAutomatic = symbol.IsAutomatic
             }).ToList();
-            settings.Classifications = classifications.Ranges.Select(classification => new DisassemblerClassificationSetting
-            {
-                AddressSpaceKind = classification.AddressSpace.Kind,
-                Bank = classification.AddressSpace.Bank,
-                StartAddress = classification.StartAddress,
-                EndAddress = classification.EndAddress,
-                Classification = classification.Classification
-            }).ToList();
+            settings.Classifications = settings.Classifications
+                .Where(classification => !string.Equals(
+                    classification.Context,
+                    classificationContext,
+                    StringComparison.Ordinal))
+                .Concat(classifications.Ranges.Select(classification => new DisassemblerClassificationSetting
+                {
+                    Context = classificationContext,
+                    AddressSpaceKind = classification.AddressSpace.Kind,
+                    Bank = classification.AddressSpace.Bank,
+                    StartAddress = classification.StartAddress,
+                    EndAddress = classification.EndAddress,
+                    Classification = classification.Classification
+                }))
+                .ToList();
             try
             {
                 settingsStore.Save(settings);

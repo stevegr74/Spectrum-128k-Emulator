@@ -195,8 +195,8 @@ physical offsets; search, history, copy, and export follow the selected view.
 Bank-qualified labels persist between sessions, can be imported or exported as
 plain-text symbol files, and are created automatically when an unlabeled direct
 call or branch target is followed.
-Bank-qualified code/data ranges also persist as debugger metadata without
-modifying captured machine memory. Confirmed data is displayed and exported as
+Media- and model-scoped bank-qualified code/data ranges also persist as debugger
+metadata without modifying captured machine memory. Confirmed data is displayed and exported as
 `DB`, excluded from mnemonic decoding and recursive control-flow analysis, while
 confirmed code supplies additional analysis entry points.
 It opens paused and supports Run/Pause, Step Into, Step Over, Step Out, run to
