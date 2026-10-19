@@ -272,7 +272,7 @@ namespace Spectrum128kEmulator.Tests
         }
 
         [Fact]
-        public void Machine_AutoResumesHandoffPause_OnRecognizedRomLoaderEarRead()
+        public void Machine_AutoResumesHandoffPause_AfterStableRecognizedRomLoaderReads()
         {
             string tempFolder = CreateTempRoms();
             try
@@ -315,6 +315,12 @@ namespace Spectrum128kEmulator.Tests
                 // The CPU callback observes PC after the ROM's IN A,(FE)
                 // operand has been fetched.
                 machine.Cpu.Regs.PC = 0x0564;
+                for (int read = 0; read < 63; read++)
+                    machine.DebugReadPort(0x00FE);
+
+                Assert.Equal(TapeTransportState.Stopped, machine.TapeTransportState);
+                Assert.True(machine.MountedTape!.IsPlaybackPaused);
+
                 machine.DebugReadPort(0x00FE);
 
                 Assert.Equal(TapeTransportState.Playing, machine.TapeTransportState);
@@ -1268,6 +1274,62 @@ namespace Spectrum128kEmulator.Tests
                 Assert.Equal(1, (int)GetPrivateField(tape, "nextBlockIndex"));
                 Assert.Equal(1, (int)GetPrivateField(tape, "earPlaybackBlockIndex"));
                 Assert.False(tape.IsPlaybackPaused);
+            }
+            finally
+            {
+                Directory.Delete(tempFolder, true);
+            }
+        }
+
+        [Fact]
+        public void MountedTape_RomTrap_Reclaims_ImmediatelyCompleted_StandardBlock()
+        {
+            string tempFolder = CreateTempRoms();
+
+            try
+            {
+                byte[] expectedPayload = { 0x11, 0x22, 0x33, 0x44 };
+                TapeBlock completedBlock = TapeBlock.CreateData(
+                    BuildDataBlock(expectedPayload, flag: 0x81),
+                    0, 0, 0, 0, 1, 1, 8, 0);
+                TapeBlock followingBlock = TapeBlock.CreateData(
+                    BuildDataBlock(new byte[] { 0x99 }, flag: 0xAA),
+                    2168, 60000, 667, 735, 855, 1710, 8, 1000);
+                var machine = new Spectrum128Machine(tempFolder);
+                var tape = new MountedTape(
+                    "completed-standard-block",
+                    new[] { completedBlock, followingBlock },
+                    initialBlockIndex: 0,
+                    skipCustomHeaderForEarPlayback: false);
+                machine.MountTape(tape);
+
+                _ = tape.ReadEarBit(0);
+                _ = tape.ReadEarBit(200);
+                Assert.Equal(1, (int)GetPrivateField(tape, "nextBlockIndex"));
+                Assert.Equal(1, (int)GetPrivateField(tape, "earPlaybackBlockIndex"));
+                MountedTape.QuickState savedState = tape.CaptureQuickState();
+                Assert.Equal(0, savedState.CompletedRomLoadableBlockIndex);
+                tape.RestoreQuickState(savedState);
+
+                machine.Cpu.Regs.PC = 0x056B;
+                machine.Cpu.Regs.SP = 0x9000;
+                machine.PokeMemory(0x9000, 0x00);
+                machine.PokeMemory(0x9001, 0x80);
+                machine.Cpu.Regs.IX = 0x7000;
+                machine.Cpu.Regs.DE = (ushort)expectedPayload.Length;
+                machine.Cpu.Regs.A = 0x02;
+                machine.Cpu.Regs.F = 0x00;
+                machine.Cpu.Regs.A_ = 0x81;
+                machine.Cpu.Regs.F_ = 0x01;
+
+                bool handled = tape.TryHandleRomLoadTrap(machine, machine.Cpu);
+
+                Assert.True(handled);
+                Assert.NotEqual(0, machine.Cpu.Regs.F & 0x01);
+                Assert.Equal(expectedPayload, expectedPayload.Select((_, index) =>
+                    machine.PeekMemory((ushort)(0x7000 + index))).ToArray());
+                Assert.Equal(1, (int)GetPrivateField(tape, "nextBlockIndex"));
+                Assert.Equal(-1, (int)GetPrivateField(tape, "completedRomLoadableBlockIndex"));
             }
             finally
             {

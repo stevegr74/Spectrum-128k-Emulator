@@ -26,6 +26,7 @@ namespace Spectrum128kEmulator
         public const int ScreenHeight = ActiveDisplayHeight + (BorderTopHeight * 2);
         private const int TapeLoaderActivityReadsPerFrame = 64;
         private const int TapeLoaderHandoffFramesBeforeStop = 3;
+        private const int TapeLoaderSearchReadsBeforeAutomaticResume = 64;
 
         private readonly Z80Cpu cpu = new Z80Cpu();
         private readonly byte[][] ramBanks = new byte[8][];
@@ -43,6 +44,7 @@ namespace Spectrum128kEmulator
         private bool mountedTapeLoaderActivityObserved;
         private int mountedTapeHandoffFrames;
         private bool mountedTapeAutoPausedAtHandoff;
+        private int mountedTapeAutomaticResumeReads;
         
         // AY-3-8912
         private readonly Audio.Ay8912 ay = new Audio.Ay8912();
@@ -1133,9 +1135,19 @@ namespace Spectrum128kEmulator
                 !mountedTapeAutoPausedAtHandoff ||
                 !activeTape.IsPlaybackPaused ||
                 activeTape.IsPausedByStopMarker)
+            {
+                mountedTapeAutomaticResumeReads = 0;
                 return;
+            }
 
             if (!RomProfile.IsTapeInputRoutinePortRead(cpu.Regs.PC))
+            {
+                mountedTapeAutomaticResumeReads = 0;
+                return;
+            }
+
+            mountedTapeAutomaticResumeReads++;
+            if (mountedTapeAutomaticResumeReads < TapeLoaderSearchReadsBeforeAutomaticResume)
                 return;
 
             if (activeTape.ResumePlayback(sampleTStates))
@@ -1220,6 +1232,7 @@ namespace Spectrum128kEmulator
             {
                 TapeTransportState = TapeTransportState.Stopped;
                 mountedTapeAutoPausedAtHandoff = true;
+                mountedTapeAutomaticResumeReads = 0;
                 Trace?.Invoke(
                     $"[TapeTransport] Auto-stop frame={FrameCount} pc=0x{cpu.Regs.PC:X4} {activeTape.DebugPlaybackState}");
             }
@@ -1235,6 +1248,7 @@ namespace Spectrum128kEmulator
             mountedTapeLoaderActivityObserved = false;
             mountedTapeHandoffFrames = 0;
             mountedTapeAutoPausedAtHandoff = false;
+            mountedTapeAutomaticResumeReads = 0;
         }
 
         private byte ReadFloatingBus(ulong sampleTStates)
