@@ -76,9 +76,11 @@ Current limitations and active work:
 Each feature is developed on its own branch. Current Milestone 19 work is
 cross-reference and code/data analysis on top of the completed bank-aware symbol
 foundation. Milestone 20 will then harden the tape architecture through
-behavior-preserving decomposition and stronger transition tests. Tape compatibility
-and the turbo-to-realtime audio transition continue in parallel, with the verified
-media matrix plus ZEXDOC/ZEXALL used as regression gates.
+behavior-preserving decomposition and stronger transition tests. Milestone 21 will
+add a bank-aware Poke Manager with a maintainable cheat library and safe one-off
+memory writes. Tape compatibility and the turbo-to-realtime audio transition
+continue in parallel, with the verified media matrix plus ZEXDOC/ZEXALL used as
+regression gates.
 
 ---
 
@@ -333,6 +335,7 @@ compatibility and polish; completed milestones remain regression baselines.
 | 18 | Complete | Instruction-boundary Run/Pause, Step Into/Over/Out, run to cursor, CPU context, and persistent breakpoints |
 | 19 | In progress | Physical-bank inspection, labels, and symbol import/export complete; cross-references and code/data analysis remain |
 | 20 | Planned | Tape state ownership, transition coverage, diagnostics, and behavior-preserving subsystem decomposition |
+| 21 | Planned | Bank-aware Poke Manager, maintainable cheat library, media matching, and safe one-off memory writes |
 
 ### Milestone 16 - ULA Timing Conformance And Port Accuracy Complete
 - Implemented one model-specific timing profile for frame length, scanline length, contention start, display fetches, visible raster mapping, and the documented timing convention
@@ -379,6 +382,15 @@ compatibility and polish; completed milestones remain regression baselines.
 - Reduce `TapLoader.BasicBootstrap.cs`, `TapLoader.cs`, and `MountedTape.cs` incrementally, starting with behavior-preserving extractions and leaving `MountedLoadContinuationController` focused on resume state
 - Add structured transition diagnostics that distinguish pauses, tape end, ROM handoff, unsupported acceleration, and invalid continuation state
 - Use one branch per extraction and retain the full automated suite plus the verified media matrix as regression gates; do not mix compatibility changes into structural branches
+
+### Milestone 21 - Poke Manager And Cheat Library Planned
+- Add a discoverable Poke Manager through the normal menus and right-click context menu without consuming another function key
+- Store curated game entries, aliases, model requirements, and multi-address pokes in a validated human-maintainable data file rather than hardcoded UI logic
+- Suggest compatible entries from loaded-media checksums, with filename aliases used only for discovery rather than compatibility guarantees
+- Support one-off mapped-64K and physical-bank writes with explicit address context, value validation, and a preview of every affected byte
+- Apply each poke atomically on the emulation thread through the existing pause-lease ownership model, and retain safe session-local original-byte restoration where possible
+- Keep the first version to deliberate one-time writes; defer frozen values, conditional trainers, and cheat discovery until their continuous-mutation semantics are designed and tested
+- Add schema, duplicate-entry, media-matching, bank-selection, atomic-write, restoration, and frontend workflow tests
 
 ---
 
