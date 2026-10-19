@@ -139,6 +139,37 @@ namespace Spectrum128kEmulator.Tests
             Assert.Equal((ushort)0x8100, result!.Address);
         }
 
+        [Fact]
+        public void CompleteExport_PreservesDataClassificationAndByteBoundaries()
+        {
+            var memory = new byte[65536];
+            Write(memory, 0x8000, 0xCD, 0x10, 0x90);
+            DisassemblySnapshot snapshot = CreateSnapshot(memory);
+            var map = new DisassemblyClassificationMap();
+            map.SetRange(DisassemblyAddressSpace.Mapped, 0x8000, 0x8002, DisassemblyClassification.Data);
+
+            IReadOnlyList<Z80Instruction> instructions =
+                DisassemblyListingFormatter.DisassembleCompleteAddressSpace(
+                    snapshot,
+                    DisassemblyAddressSpace.Mapped,
+                    0x8000,
+                    map);
+            string listing = DisassemblyListingFormatter.Format(
+                snapshot,
+                DisassemblyAddressSpace.Mapped,
+                0x8000,
+                instructions,
+                includeHeader: true,
+                classifications: map);
+
+            Assert.Equal("DB CDH", instructions[0].Mnemonic);
+            Assert.Equal("DB 10H", instructions[1].Mnemonic);
+            Assert.Equal("DB 90H", instructions[2].Mnemonic);
+            Assert.Contains("8000", listing);
+            Assert.Contains("DB CDH", listing);
+            Assert.Contains("; DATA", listing);
+        }
+
         private static DisassemblySnapshot CreateSnapshot(byte[] memory) =>
             new(memory, 0x8000, SpectrumMachineModel.Spectrum128K, 1, 7, 5);
 

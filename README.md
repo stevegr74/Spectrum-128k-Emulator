@@ -117,7 +117,7 @@ Spectrum128kEmulator/
 |-- Forms/                                 main window partials and shortcut-reference dialog
 |-- Input/                                 WinForms-to-Spectrum keyboard bridge
 |-- Video/                                 display modes, pixel-art scaling, and presentation adapter
-|-- docs/images/                           README screenshots of the emulator and debugger
+|-- docs/                                  screenshots and focused acceptance procedures
 |-- Program.cs                             Windows application entry point
 |-- Spectrum128kEmulator.csproj            net10.0-windows frontend project
 |-- VERIFIED_GAMES.md                      manual media compatibility record
@@ -196,9 +196,9 @@ Bank-qualified labels persist between sessions, can be imported or exported as
 plain-text symbol files, and are created automatically when an unlabeled direct
 call or branch target is followed.
 Media- and model-scoped bank-qualified code/data ranges also persist as debugger
-metadata without modifying captured machine memory. Confirmed data is displayed and exported as
-`DB`, excluded from mnemonic decoding and recursive control-flow analysis, while
-confirmed code supplies additional analysis entry points.
+metadata without modifying captured machine memory. Confirmed data is displayed
+and exported as `DB`, excluded from mnemonic decoding and recursive control-flow
+analysis, while confirmed code supplies additional analysis entry points.
 It opens paused and supports Run/Pause, Step Into, Step Over, Step Out, run to
 cursor, and persistent enabled/disabled mapped-address breakpoints. The listing
 remains frozen while execution runs and refreshes only after the machine stops
@@ -214,6 +214,9 @@ Run all tests:
 ```text
 dotnet test
 ```
+
+The repeatable debugger classification gate is documented in
+[`docs/testing/disassembly-code-data-acceptance.md`](docs/testing/disassembly-code-data-acceptance.md).
 
 Test coverage includes:
 
@@ -376,7 +379,7 @@ compatibility and polish; completed milestones remain regression baselines.
 - Completed refreshed paging context without conflating physical offsets with logical CPU addresses
 - Completed stable bank-qualified listings suitable for diagnostics and comparison between emulator runs
 - Completed incoming and outgoing direct control-flow cross-references for calls and jumps, with recursive analysis limited to explicit code roots and conservative bank qualification
-- Completed persistent bank-qualified code/data/unknown range marking; confirmed data renders as `DB` and is excluded from mnemonic search and recursive control-flow decoding
+- Completed and acceptance-tested persistent bank-qualified code/data/unknown range marking; confirmed data renders as `DB` and is excluded from mnemonic search and recursive control-flow decoding
 - Add data references without treating arbitrary data as executable code
 - Add hexadecimal memory inspection and navigation from registers, stack entries, and branch targets
 

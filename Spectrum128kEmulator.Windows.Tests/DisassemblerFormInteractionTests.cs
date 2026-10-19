@@ -35,6 +35,13 @@ namespace Spectrum128kEmulator.Tests
                         .Single(button => button.Text == "Go");
                     TextBox address = Descendants(form).OfType<TextBox>()
                         .Single(textBox => textBox.MaxLength == 6);
+                    ToolStripMenuItem classificationMenu = listing.ContextMenuStrip!.Items
+                        .OfType<ToolStripMenuItem>()
+                        .Single(item => item.Text == "Classification");
+
+                    Assert.Equal(
+                        ["Mark Selected As Code", "Mark Selected As Data", "Clear Selected Marking"],
+                        classificationMenu.DropDownItems.Cast<ToolStripItem>().Select(item => item.Text));
 
                     Rectangle formBounds = form.RectangleToScreen(form.ClientRectangle);
                     Rectangle selectorBounds = memoryView.RectangleToScreen(memoryView.ClientRectangle);
@@ -50,6 +57,14 @@ namespace Spectrum128kEmulator.Tests
                     Application.DoEvents();
                     Assert.Equal("DATA", listing.Items[0].SubItems[1].Text);
                     Assert.Equal("DB 00H", listing.Items[0].SubItems[4].Text);
+                    Assert.Equal(Color.FromArgb(255, 244, 204), listing.Items[0].BackColor);
+                    SetClassification(form, DisassemblyClassification.Code);
+                    Application.DoEvents();
+                    Assert.Equal("CODE", listing.Items[0].SubItems[1].Text);
+                    Assert.Equal("NOP", listing.Items[0].SubItems[4].Text);
+                    Assert.Equal(Color.FromArgb(225, 239, 247), listing.Items[0].BackColor);
+                    SetClassification(form, DisassemblyClassification.Data);
+                    Application.DoEvents();
 
                     memoryView.SelectedItem = DisassemblyAddressSpace.Mapped;
                     Application.DoEvents();
@@ -63,12 +78,14 @@ namespace Spectrum128kEmulator.Tests
                     Assert.Equal("DATA", listing.Items[0].SubItems[1].Text);
                     Assert.Equal("DB CDH", listing.Items[0].SubItems[4].Text);
                     Assert.Equal("No direct references", crossReferences.Items[0]!.ToString());
+                    Assert.Equal((byte)0xCD, snapshot.ReadMemory(DisassemblyAddressSpace.Mapped, 0x8000));
 
                     SetClassification(form, DisassemblyClassification.Code);
                     Application.DoEvents();
                     Assert.Equal("CODE", listing.Items[0].SubItems[1].Text);
                     Assert.Equal("CALL 8010H", listing.Items[0].SubItems[4].Text);
                     Assert.Contains("OUT CALL MAP:8010", crossReferences.Items[0]!.ToString());
+                    Assert.Equal((byte)0xCD, snapshot.ReadMemory(DisassemblyAddressSpace.Mapped, 0x8000));
 
                     SetClassification(form, DisassemblyClassification.Unknown);
                     Application.DoEvents();
