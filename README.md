@@ -117,7 +117,7 @@ Spectrum128kEmulator/
 |-- Forms/                                 main window partials and shortcut-reference dialog
 |-- Input/                                 WinForms-to-Spectrum keyboard bridge
 |-- Video/                                 display modes, pixel-art scaling, and presentation adapter
-|-- docs/                                  screenshots and focused acceptance procedures
+|-- docs/images/                           README screenshots of the emulator and debugger
 |-- Program.cs                             Windows application entry point
 |-- Spectrum128kEmulator.csproj            net10.0-windows frontend project
 |-- VERIFIED_GAMES.md                      manual media compatibility record
@@ -214,9 +214,6 @@ Run all tests:
 ```text
 dotnet test
 ```
-
-The repeatable debugger classification gate is documented in
-[`docs/testing/disassembly-code-data-acceptance.md`](docs/testing/disassembly-code-data-acceptance.md).
 
 Test coverage includes:
 
