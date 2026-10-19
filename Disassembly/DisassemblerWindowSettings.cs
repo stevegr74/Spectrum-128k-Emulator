@@ -17,16 +17,27 @@ namespace Spectrum128kEmulator
         public bool IsAutomatic { get; set; }
     }
 
+    public sealed class DisassemblerClassificationSetting
+    {
+        public string Context { get; set; } = "default";
+        public DisassemblyAddressSpaceKind AddressSpaceKind { get; set; }
+        public int Bank { get; set; }
+        public ushort StartAddress { get; set; }
+        public ushort EndAddress { get; set; }
+        public DisassemblyClassification Classification { get; set; }
+    }
+
     public sealed class DisassemblerWindowSettings
     {
         public int Width { get; set; } = 980;
         public int Height { get; set; } = 680;
-        public int[] ColumnWidths { get; set; } = [112, 145, 130, 375, 100];
+        public int[] ColumnWidths { get; set; } = [108, 52, 125, 120, 340, 90];
         public ushort? LastListingAddress { get; set; }
         public DisassemblyAddressSpaceKind LastAddressSpaceKind { get; set; }
         public int LastAddressSpaceBank { get; set; }
         public List<DisassemblerBreakpointSetting> Breakpoints { get; set; } = [];
         public List<DisassemblerSymbolSetting> Symbols { get; set; } = [];
+        public List<DisassemblerClassificationSetting> Classifications { get; set; } = [];
     }
 
     public sealed class DisassemblerWindowSettingsStore
@@ -51,9 +62,10 @@ namespace Spectrum128kEmulator
                 DisassemblerWindowSettings settings =
                     JsonSerializer.Deserialize<DisassemblerWindowSettings>(File.ReadAllText(path))
                     ?? new DisassemblerWindowSettings();
-                settings.ColumnWidths ??= [112, 145, 130, 375, 100];
+                settings.ColumnWidths ??= [108, 52, 125, 120, 340, 90];
                 settings.Breakpoints ??= [];
                 settings.Symbols ??= [];
+                settings.Classifications ??= [];
                 return settings;
             }
             catch

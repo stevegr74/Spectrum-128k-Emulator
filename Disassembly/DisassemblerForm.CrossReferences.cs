@@ -53,11 +53,11 @@ namespace Spectrum128kEmulator
 
         private void BuildCrossReferenceIndex()
         {
-            IEnumerable<ushort> roots = [listingAddress];
+            IEnumerable<ushort> roots = classifications.GetCodeEntryPoints(selectedAddressSpace).Append(listingAddress);
             if (selectedAddressSpace.Kind == DisassemblyAddressSpaceKind.Mapped)
                 roots = roots.Append(snapshot.ProgramCounter);
 
-            crossReferences = DisassemblyCrossReferenceIndex.Build(snapshot, selectedAddressSpace, roots);
+            crossReferences = DisassemblyCrossReferenceIndex.Build(snapshot, selectedAddressSpace, roots, classifications);
         }
 
         private void RefreshCrossReferenceList()

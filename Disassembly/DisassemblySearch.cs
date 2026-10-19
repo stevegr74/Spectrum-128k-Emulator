@@ -41,6 +41,27 @@ namespace Spectrum128kEmulator
             out DisassemblySearchResult? result,
             out string? error)
         {
+            return TryFindNext(
+                snapshot,
+                addressSpace,
+                mode,
+                query,
+                startAddress,
+                classifications: null,
+                out result,
+                out error);
+        }
+
+        public static bool TryFindNext(
+            DisassemblySnapshot snapshot,
+            DisassemblyAddressSpace addressSpace,
+            DisassemblySearchMode mode,
+            string? query,
+            ushort startAddress,
+            DisassemblyClassificationMap? classifications,
+            out DisassemblySearchResult? result,
+            out string? error)
+        {
             ArgumentNullException.ThrowIfNull(snapshot);
             result = null;
             error = null;
@@ -124,9 +145,19 @@ namespace Spectrum128kEmulator
             for (int offset = 0; offset < addressSpaceLength; offset++)
             {
                 ushort candidate = (ushort)((mnemonicStart + offset) % addressSpaceLength);
+                if (classifications?.Get(addressSpace, candidate) == DisassemblyClassification.Data)
+                    continue;
                 Z80Instruction instruction = Z80InstructionDisassembler.Disassemble(
                     candidate,
                     address => snapshot.ReadMemory(addressSpace, address));
+                if (classifications?.Contains(
+                    addressSpace,
+                    candidate,
+                    Math.Max(1, instruction.Length),
+                    DisassemblyClassification.Data) == true)
+                {
+                    continue;
+                }
                 if (instruction.Mnemonic.Contains(mnemonicQuery, StringComparison.OrdinalIgnoreCase))
                 {
                     result = new DisassemblySearchResult(candidate, $"Mnemonic {instruction.Mnemonic}");

@@ -14,6 +14,8 @@ namespace Spectrum128kEmulator
         private readonly Action<DebuggerExecutionCommand, ushort?> requestExecution;
         private readonly DisassemblyNavigationHistory navigationHistory = new();
         private readonly DisassemblySymbolTable symbols;
+        private readonly DisassemblyClassificationMap classifications;
+        private readonly string classificationContext;
         private readonly DisassemblerWindowSettingsStore settingsStore;
         private readonly DisassemblerWindowSettings settings;
         private readonly TextBox addressTextBox = new();
@@ -88,9 +90,20 @@ namespace Spectrum128kEmulator
                 symbol.Address,
                 symbol.Name,
                 symbol.IsAutomatic)));
+            snapshot = captureSnapshot();
+            classificationContext = snapshot.AnalysisContext;
+            classifications = new DisassemblyClassificationMap(settings.Classifications
+                .Where(classification => string.Equals(
+                    classification.Context,
+                    classificationContext,
+                    StringComparison.Ordinal))
+                .Select(classification => new DisassemblyClassificationRange(
+                    new DisassemblyAddressSpace(classification.AddressSpaceKind, classification.Bank),
+                    classification.StartAddress,
+                    classification.EndAddress,
+                    classification.Classification)));
             executionController.ReplaceBreakpoints(settings.Breakpoints.Select(
                 breakpoint => new DebuggerBreakpoint(breakpoint.Address, breakpoint.Enabled)));
-            snapshot = captureSnapshot();
             selectedAddressSpace = RestoreAddressSpace(settings, snapshot);
             backButton = CreateButton("< Back", 18, 29, 68);
             forwardButton = CreateButton("Forward >", 94, 29, 82);
@@ -296,11 +309,12 @@ namespace Spectrum128kEmulator
             instructionList.Font = listingFont;
             instructionList.BackColor = Color.FromArgb(251, 250, 245);
             instructionList.ForeColor = Ink;
-            instructionList.Columns.Add("Address", 112, HorizontalAlignment.Left);
-            instructionList.Columns.Add("Label", 145, HorizontalAlignment.Left);
-            instructionList.Columns.Add("Bytes", 130, HorizontalAlignment.Left);
-            instructionList.Columns.Add("Instruction", 375, HorizontalAlignment.Left);
-            instructionList.Columns.Add("Target", 100, HorizontalAlignment.Left);
+            instructionList.Columns.Add("Address", 108, HorizontalAlignment.Left);
+            instructionList.Columns.Add("Type", 52, HorizontalAlignment.Left);
+            instructionList.Columns.Add("Label", 125, HorizontalAlignment.Left);
+            instructionList.Columns.Add("Bytes", 120, HorizontalAlignment.Left);
+            instructionList.Columns.Add("Instruction", 340, HorizontalAlignment.Left);
+            instructionList.Columns.Add("Target", 90, HorizontalAlignment.Left);
             instructionList.DoubleClick += (_, _) => NavigateToSelectedTarget();
             instructionList.SelectedIndexChanged += (_, _) => RefreshCrossReferenceList();
             instructionList.ContextMenuStrip = CreateListingContextMenu();
@@ -333,6 +347,11 @@ namespace Spectrum128kEmulator
             ToolStripItem followTargetItem = menu.Items.Add("Follow Target", null, (_, _) => NavigateToSelectedTarget());
             ToolStripItem editLabelItem = menu.Items.Add("Add/Edit Label...", null, (_, _) => EditLabelAtSelection());
             ToolStripItem removeLabelItem = menu.Items.Add("Remove Label", null, (_, _) => RemoveLabelAtSelection());
+            ToolStripMenuItem classificationItem = new("Classification");
+            classificationItem.DropDownItems.Add("Mark Selected As Code", null, (_, _) => SetClassificationAtSelection(DisassemblyClassification.Code));
+            classificationItem.DropDownItems.Add("Mark Selected As Data", null, (_, _) => SetClassificationAtSelection(DisassemblyClassification.Data));
+            classificationItem.DropDownItems.Add("Clear Selected Marking", null, (_, _) => SetClassificationAtSelection(DisassemblyClassification.Unknown));
+            menu.Items.Add(classificationItem);
             menu.Items.Add(new ToolStripSeparator());
             ToolStripItem runToCursorItem = menu.Items.Add("Run to Cursor", null, (_, _) => RunToCursor());
             ToolStripItem breakpointItem = menu.Items.Add("Toggle Breakpoint", null, (_, _) => ToggleBreakpointAtSelection());
@@ -350,6 +369,7 @@ namespace Spectrum128kEmulator
                 editLabelItem.Enabled = SelectedInstruction() != null;
                 removeLabelItem.Enabled = SelectedInstruction() is Z80Instruction selected &&
                     symbols.GetName(selectedAddressSpace, selected.Address) != null;
+                classificationItem.Enabled = instructionList.SelectedItems.Count > 0;
                 bool mappedSelection = selectedAddressSpace.Kind == DisassemblyAddressSpaceKind.Mapped &&
                     SelectedInstruction() != null;
                 runToCursorItem.Enabled = !executionRunning && mappedSelection;
@@ -553,19 +573,22 @@ namespace Spectrum128kEmulator
         {
             if (selectedAddressSpace.Kind == DisassemblyAddressSpaceKind.Mapped)
             {
-                return Z80InstructionDisassembler.DisassembleBlock(
-                    listingAddress,
-                    InstructionCount,
-                    snapshot.ReadMemory);
+                var mappedInstructions = new List<Z80Instruction>();
+                ushort mappedAddress = listingAddress;
+                while (mappedInstructions.Count < InstructionCount)
+                {
+                    Z80Instruction instruction = DisassembleForListing(mappedAddress);
+                    mappedInstructions.Add(instruction);
+                    mappedAddress = (ushort)(mappedAddress + Math.Max(1, instruction.Length));
+                }
+                return mappedInstructions;
             }
 
             var instructions = new List<Z80Instruction>();
             int address = listingAddress;
             while (instructions.Count < InstructionCount && address < selectedAddressSpace.Length)
             {
-                Z80Instruction instruction = Z80InstructionDisassembler.Disassemble(
-                    (ushort)address,
-                    value => snapshot.ReadMemory(selectedAddressSpace, value));
+                Z80Instruction instruction = DisassembleForListing((ushort)address);
                 instructions.Add(instruction);
                 address += Math.Max(1, instruction.Length);
             }
@@ -618,6 +641,7 @@ namespace Spectrum128kEmulator
                         ? instruction.Address.ToString("X4")
                         : $"{AddressSpacePrefix(selectedAddressSpace)}:{instruction.Address:X4}";
                     var item = new ListViewItem(addressText) { Tag = instruction };
+                    item.SubItems.Add(FormatClassification(instruction.Address));
                     item.SubItems.Add(symbols.GetName(selectedAddressSpace, instruction.Address) ?? string.Empty);
                     item.SubItems.Add(instruction.BytesText);
                     item.SubItems.Add(instruction.Mnemonic);
@@ -638,6 +662,14 @@ namespace Spectrum128kEmulator
                         item.ForeColor = enabled
                             ? Color.FromArgb(120, 30, 25)
                             : Color.FromArgb(105, 105, 100);
+                    }
+                    else if (classifications.Get(selectedAddressSpace, instruction.Address) == DisassemblyClassification.Data)
+                    {
+                        item.BackColor = Color.FromArgb(255, 244, 204);
+                    }
+                    else if (classifications.Get(selectedAddressSpace, instruction.Address) == DisassemblyClassification.Code)
+                    {
+                        item.BackColor = Color.FromArgb(225, 239, 247);
                     }
                     instructionList.Items.Add(item);
                 }
@@ -824,7 +856,7 @@ namespace Spectrum128kEmulator
                 string.Equals(lastSearchQuery, query, StringComparison.OrdinalIgnoreCase);
             ushort startAddress = sameSearch ? (ushort)(lastSearchAddress + 1) : listingAddress;
 
-            if (!DisassemblySearch.TryFindNext(snapshot, selectedAddressSpace, mode, query, startAddress, out DisassemblySearchResult? result, out string? error))
+            if (!DisassemblySearch.TryFindNext(snapshot, selectedAddressSpace, mode, query, startAddress, classifications, out DisassemblySearchResult? result, out string? error))
             {
                 statusLabel.Text = error ?? "No match found.";
                 searchTextBox.SelectAll();
@@ -861,7 +893,8 @@ namespace Spectrum128kEmulator
                 listingAddress,
                 instructions,
                 includeHeader: true,
-                symbols));
+                symbols,
+                classifications));
             statusLabel.Text = $"Copied {instructions.Count} instruction(s) with capture metadata.";
         }
 
@@ -879,14 +912,15 @@ namespace Spectrum128kEmulator
                 return;
 
             IReadOnlyList<Z80Instruction> instructions =
-                DisassemblyListingFormatter.DisassembleCompleteAddressSpace(snapshot, selectedAddressSpace, listingAddress);
+                DisassemblyListingFormatter.DisassembleCompleteAddressSpace(snapshot, selectedAddressSpace, listingAddress, classifications);
             File.WriteAllText(dialog.FileName, DisassemblyListingFormatter.Format(
                 snapshot,
                 selectedAddressSpace,
                 listingAddress,
                 instructions,
                 includeHeader: true,
-                symbols));
+                symbols,
+                classifications));
             statusLabel.Text = $"Exported complete {selectedAddressSpace.DisplayName} listing ({instructions.Count} instructions) to {Path.GetFileName(dialog.FileName)}.";
         }
 
@@ -938,6 +972,21 @@ namespace Spectrum128kEmulator
                 Name = symbol.Name,
                 IsAutomatic = symbol.IsAutomatic
             }).ToList();
+            settings.Classifications = settings.Classifications
+                .Where(classification => !string.Equals(
+                    classification.Context,
+                    classificationContext,
+                    StringComparison.Ordinal))
+                .Concat(classifications.Ranges.Select(classification => new DisassemblerClassificationSetting
+                {
+                    Context = classificationContext,
+                    AddressSpaceKind = classification.AddressSpace.Kind,
+                    Bank = classification.AddressSpace.Bank,
+                    StartAddress = classification.StartAddress,
+                    EndAddress = classification.EndAddress,
+                    Classification = classification.Classification
+                }))
+                .ToList();
             try
             {
                 settingsStore.Save(settings);

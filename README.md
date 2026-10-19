@@ -16,7 +16,7 @@ This project focuses on correctness, clean architecture, and incremental develop
 - `.tap` and `.tzx` parsing, fast bootstrap, ROM-driven loading, protected/mounted playback, VERIFY, and multi-block sequencing
 - Manual/resumable tape transport with 48K stop-marker support and persistent status feedback
 - Platform-neutral headless core with Windows presentation/audio adapters
-- Paused `F6` debugger with immutable mapped/physical-bank captures, CPU/stack context, Step Into/Over/Out, Run/Pause, run to cursor, persistent breakpoints, bank-qualified labels, symbol files, search, navigation, copy, and export
+- Paused `F6` debugger with immutable mapped/physical-bank captures, CPU/stack context, execution controls, breakpoints, bank-qualified labels, cross-references, persistent code/data markings, search, navigation, copy, and export
 - In-memory `F7`/`F8` Quick State save and restore
 - Headless manual diagnostics and Z80 compliance runners
 
@@ -74,8 +74,8 @@ Current limitations and active work:
 ## Development Priorities
 
 Each feature is developed on its own branch. Current Milestone 19 work is
-code/data marking and memory inspection on top of the completed bank-aware symbol
-and direct control-flow cross-reference foundation. Milestone 20 will then harden the tape architecture through
+data-reference analysis and memory inspection on top of the completed bank-aware
+symbol, control-flow cross-reference, and code/data-marking foundation. Milestone 20 will then harden the tape architecture through
 behavior-preserving decomposition and stronger transition tests. Milestone 21 will
 add a bank-aware Poke Manager with a maintainable cheat library and safe one-off
 memory writes. Tape compatibility and the turbo-to-realtime audio transition
@@ -112,12 +112,12 @@ Spectrum128kEmulator/
 |   `-- RzxPlaybackSession.cs              RZX playback orchestration
 |
 |-- Audio/                                 Windows audio pipeline and output adapters
-|-- Disassembly/                           debugger UI, bank captures, symbols, navigation, and export
+|-- Disassembly/                           debugger UI, bank captures, analysis metadata, navigation, and export
 |-- Host/                                  background loop, pause ownership, and UI snapshots
 |-- Forms/                                 main window partials and shortcut-reference dialog
 |-- Input/                                 WinForms-to-Spectrum keyboard bridge
 |-- Video/                                 display modes, pixel-art scaling, and presentation adapter
-|-- docs/images/                           README screenshots of the emulator and debugger
+|-- docs/                                  screenshots and focused acceptance procedures
 |-- Program.cs                             Windows application entry point
 |-- Spectrum128kEmulator.csproj            net10.0-windows frontend project
 |-- VERIFIED_GAMES.md                      manual media compatibility record
@@ -195,6 +195,10 @@ physical offsets; search, history, copy, and export follow the selected view.
 Bank-qualified labels persist between sessions, can be imported or exported as
 plain-text symbol files, and are created automatically when an unlabeled direct
 call or branch target is followed.
+Media- and model-scoped bank-qualified code/data ranges also persist as debugger
+metadata without modifying captured machine memory. Confirmed data is displayed
+and exported as `DB`, excluded from mnemonic decoding and recursive control-flow
+analysis, while confirmed code supplies additional analysis entry points.
 It opens paused and supports Run/Pause, Step Into, Step Over, Step Out, run to
 cursor, and persistent enabled/disabled mapped-address breakpoints. The listing
 remains frozen while execution runs and refreshes only after the machine stops
@@ -210,6 +214,9 @@ Run all tests:
 ```text
 dotnet test
 ```
+
+The repeatable debugger classification gate is documented in
+[`docs/testing/disassembly-code-data-acceptance.md`](docs/testing/disassembly-code-data-acceptance.md).
 
 Test coverage includes:
 
@@ -236,7 +243,7 @@ Test coverage includes:
 - AY register write and selected-register port-read behaviour
 - Audio sample generation
 - Audio pipeline behaviour
-- Z80 instruction decoding, bank-aware disassembly navigation/search, labels, symbol import/export, listing export, settings, snapshot behavior, and STA WinForms interaction
+- Z80 instruction decoding, bank-aware disassembly navigation/search, labels, classifications, cross-references, listing export, settings, snapshot behavior, and STA WinForms interaction
 - Quick State deterministic machine, tape-cursor, and RZX-cursor restoration
 - ZEXDOC and ZEXALL compliance validation via the dedicated runner
 
@@ -333,7 +340,7 @@ compatibility and polish; completed milestones remain regression baselines.
 | 16 | Complete | Central ULA profiles, contention conformance, 128K floating bus, exact port events, border-latch mapping, timed CPU bus cycles, and published diagnostic validation |
 | 17 | Complete | Event-driven beam capture for bitmap, per-line attributes, border timing, and 128K shadow-screen changes, validated against Arkanoid and published diagnostics |
 | 18 | Complete | Instruction-boundary Run/Pause, Step Into/Over/Out, run to cursor, CPU context, and persistent breakpoints |
-| 19 | In progress | Physical-bank inspection, labels, symbol import/export, and direct control-flow cross-references complete; code/data analysis and memory inspection remain |
+| 19 | In progress | Physical-bank inspection, labels, direct control-flow cross-references, and persistent code/data marking complete; data references and memory inspection remain |
 | 20 | Planned | Tape state ownership, transition coverage, diagnostics, and behavior-preserving subsystem decomposition |
 | 21 | Planned | Bank-aware Poke Manager, maintainable cheat library, media matching, and safe one-off memory writes |
 
@@ -372,7 +379,8 @@ compatibility and polish; completed milestones remain regression baselines.
 - Completed refreshed paging context without conflating physical offsets with logical CPU addresses
 - Completed stable bank-qualified listings suitable for diagnostics and comparison between emulator runs
 - Completed incoming and outgoing direct control-flow cross-references for calls and jumps, with recursive analysis limited to explicit code roots and conservative bank qualification
-- Add code/data marking and data references without treating arbitrary data as executable code
+- Completed and acceptance-tested persistent bank-qualified code/data/unknown range marking; confirmed data renders as `DB` and is excluded from mnemonic search and recursive control-flow decoding
+- Add data references without treating arbitrary data as executable code
 - Add hexadecimal memory inspection and navigation from registers, stack entries, and branch targets
 
 ### Milestone 20 - Tape Architecture Hardening Planned
