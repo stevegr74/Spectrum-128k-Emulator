@@ -383,8 +383,18 @@ namespace Spectrum128kEmulator.Tap
                             break;
 
                         case "?":
+                        {
+                            int usrIndex = statement.IndexOf("USR");
+                            if (usrIndex >= 0 && usrIndex + 1 < statement.Count)
+                            {
+                                int entryPoint = EvaluateExpression(statement, usrIndex + 1, statement.Count - 1);
+                                EnterMachineCode((ushort)entryPoint);
+                                return;
+                            }
+
                             ApplyPrintSideEffects(line, statementIndex - 1, statement);
                             break;
+                        }
 
                         case "LOAD":
                             if (ignoreLoadStatements)
@@ -1336,6 +1346,11 @@ namespace Spectrum128kEmulator.Tap
                         string keyword = NormalizeStatementKeyword(statement[0]);
                         if (keyword == "RANDOMIZE" && statement.IndexOf("USR") >= 0)
                             return false;
+
+                        // PAUSE may wait for a key (PAUSE 0) or preserve visible/timed
+                        // loader behavior. Keep such programs under the real ROM.
+                        if (keyword == "PAUSE")
+                            return true;
 
                         if (keyword == "LOAD")
                         {
