@@ -11,6 +11,7 @@ that every level, control path, or hardware edge case has been tested.
 | Arkanoid (Imagine) | `.tzx` | Protected loading completes and gameplay runs; Milestone 17 beam-aware rendering eliminates the previously observed ship flicker, while audio timing remains slightly imperfect |
 | Arkanoid (Hit Squad) | `.tzx` | LOAD capability gating falls back to the real-ROM protected path; loading reaches gameplay and beam-aware rendering eliminates the previously observed ship flicker |
 | Batman | `.tzx` | Chained BASIC and protected loading complete; game runs |
+| Booze Up | `.tzx` | Interactive BASIC loading remains under real-ROM control, reaches the loaded program, and detects the terminal tape state correctly |
 | Captain America | `.tzx` | Protected loader completes; game runs |
 | Donkey Kong (Erbe) | `.tzx` | Custom loader completes without corrupting the loading screen; game runs |
 | Exolon | `.tap`, `.tzx` | Both tape formats load and reach the game |

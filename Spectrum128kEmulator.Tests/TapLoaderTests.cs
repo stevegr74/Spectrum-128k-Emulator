@@ -2497,6 +2497,39 @@ namespace Spectrum128kEmulator.Tests
         }
 
         [Fact]
+        public void CreateExecutionPlan_UsesRomBootstrap_ForInteractivePauseBeforeStandardCodeLoad()
+        {
+            string tempFolder = CreateTempRoms();
+
+            try
+            {
+                byte[] basicLoader = BuildBasicProgram(
+                    BuildBasicLine(10, Token(245), Ascii(" "), Ascii("\"READY\"")),
+                    BuildBasicLine(20, Token(242), Ascii("0"), NumberMarker(0)),
+                    BuildBasicLine(30, Token(239), QuoteQuote(), Ascii(" "), Token(175)),
+                    BuildBasicLine(40,
+                        Token(245), Ascii(" "), Token(192), Ascii("25000"), NumberMarker(25000)));
+                byte[] tape = BuildTap(
+                    BuildHeaderBlock(type: 0, fileName: "INTERACT", dataLength: (ushort)basicLoader.Length, parameter1: 10, parameter2: (ushort)basicLoader.Length),
+                    BuildDataBlock(basicLoader),
+                    BuildHeaderBlock(type: 3, fileName: "CODE", dataLength: 2, parameter1: 25000, parameter2: 0),
+                    BuildDataBlock(new byte[] { 0xF3, 0xC9 }));
+
+                MethodInfo parseBlocks = typeof(TapLoader).GetMethod("ParseBlocks", BindingFlags.NonPublic | BindingFlags.Static)!;
+                var blocks = (IReadOnlyList<TapeBlock>)parseBlocks.Invoke(null, new object[] { tape })!;
+                var machine = new Spectrum128Machine(tempFolder);
+
+                TapeLoadPlan plan = TapLoader.CreateExecutionPlan(machine, blocks);
+
+                Assert.Equal(TapeLoadStrategy.RomBootstrapMounted, plan.Strategy);
+            }
+            finally
+            {
+                Directory.Delete(tempFolder, true);
+            }
+        }
+
+        [Fact]
         public void LoadWithPolicy_Uses_Rom_Bootstrap_When_Mounted_Loader_Has_Unsupported_Control_Flow()
         {
             string tempFolder = CreateTempRoms();
@@ -3675,6 +3708,45 @@ namespace Spectrum128kEmulator.Tests
                 Assert.Equal((byte)0x00, machine.PeekMemory(0x8000));
                 Assert.Equal((byte)0x01, machine.PeekMemory(0x8001));
                 Assert.Equal((byte)0x02, machine.PeekMemory(0x8002));
+            }
+            finally
+            {
+                Directory.Delete(tempFolder, true);
+            }
+        }
+
+        [Fact]
+        public void LoadAllStandardBlocksAndAutoStart_Enters_PrintUsr_After_Satisfied_Code_Load()
+        {
+            string tempFolder = CreateTempRoms();
+            string tapePath = Path.Combine(tempFolder, "print-usr.tap");
+
+            try
+            {
+                const ushort entryPoint = 25000;
+                byte[] basicLoader = BuildBasicProgram(
+                    BuildBasicLine(10, Token(239), QuoteQuote(), Ascii(" "), Token(175)),
+                    BuildBasicLine(20,
+                        Token(245), Ascii(" "), Token(192), Ascii("25000"), NumberMarker(entryPoint)));
+                byte[] code = new byte[] { 0xF3, 0xC9 };
+
+                byte[] tap = BuildTap(
+                    BuildHeaderBlock(type: 0, fileName: "PRINTUSR", dataLength: (ushort)basicLoader.Length, parameter1: 10, parameter2: (ushort)basicLoader.Length),
+                    BuildDataBlock(basicLoader),
+                    BuildHeaderBlock(type: 3, fileName: "CODE", dataLength: (ushort)code.Length, parameter1: entryPoint, parameter2: 0),
+                    BuildDataBlock(code));
+
+                File.WriteAllBytes(tapePath, tap);
+
+                var machine = new Spectrum128Machine(tempFolder);
+                TapBootstrapResult result = TapLoader.LoadAllStandardBlocksAndAutoStart(machine, tapePath);
+
+                Assert.Equal(4, result.ConsumedBlockCount);
+                Assert.Equal("PRINTUSR", result.AutoStartFileName);
+                Assert.Equal(entryPoint, machine.Cpu.Regs.PC);
+                Assert.False(machine.HasMountedTape);
+                Assert.Equal((byte)0xF3, machine.PeekMemory(entryPoint));
+                Assert.Equal((byte)0xC9, machine.PeekMemory((ushort)(entryPoint + 1)));
             }
             finally
             {
