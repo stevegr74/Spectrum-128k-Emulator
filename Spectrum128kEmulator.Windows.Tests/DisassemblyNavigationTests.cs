@@ -229,6 +229,17 @@ namespace Spectrum128kEmulator.Tests
                             Name = "RomRoutine",
                             IsAutomatic = true
                         }
+                    ],
+                    Classifications =
+                    [
+                        new DisassemblerClassificationSetting
+                        {
+                            AddressSpaceKind = DisassemblyAddressSpaceKind.Ram,
+                            Bank = 7,
+                            StartAddress = 0x0200,
+                            EndAddress = 0x021F,
+                            Classification = DisassemblyClassification.Data
+                        }
                     ]
                 });
 
@@ -245,6 +256,12 @@ namespace Spectrum128kEmulator.Tests
                 Assert.Single(loaded.Symbols);
                 Assert.Equal("RomRoutine", loaded.Symbols[0].Name);
                 Assert.True(loaded.Symbols[0].IsAutomatic);
+                DisassemblerClassificationSetting classification = Assert.Single(loaded.Classifications);
+                Assert.Equal(DisassemblyAddressSpaceKind.Ram, classification.AddressSpaceKind);
+                Assert.Equal(7, classification.Bank);
+                Assert.Equal((ushort)0x0200, classification.StartAddress);
+                Assert.Equal((ushort)0x021F, classification.EndAddress);
+                Assert.Equal(DisassemblyClassification.Data, classification.Classification);
 
                 File.WriteAllText(path, "not-json");
                 Assert.Null(store.Load().LastListingAddress);

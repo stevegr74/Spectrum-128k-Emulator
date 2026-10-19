@@ -53,6 +53,18 @@ namespace Spectrum128kEmulator.Tests
                     Assert.True(runToCursor.Enabled);
                     Assert.Contains("OUT CALL MAP:8010", crossReferences.Items[0]!.ToString());
 
+                    SetClassification(form, DisassemblyClassification.Data);
+                    Application.DoEvents();
+                    Assert.Equal("DATA", listing.Items[0].SubItems[1].Text);
+                    Assert.Equal("DB CDH", listing.Items[0].SubItems[4].Text);
+                    Assert.Equal("No direct references", crossReferences.Items[0]!.ToString());
+
+                    SetClassification(form, DisassemblyClassification.Code);
+                    Application.DoEvents();
+                    Assert.Equal("CODE", listing.Items[0].SubItems[1].Text);
+                    Assert.Equal("CALL 8010H", listing.Items[0].SubItems[4].Text);
+                    Assert.Contains("OUT CALL MAP:8010", crossReferences.Items[0]!.ToString());
+
                     listing.Items[0].Selected = true;
                     listing.Items[0].Focused = true;
                     listing.Focus();
@@ -61,7 +73,7 @@ namespace Spectrum128kEmulator.Tests
                     Application.DoEvents();
 
                     Assert.Equal("8010", listing.Items[0].Text);
-                    Assert.Equal("SUB_8010", listing.Items[0].SubItems[1].Text);
+                    Assert.Equal("SUB_8010", listing.Items[0].SubItems[2].Text);
                     Assert.Contains("IN  CALL MAP:8000", crossReferences.Items[0]!.ToString());
 
                     crossReferences.SelectedIndex = 0;
@@ -82,6 +94,10 @@ namespace Spectrum128kEmulator.Tests
                     DisassemblerSymbolSetting symbol = Assert.Single(saved.Symbols);
                     Assert.Equal("SUB_8010", symbol.Name);
                     Assert.True(symbol.IsAutomatic);
+                    DisassemblerClassificationSetting classification = Assert.Single(saved.Classifications);
+                    Assert.Equal(DisassemblyClassification.Code, classification.Classification);
+                    Assert.Equal((ushort)0x8000, classification.StartAddress);
+                    Assert.Equal((ushort)0x8002, classification.EndAddress);
                 }
                 catch (Exception ex)
                 {
@@ -118,6 +134,11 @@ namespace Spectrum128kEmulator.Tests
                 romBanks: romBanks,
                 ramBanks: ramBanks);
         }
+
+        private static void SetClassification(DisassemblerForm form, DisassemblyClassification classification) =>
+            typeof(DisassemblerForm)
+                .GetMethod("SetClassificationAtSelection", BindingFlags.Instance | BindingFlags.NonPublic)!
+                .Invoke(form, [classification]);
 
         private static IEnumerable<Control> Descendants(Control parent)
         {

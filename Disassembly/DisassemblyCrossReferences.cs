@@ -28,7 +28,8 @@ namespace Spectrum128kEmulator
         public static DisassemblyCrossReferenceIndex Build(
             DisassemblySnapshot snapshot,
             DisassemblyAddressSpace addressSpace,
-            IEnumerable<ushort> entryPoints)
+            IEnumerable<ushort> entryPoints,
+            DisassemblyClassificationMap? classifications = null)
         {
             ArgumentNullException.ThrowIfNull(snapshot);
             ArgumentNullException.ThrowIfNull(entryPoints);
@@ -47,10 +48,20 @@ namespace Spectrum128kEmulator
                     ushort instructionAddress = (ushort)address;
                     if (!visited.Add(instructionAddress))
                         break;
+                    if (classifications?.Get(addressSpace, instructionAddress) == DisassemblyClassification.Data)
+                        break;
 
                     Z80Instruction instruction = Z80InstructionDisassembler.Disassemble(
                         instructionAddress,
                         value => snapshot.ReadMemory(addressSpace, value));
+                    if (classifications?.Contains(
+                        addressSpace,
+                        instructionAddress,
+                        Math.Max(1, instruction.Length),
+                        DisassemblyClassification.Data) == true)
+                    {
+                        break;
+                    }
                     string mnemonic = instruction.Mnemonic.Trim();
 
                     if (instruction.BranchTarget is ushort encodedTarget &&
@@ -63,8 +74,12 @@ namespace Spectrum128kEmulator
                             Classify(instruction),
                             mnemonic);
                         index.Add(reference);
-                        if (target.AddressSpace == addressSpace && !visited.Contains(target.Address))
+                        if (target.AddressSpace == addressSpace &&
+                            classifications?.Get(addressSpace, target.Address) != DisassemblyClassification.Data &&
+                            !visited.Contains(target.Address))
+                        {
                             pending.Enqueue(target.Address);
+                        }
                     }
 
                     if (EndsSequentialFlow(mnemonic))
