@@ -48,6 +48,17 @@ namespace Spectrum128kEmulator.Tests
         }
 
         [Fact]
+        public void Disassemble_Restart_ReturnsFixedVectorTarget()
+        {
+            byte[] memory = CreateMemory(0xEF);
+
+            Z80Instruction instruction = Z80InstructionDisassembler.Disassemble(0x8000, addr => memory[addr - 0x8000]);
+
+            Assert.Equal("RST 28H", instruction.Mnemonic);
+            Assert.Equal((ushort)0x0028, instruction.BranchTarget);
+        }
+
+        [Fact]
         public void Disassemble_IndexedDisplacement_ReturnsFullInstructionLength()
         {
             byte[] memory = CreateMemory(0xDD, 0x36, 0xFE, 0x7B);

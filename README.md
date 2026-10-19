@@ -74,8 +74,8 @@ Current limitations and active work:
 ## Development Priorities
 
 Each feature is developed on its own branch. Current Milestone 19 work is
-cross-reference and code/data analysis on top of the completed bank-aware symbol
-foundation. Milestone 20 will then harden the tape architecture through
+code/data marking and memory inspection on top of the completed bank-aware symbol
+and direct control-flow cross-reference foundation. Milestone 20 will then harden the tape architecture through
 behavior-preserving decomposition and stronger transition tests. Milestone 21 will
 add a bank-aware Poke Manager with a maintainable cheat library and safe one-off
 memory writes. Tape compatibility and the turbo-to-realtime audio transition
@@ -333,7 +333,7 @@ compatibility and polish; completed milestones remain regression baselines.
 | 16 | Complete | Central ULA profiles, contention conformance, 128K floating bus, exact port events, border-latch mapping, timed CPU bus cycles, and published diagnostic validation |
 | 17 | Complete | Event-driven beam capture for bitmap, per-line attributes, border timing, and 128K shadow-screen changes, validated against Arkanoid and published diagnostics |
 | 18 | Complete | Instruction-boundary Run/Pause, Step Into/Over/Out, run to cursor, CPU context, and persistent breakpoints |
-| 19 | In progress | Physical-bank inspection, labels, and symbol import/export complete; cross-references and code/data analysis remain |
+| 19 | In progress | Physical-bank inspection, labels, symbol import/export, and direct control-flow cross-references complete; code/data analysis and memory inspection remain |
 | 20 | Planned | Tape state ownership, transition coverage, diagnostics, and behavior-preserving subsystem decomposition |
 | 21 | Planned | Bank-aware Poke Manager, maintainable cheat library, media matching, and safe one-off memory writes |
 
@@ -371,8 +371,9 @@ compatibility and polish; completed milestones remain regression baselines.
 - Completed persistent user labels, automatic followed-target labels, symbol-aware navigation, and bank-qualified symbol import/export
 - Completed refreshed paging context without conflating physical offsets with logical CPU addresses
 - Completed stable bank-qualified listings suitable for diagnostics and comparison between emulator runs
-- Add cross-references for jumps, calls, and data references without treating arbitrary data as executable code
-- Add code/data marking, hexadecimal memory inspection, and navigation from registers, stack entries, and branch targets
+- Completed incoming and outgoing direct control-flow cross-references for calls and jumps, with recursive analysis limited to explicit code roots and conservative bank qualification
+- Add code/data marking and data references without treating arbitrary data as executable code
+- Add hexadecimal memory inspection and navigation from registers, stack entries, and branch targets
 
 ### Milestone 20 - Tape Architecture Hardening Planned
 - Audit tape state ownership and document invariants across transport, load-strategy selection, and continuation handling

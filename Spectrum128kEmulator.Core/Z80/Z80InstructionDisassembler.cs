@@ -185,7 +185,9 @@ namespace Spectrum128kEmulator.Z80
             if (z == 6)
                 return $"{Alu[y]}{Byte(reader)}";
 
-            return $"RST {y * 8:00H}";
+            ushort restartTarget = (ushort)(y * 8);
+            branchTarget = restartTarget;
+            return $"RST {restartTarget:X2}H";
         }
 
         private static string DecodeEd(InstructionReader reader, out ushort? branchTarget)

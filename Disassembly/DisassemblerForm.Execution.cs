@@ -42,9 +42,7 @@ namespace Spectrum128kEmulator
         {
             var panel = new Panel
             {
-                Dock = DockStyle.Right,
-                Width = 174,
-                Padding = new Padding(10, 0, 0, 0),
+                Dock = DockStyle.Fill,
                 BackColor = Paper
             };
 
