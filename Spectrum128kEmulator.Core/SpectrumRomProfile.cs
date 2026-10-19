@@ -42,6 +42,17 @@ namespace Spectrum128kEmulator
                    IsInRange(address, 0x3631, 0x3634);
         }
 
+        internal bool IsTapeInputRoutinePortRead(ushort nextInstructionAddress)
+        {
+            if (!SupportsAddressBasedTapeServices)
+                return false;
+
+            // IN A,(FE) leaves PC immediately after its operand. These are the
+            // two EAR reads in the bundled Sinclair ROM's LD-BYTES routine.
+            return nextInstructionAddress == 0x0564 ||
+                   nextInstructionAddress == 0x05F3;
+        }
+
         internal static SpectrumRomProfile Detect(byte[] rom0, byte[] rom1)
         {
             ArgumentNullException.ThrowIfNull(rom0);

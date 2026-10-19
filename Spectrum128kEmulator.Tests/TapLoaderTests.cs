@@ -272,7 +272,7 @@ namespace Spectrum128kEmulator.Tests
         }
 
         [Fact]
-        public void Machine_AutoResumesHandoffPause_WhenLoaderStartsReadingEarAgain()
+        public void Machine_AutoResumesHandoffPause_OnRecognizedRomLoaderEarRead()
         {
             string tempFolder = CreateTempRoms();
             try
@@ -312,19 +312,65 @@ namespace Spectrum128kEmulator.Tests
                 machine.ExecuteFrame();
                 Assert.Equal(TapeTransportState.Stopped, machine.TapeTransportState);
 
-                machine.PokeMemory(0x8100, 0xDB); // IN A,(FE)
-                machine.PokeMemory(0x8101, 0xFE);
-                machine.PokeMemory(0x8102, 0xE6); // AND 40 observes EAR.
-                machine.PokeMemory(0x8103, 0x40);
-                machine.PokeMemory(0x8104, 0xC3);
-                machine.PokeMemory(0x8105, 0x00);
-                machine.PokeMemory(0x8106, 0x81);
-                machine.Cpu.Regs.PC = 0x8100;
-
-                machine.ExecuteFrame();
+                // The CPU callback observes PC after the ROM's IN A,(FE)
+                // operand has been fetched.
+                machine.Cpu.Regs.PC = 0x0564;
+                machine.DebugReadPort(0x00FE);
 
                 Assert.Equal(TapeTransportState.Playing, machine.TapeTransportState);
                 Assert.False(machine.MountedTape!.IsPlaybackPaused);
+            }
+            finally
+            {
+                Directory.Delete(tempFolder, true);
+            }
+        }
+
+        [Fact]
+        public void Machine_DoesNotAutoResumeHandoffPause_ForGameCodeEarReads()
+        {
+            string tempFolder = CreateTempRoms();
+            try
+            {
+                var machine = new Spectrum128Machine(tempFolder);
+                TapeBlock dataBlock = TapeBlock.CreateData(
+                    BuildDataBlock(new byte[] { 0x11, 0x22, 0x33, 0x44 }),
+                    2168, 60000, 667, 735, 855, 1710, 8, 1000);
+                machine.MountTape(new MountedTape(
+                    "automatic-resume.tap",
+                    new[] { dataBlock },
+                    initialBlockIndex: 0,
+                    skipCustomHeaderForEarPlayback: false));
+
+                ushort pc = 0x8000;
+                for (int read = 0; read < 96; read++)
+                {
+                    machine.PokeMemory(pc++, 0xDB);
+                    machine.PokeMemory(pc++, 0xFE);
+                }
+                machine.PokeMemory(pc++, 0xC3);
+                machine.PokeMemory(pc++, 0x00);
+                machine.PokeMemory(pc, 0x81);
+                machine.PokeMemory(0x8100, 0xAF);
+                machine.PokeMemory(0x8101, 0xDB);
+                machine.PokeMemory(0x8102, 0xFE);
+                machine.PokeMemory(0x8103, 0x2F);
+                machine.PokeMemory(0x8104, 0xE6);
+                machine.PokeMemory(0x8105, 0x1F);
+                machine.PokeMemory(0x8106, 0x28);
+                machine.PokeMemory(0x8107, 0xF8);
+                machine.Cpu.Regs.PC = 0x8000;
+
+                for (int frame = 0; frame < 4; frame++)
+                    machine.ExecuteFrame();
+                Assert.Equal(TapeTransportState.Stopped, machine.TapeTransportState);
+
+                machine.Cpu.Regs.PC = 0x8002;
+                for (int read = 0; read < 128; read++)
+                    machine.DebugReadPort(0x00FE);
+
+                Assert.Equal(TapeTransportState.Stopped, machine.TapeTransportState);
+                Assert.True(machine.MountedTape!.IsPlaybackPaused);
             }
             finally
             {
