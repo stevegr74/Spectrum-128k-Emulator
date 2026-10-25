@@ -53,7 +53,7 @@ that every level, control path, or hardware edge case has been tested.
 | 🟢 | Star Wars (Domark original, sides 1 and 2) | `.tzx` | The explicit stop/key/resume sequence reaches the complete title screen from both sides; side 2 requires 48K mode |
 | 🟢 | Starglider (48K original) | `.tzx` | Loading reaches the in-game control menu and automatically stops at the handoff boundary |
 | 🟢 | Starglider 2 (48K original) | `.tzx` | Loading reaches the complete title screen and ends cleanly |
-| 🟢 | Starquake (Bubblebus original and Ricochet) | `.tzx` | Both releases reach the control menu and remain stable |
+| 🟢 | Starquake (Bubblebus original and Ricochet) | `.sna`, `.tzx` | The repaired standard-size 48K SNA and both TZX releases reach the control menu and remain stable |
 | 🟢 | Target Renegade | `128k.tzx` | 128K mode loads the complete game; 48K mode loads the first level and automatically pauses at the level-at-a-time boundary with resumable transport; both modes remain responsive with good audio |
 | 🟢 | The Goonies | `.tzx` | Loading reaches active gameplay and remains stable |
 | 🟢 | The Great Escape (Ocean original) | `.tap`, `.tzx` | Both tape formats reach the control-selection menu and remain stable |
@@ -133,7 +133,6 @@ were made as part of this audit.
 
 | Status | File / release | Result |
 | :---: | --- | --- |
-| 🔴 | `starquake.sna` | Rejected because its 49,230-byte size is not a supported 48K or 128K SNA layout; both Starquake TZX releases work |
 | 🔴 | Cauldron (Silverbird, Cyberlode 1.1) `.tzx` | Malformed bootstrap expressions now fall back safely without an exception, but execution ends on an incomplete black/red frame; the original release works |
 | 🟠 | Chase HQ Portuguese sides 1 and 2 `.tzx` | Side 1 reaches a stop marker with a black frame; side 2 alone also stops without a meaningful screen |
 | 🔴 | Frankie (original Speedlock 1) `.tzx` | Tape ends on a solid cyan screen; the Frankie SNA works |
@@ -161,11 +160,11 @@ snapshot/replay images. Every snapshot/replay received a 2,000-frame execution
 soak, and every tape received a 35,000-frame strategy-aware soak in its labelled
 machine mode where specified. All final frames and transport states were
 inspected; explicit on-screen key/tape instructions received targeted follow-up
-runs. In total, all 95 tapes and 63 of 64 snapshot/replay files completed the
-harness without an exception; the sole rejection was the unsupported-size
-`starquake.sna` documented above. Completion alone was not treated as
-verification: blank screens, BASIC errors, incomplete multipart paths, and
-ambiguous loader states remain in the unverified table.
+runs. In total, all 95 tapes and all 64 snapshot/replay files completed the
+harness without an exception after the Starquake SNA's verified 51-byte zero
+padding was removed to restore its standard 49,179-byte 48K layout. Completion
+alone was not treated as verification: blank screens, BASIC errors, incomplete
+multipart paths, and ambiguous loader states remain in the unverified table.
 
 A follow-up model-sensitivity pass reran every unlabelled red/orange tape in 48K
 mode. It confirmed that Glider Rider (Bug-Byte), Pac-Land, Temple of Doom (US
