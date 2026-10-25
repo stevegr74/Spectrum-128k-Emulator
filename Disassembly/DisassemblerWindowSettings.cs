@@ -29,9 +29,12 @@ namespace Spectrum128kEmulator
 
     public sealed class DisassemblerWindowSettings
     {
-        public int Width { get; set; } = 980;
+        public const int CurrentLayoutVersion = 1;
+
+        public int LayoutVersion { get; set; }
+        public int Width { get; set; } = 1160;
         public int Height { get; set; } = 680;
-        public int[] ColumnWidths { get; set; } = [108, 52, 125, 120, 340, 90];
+        public int[] ColumnWidths { get; set; } = [108, 52, 125, 120, 240, 90];
         public ushort? LastListingAddress { get; set; }
         public DisassemblyAddressSpaceKind LastAddressSpaceKind { get; set; }
         public int LastAddressSpaceBank { get; set; }
@@ -57,12 +60,19 @@ namespace Spectrum128kEmulator
             try
             {
                 if (!File.Exists(path))
-                    return new DisassemblerWindowSettings();
+                    return CreateDefaults();
 
                 DisassemblerWindowSettings settings =
                     JsonSerializer.Deserialize<DisassemblerWindowSettings>(File.ReadAllText(path))
-                    ?? new DisassemblerWindowSettings();
-                settings.ColumnWidths ??= [108, 52, 125, 120, 340, 90];
+                    ?? CreateDefaults();
+                settings.ColumnWidths ??= [108, 52, 125, 120, 240, 90];
+                if (settings.LayoutVersion < DisassemblerWindowSettings.CurrentLayoutVersion)
+                {
+                    settings.Width = Math.Min(settings.Width, 1160);
+                    if (settings.ColumnWidths.SequenceEqual([108, 52, 125, 120, 340, 90]))
+                        settings.ColumnWidths = [108, 52, 125, 120, 240, 90];
+                    settings.LayoutVersion = DisassemblerWindowSettings.CurrentLayoutVersion;
+                }
                 settings.Breakpoints ??= [];
                 settings.Symbols ??= [];
                 settings.Classifications ??= [];
@@ -70,17 +80,23 @@ namespace Spectrum128kEmulator
             }
             catch
             {
-                return new DisassemblerWindowSettings();
+                return CreateDefaults();
             }
         }
 
         public void Save(DisassemblerWindowSettings settings)
         {
             ArgumentNullException.ThrowIfNull(settings);
+            settings.LayoutVersion = DisassemblerWindowSettings.CurrentLayoutVersion;
             string? directory = Path.GetDirectoryName(path);
             if (!string.IsNullOrEmpty(directory))
                 Directory.CreateDirectory(directory);
             File.WriteAllText(path, JsonSerializer.Serialize(settings, new JsonSerializerOptions { WriteIndented = true }));
         }
+
+        private static DisassemblerWindowSettings CreateDefaults() => new()
+        {
+            LayoutVersion = DisassemblerWindowSettings.CurrentLayoutVersion
+        };
     }
 }

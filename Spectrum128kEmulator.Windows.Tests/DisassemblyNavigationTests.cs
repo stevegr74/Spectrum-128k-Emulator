@@ -275,6 +275,41 @@ namespace Spectrum128kEmulator.Tests
             }
         }
 
+        [Fact]
+        public void WindowSettings_MigratesLegacyWideLayoutOnce()
+        {
+            string folder = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"));
+            string path = Path.Combine(folder, "disassembler.json");
+            try
+            {
+                Directory.CreateDirectory(folder);
+                File.WriteAllText(path, """
+                    {
+                      "Width": 1367,
+                      "Height": 680,
+                      "ColumnWidths": [108, 52, 125, 120, 340, 90]
+                    }
+                    """);
+
+                var store = new DisassemblerWindowSettingsStore(path);
+                DisassemblerWindowSettings migrated = store.Load();
+
+                Assert.Equal(1160, migrated.Width);
+                Assert.Equal(new[] { 108, 52, 125, 120, 240, 90 }, migrated.ColumnWidths);
+                Assert.Equal(DisassemblerWindowSettings.CurrentLayoutVersion, migrated.LayoutVersion);
+
+                migrated.Width = 1300;
+                store.Save(migrated);
+
+                Assert.Equal(1300, store.Load().Width);
+            }
+            finally
+            {
+                if (Directory.Exists(folder))
+                    Directory.Delete(folder, recursive: true);
+            }
+        }
+
         private static DisassemblySnapshot CreateSnapshot(
             byte[] memory,
             DateTime? capturedAtUtc = null,
