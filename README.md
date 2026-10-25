@@ -87,9 +87,10 @@ Milestone 20 is complete, with explicit
 tape-state ownership, structured load and transport diagnostics, stronger
 transition tests, and behavior-preserving decomposition. Milestone 21 will
 add a bank-aware Poke Manager with a maintainable cheat library and safe one-off
-memory writes. Tape compatibility and broader title-specific audio fidelity
-validation continue in parallel, with the verified media matrix plus
-ZEXDOC/ZEXALL used as regression gates.
+memory writes. Milestone 22 will add SZX snapshot loading, followed by a
+model-selectable 48K/128K on-screen keyboard in Milestone 23. Tape compatibility
+and broader title-specific audio fidelity validation continue in parallel, with
+the verified media matrix plus ZEXDOC/ZEXALL used as regression gates.
 
 ---
 
@@ -369,6 +370,8 @@ compatibility; completed milestones remain regression baselines.
 | 19 | Complete | Bank-aware inspection, labels, conservative control/data cross-references, persistent code/data marking, and hexadecimal memory navigation |
 | 20 | Complete | Tape state ownership, transition coverage, structured diagnostics, and behavior-preserving subsystem decomposition |
 | 21 | Planned | Bank-aware Poke Manager, maintainable cheat library, media matching, and safe one-off memory writes |
+| 22 | Planned | SZX snapshot loading for supported 48K and 128K machine state, with explicit handling of unsupported peripherals |
+| 23 | Planned | Pop-up on-screen keyboard with selectable authentic 48K and 128K layouts |
 
 ### Milestone 7 - Audio And Turbo Handoff Complete
 - Generates 48K beeper and 128K AY tone, noise, and envelope output from timestamped machine events through one mixed sample pipeline
@@ -447,6 +450,21 @@ compatibility; completed milestones remain regression baselines.
 - Apply each poke atomically on the emulation thread through the existing pause-lease ownership model, and retain safe session-local original-byte restoration where possible
 - Keep the first version to deliberate one-time writes; defer frozen values, conditional trainers, and cheat discovery until their continuous-mutation semantics are designed and tested
 - Add schema, duplicate-entry, media-matching, bank-selection, atomic-write, restoration, and frontend workflow tests
+
+### Milestone 22 - SZX Snapshot Support Planned
+- Add a dedicated chunk-based `.szx` parser with strict bounds checking, version validation, and clear diagnostics for malformed files
+- Restore the supported 48K and 128K CPU, RAM, paging, ULA, AY, and keyboard state through the existing machine-state boundaries
+- Ignore safely optional metadata while rejecting snapshots that require unsupported machines or mandatory peripherals rather than silently loading an inaccurate state
+- Integrate `.szx` with the existing snapshot picker, recent-media title handling, reset lifecycle, audio/input cleanup, and Quick State ownership rules
+- Add synthetic chunk-order, unknown-chunk, truncation, compression, paging, and model-selection tests plus representative 48K/128K execution smoke tests
+
+### Milestone 23 - On-Screen Keyboard Planned
+- Add a discoverable non-modal pop-up keyboard through the normal menus and right-click context menu without consuming another function key
+- Provide selectable 48K rubber-key and 128K keyboard layouts with authentic legends and model-appropriate key placement
+- Route pointer presses through the existing scan-aware Spectrum keyboard bridge so physical and on-screen input share matrix, chord, ownership, and emulated-timing behavior
+- Support held keys, reliable release on pointer loss or window close, and Spectrum chord keys such as symbol-shift combinations without leaving matrix keys stuck
+- Keep the keyboard usable alongside the emulator at common desktop sizes, remember its position and selected layout, and avoid covering or resizing the emulated display
+- Add matrix-mapping, multi-key chord, hold/release lifecycle, model-switch, focus-loss, and frontend interaction tests
 
 ---
 
