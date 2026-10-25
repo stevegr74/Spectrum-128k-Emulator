@@ -364,118 +364,10 @@ namespace Spectrum128kEmulator.Tap
 
         internal static TapeLoadPlan CreateExecutionPlan(Spectrum128Machine machine, IReadOnlyList<TapeBlock> blocks)
         {
-            if (machine == null)
-                throw new ArgumentNullException(nameof(machine));
-
-            if (!machine.SupportsRomTapeAcceleration)
-            {
-                return new TapeLoadPlan(
-                    TapeLoadStrategy.MountedRealtime,
-                    $"ROM profile '{machine.RomProfile.Name}' is not compatible with address-based tape acceleration.");
-            }
-
-            if (CanLoadAllStandardTapeBlocks(blocks))
-            {
-                bool use128kMode = Use128kTapeLoadMode(machine);
-                if (RequiresRomDrivenBootstrapForStandardTape(machine, blocks, use128kMode))
-                {
-                    return new TapeLoadPlan(
-                        TapeLoadStrategy.RomBootstrapMounted,
-                        "Standard tape chains from an autorun BASIC stage into a second BASIC loader and should resume under ROM control.");
-                }
-
-                if (RequiresMountedLoadSemanticsForStandardTape(machine, blocks, use128kMode))
-                {
-                    if (!CanExecuteLeadingBasicProgramWithBootstrap(machine, blocks, use128kMode))
-                    {
-                        return new TapeLoadPlan(
-                            TapeLoadStrategy.RomBootstrapMounted,
-                            "Standard tape requires mounted LOAD semantics, but its autorun BASIC control flow must execute under ROM control.");
-                    }
-
-                    return new TapeLoadPlan(
-                        TapeLoadStrategy.BootstrapHybrid,
-                        "Standard tape contains a protected or chained loader stage that requires mounted LOAD semantics.");
-                }
-
-                return new TapeLoadPlan(
-                    TapeLoadStrategy.FullFakeLoad,
-                    "All blocks are standard header/data pairs and can be fully fake-loaded.");
-            }
-
-            if (HasTwoStageBasicPrefixBeforeElectricallyDecodedProtectedStream(blocks))
-            {
-                return new TapeLoadPlan(
-                    TapeLoadStrategy.RomBootstrapMounted,
-                    "Tape has a two-stage BASIC prefix whose protected continuation depends on real ROM loader state.");
-            }
-
-            if (RequiresLeadingStandardBasicChainFakeLoad(machine, blocks))
-            {
-                return new TapeLoadPlan(
-                    TapeLoadStrategy.LeadingStandardChainFakeLoad,
-                    "Tape begins with a chain of standard BASIC stages before a protected remainder and can fake-load that safe prefix.");
-            }
-
-            if (RequiresRomDrivenBootstrapForMixedTape(machine, blocks))
-            {
-                return new TapeLoadPlan(
-                    TapeLoadStrategy.RomBootstrapMounted,
-                    "Tape begins with an autorun BASIC stage that chains into a mounted BASIC loader before protected continuation.");
-            }
-
-            if (RequiresMountedRealtimeForMixedTape(machine, blocks))
-            {
-                bool use128kMode = Use128kTapeLoadMode(machine);
-                if (FindLeadingStandardBasicChainEndIndex(blocks) == 0 &&
-                    !CanSatisfyLeadingBasicLoadRequestsBeforeProtectedRemainder(machine, blocks, use128kMode))
-                {
-                    return new TapeLoadPlan(
-                        TapeLoadStrategy.RomBootstrapMounted,
-                        "Tape loader requests more standard LOAD stages than the safe bootstrap can satisfy before protected playback, so autorun must remain under ROM control.");
-                }
-
-                if (HasStandardHeaderDataPairAfterLeadingBasic(blocks) &&
-                    !CanResolveMountedLoadUsrContinuation(machine, blocks))
-                {
-                    return new TapeLoadPlan(
-                        TapeLoadStrategy.RomBootstrapMounted,
-                        "Tape requires mounted continuation that cannot be represented safely by the bootstrap executor, so autorun must remain under ROM control.");
-                }
-
-                return new TapeLoadPlan(
-                    TapeLoadStrategy.BootstrapHybrid,
-                    "Tape begins with a BASIC stage followed by raw standard byte streams and should enter the mounted remainder through the bootstrap loader path.");
-            }
-
-            if (CanBootstrapBasicProgramAndMountRemaining(blocks))
-            {
-                bool use128kMode = Use128kTapeLoadMode(machine);
-                if (StartsProtectedRemainderImmediatelyAfterLeadingBasic(blocks) &&
-                    !CanExecuteLeadingBasicProgramWithBootstrap(machine, blocks, use128kMode))
-                {
-                    return new TapeLoadPlan(
-                        TapeLoadStrategy.RomBootstrapMounted,
-                        "Tape begins with a protected BASIC loader whose interpreter handoff must execute under ROM control.");
-                }
-
-                if (FindLeadingStandardBasicChainEndIndex(blocks) == 0 &&
-                    !CanSatisfyLeadingBasicLoadRequestsBeforeProtectedRemainder(machine, blocks, use128kMode))
-                {
-                    return new TapeLoadPlan(
-                        TapeLoadStrategy.RomBootstrapMounted,
-                        "Tape loader cannot complete its LOAD sequence through the safe bootstrap path, so autorun must remain under ROM control.");
-                }
-
-                return new TapeLoadPlan(
-                    TapeLoadStrategy.BootstrapHybrid,
-                    "Tape begins with a standard BASIC loader and requires mounted continuation.");
-            }
-
-            return new TapeLoadPlan(TapeLoadStrategy.MountedRealtime, "Tape does not have a safe fake-load bootstrap path.");
+            return TapeLoadPlanner.Create(machine, blocks);
         }
 
-        private static bool HasTwoStageBasicPrefixBeforeElectricallyDecodedProtectedStream(
+        internal static bool HasTwoStageBasicPrefixBeforeElectricallyDecodedProtectedStream(
             IReadOnlyList<TapeBlock> blocks)
         {
             int index = 0;
@@ -516,7 +408,7 @@ namespace Spectrum128kEmulator.Tap
             return false;
         }
 
-        private static bool StartsProtectedRemainderImmediatelyAfterLeadingBasic(IReadOnlyList<TapeBlock> blocks)
+        internal static bool StartsProtectedRemainderImmediatelyAfterLeadingBasic(IReadOnlyList<TapeBlock> blocks)
         {
             int index = 0;
             while (index < blocks.Count && blocks[index].Kind == TapeBlockKind.Metadata)
@@ -928,7 +820,7 @@ namespace Spectrum128kEmulator.Tap
             return false;
         }
 
-        private static bool RequiresRomDrivenBootstrapForStandardTape(
+        internal static bool RequiresRomDrivenBootstrapForStandardTape(
             Spectrum128Machine machine,
             IReadOnlyList<TapeBlock> blocks,
             bool use128kMode)
@@ -1009,7 +901,7 @@ namespace Spectrum128kEmulator.Tap
             return false;
         }
 
-        private static bool RequiresRomDrivenBootstrapForMixedTape(
+        internal static bool RequiresRomDrivenBootstrapForMixedTape(
             Spectrum128Machine machine,
             IReadOnlyList<TapeBlock> blocks)
         {
@@ -1044,7 +936,7 @@ namespace Spectrum128kEmulator.Tap
             return !CanBootstrapLoadedBasicProgram(machine, nextHeader, blocks[index + 1].Payload!, use128kMode);
         }
 
-        private static bool RequiresLeadingStandardBasicChainFakeLoad(
+        internal static bool RequiresLeadingStandardBasicChainFakeLoad(
             Spectrum128Machine machine,
             IReadOnlyList<TapeBlock> blocks)
         {
@@ -1106,7 +998,7 @@ namespace Spectrum128kEmulator.Tap
             return programCount > 1;
         }
 
-        private static bool RequiresMountedRealtimeForMixedTape(
+        internal static bool RequiresMountedRealtimeForMixedTape(
             Spectrum128Machine machine,
             IReadOnlyList<TapeBlock> blocks)
         {
@@ -1161,7 +1053,7 @@ namespace Spectrum128kEmulator.Tap
             return sawRawStandardData;
         }
 
-        private static bool HasStandardHeaderDataPairAfterLeadingBasic(IReadOnlyList<TapeBlock> blocks)
+        internal static bool HasStandardHeaderDataPairAfterLeadingBasic(IReadOnlyList<TapeBlock> blocks)
         {
             int index = 0;
             while (index < blocks.Count && blocks[index].Kind == TapeBlockKind.Metadata)
@@ -1193,7 +1085,7 @@ namespace Spectrum128kEmulator.Tap
             return false;
         }
 
-        private static bool CanResolveMountedLoadUsrContinuation(
+        internal static bool CanResolveMountedLoadUsrContinuation(
             Spectrum128Machine machine,
             IReadOnlyList<TapeBlock> blocks)
         {
@@ -1326,7 +1218,7 @@ namespace Spectrum128kEmulator.Tap
             return new TapBootstrapResult(blocks.Count, prefixEndIndex, displayName, effectiveHeader.FileName);
         }
 
-        private static int FindLeadingStandardBasicChainEndIndex(IReadOnlyList<TapeBlock> blocks)
+        internal static int FindLeadingStandardBasicChainEndIndex(IReadOnlyList<TapeBlock> blocks)
         {
             if (blocks == null || blocks.Count == 0)
                 return 0;
@@ -1363,7 +1255,7 @@ namespace Spectrum128kEmulator.Tap
             return sawAdditionalProgram ? index : 0;
         }
 
-        private static bool RequiresMountedLoadSemanticsForStandardTape(
+        internal static bool RequiresMountedLoadSemanticsForStandardTape(
             Spectrum128Machine machine,
             IReadOnlyList<TapeBlock> blocks,
             bool use128kMode)
@@ -1392,7 +1284,7 @@ namespace Spectrum128kEmulator.Tap
             return false;
         }
 
-        private static bool CanExecuteLeadingBasicProgramWithBootstrap(
+        internal static bool CanExecuteLeadingBasicProgramWithBootstrap(
             Spectrum128Machine machine,
             IReadOnlyList<TapeBlock> blocks,
             bool use128kMode)
@@ -1420,7 +1312,7 @@ namespace Spectrum128kEmulator.Tap
                 use128kMode);
         }
 
-        private static bool CanSatisfyLeadingBasicLoadRequestsBeforeProtectedRemainder(
+        internal static bool CanSatisfyLeadingBasicLoadRequestsBeforeProtectedRemainder(
             Spectrum128Machine machine,
             IReadOnlyList<TapeBlock> blocks,
             bool use128kMode)
@@ -1647,7 +1539,7 @@ namespace Spectrum128kEmulator.Tap
             return ContainsElectricallyDecodedProtectedStream(blocks);
         }
 
-        private static bool Use128kTapeLoadMode(Spectrum128Machine machine)
+        internal static bool Use128kTapeLoadMode(Spectrum128Machine machine)
         {
             if (machine == null)
                 throw new ArgumentNullException(nameof(machine));
