@@ -7,6 +7,60 @@ namespace Spectrum128kEmulator.Tests
 {
     public class TapeTransportStateTests
     {
+        [Theory]
+        [InlineData(TapeTransportTransition.Mounted, TapeTransportState.Playing)]
+        [InlineData(TapeTransportTransition.ManualStop, TapeTransportState.Stopped)]
+        [InlineData(TapeTransportTransition.ManualResume, TapeTransportState.Playing)]
+        [InlineData(TapeTransportTransition.AutomaticHandoffStop, TapeTransportState.Stopped)]
+        [InlineData(TapeTransportTransition.AutomaticRomResume, TapeTransportState.Playing)]
+        [InlineData(TapeTransportTransition.Ended, TapeTransportState.Ended)]
+        [InlineData(TapeTransportTransition.Ejected, TapeTransportState.NoTape)]
+        [InlineData(TapeTransportTransition.Reset, TapeTransportState.NoTape)]
+        public void Controller_Records_Each_Explicit_Lifecycle_Transition(
+            TapeTransportTransition transition,
+            TapeTransportState expectedState)
+        {
+            var controller = new TapeTransportController();
+            MountedTape tape = CreatePlayingTape("transition.tap");
+            controller.Mount(tape, playbackClockHz: 3500000);
+
+            switch (transition)
+            {
+                case TapeTransportTransition.Mounted:
+                    break;
+                case TapeTransportTransition.ManualStop:
+                    controller.Toggle(0);
+                    break;
+                case TapeTransportTransition.ManualResume:
+                    controller.Toggle(0);
+                    controller.Toggle(1);
+                    break;
+                case TapeTransportTransition.AutomaticHandoffStop:
+                    tape.PausePlayback(0);
+                    controller.MarkStopped(tape);
+                    break;
+                case TapeTransportTransition.AutomaticRomResume:
+                    tape.PausePlayback(0);
+                    tape.ResumePlayback(1);
+                    controller.MarkPlaying(tape);
+                    break;
+                case TapeTransportTransition.Ended:
+                    controller.CompleteIfCurrent(tape);
+                    break;
+                case TapeTransportTransition.Ejected:
+                    controller.Eject();
+                    break;
+                case TapeTransportTransition.Reset:
+                    controller.Reset();
+                    break;
+                default:
+                    throw new ArgumentOutOfRangeException(nameof(transition));
+            }
+
+            Assert.Equal(expectedState, controller.State);
+            Assert.Equal(transition, controller.LastTransition);
+        }
+
         [Fact]
         public void NewMachine_AndToggleWithoutTape_RemainNoTape()
         {

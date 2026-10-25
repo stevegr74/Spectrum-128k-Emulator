@@ -13,6 +13,7 @@ namespace Spectrum128kEmulator.Tap
             {
                 return new TapeLoadPlan(
                     TapeLoadStrategy.MountedRealtime,
+                    TapeLoadPlanReason.IncompatibleRomProfile,
                     $"ROM profile '{machine.RomProfile.Name}' is not compatible with address-based tape acceleration.");
             }
 
@@ -23,6 +24,7 @@ namespace Spectrum128kEmulator.Tap
                 {
                     return new TapeLoadPlan(
                         TapeLoadStrategy.RomBootstrapMounted,
+                        TapeLoadPlanReason.StandardBasicChainRequiresRom,
                         "Standard tape chains from an autorun BASIC stage into a second BASIC loader and should resume under ROM control.");
                 }
 
@@ -32,16 +34,19 @@ namespace Spectrum128kEmulator.Tap
                     {
                         return new TapeLoadPlan(
                             TapeLoadStrategy.RomBootstrapMounted,
+                            TapeLoadPlanReason.UnsupportedStandardBootstrapControlFlow,
                             "Standard tape requires mounted LOAD semantics, but its autorun BASIC control flow must execute under ROM control.");
                     }
 
                     return new TapeLoadPlan(
                         TapeLoadStrategy.BootstrapHybrid,
+                        TapeLoadPlanReason.StandardTapeRequiresMountedSemantics,
                         "Standard tape contains a protected or chained loader stage that requires mounted LOAD semantics.");
                 }
 
                 return new TapeLoadPlan(
                     TapeLoadStrategy.FullFakeLoad,
+                    TapeLoadPlanReason.StandardTapeFullyAccelerated,
                     "All blocks are standard header/data pairs and can be fully fake-loaded.");
             }
 
@@ -49,6 +54,7 @@ namespace Spectrum128kEmulator.Tap
             {
                 return new TapeLoadPlan(
                     TapeLoadStrategy.RomBootstrapMounted,
+                    TapeLoadPlanReason.ProtectedContinuationRequiresRom,
                     "Tape has a two-stage BASIC prefix whose protected continuation depends on real ROM loader state.");
             }
 
@@ -56,6 +62,7 @@ namespace Spectrum128kEmulator.Tap
             {
                 return new TapeLoadPlan(
                     TapeLoadStrategy.LeadingStandardChainFakeLoad,
+                    TapeLoadPlanReason.SafeLeadingBasicChain,
                     "Tape begins with a chain of standard BASIC stages before a protected remainder and can fake-load that safe prefix.");
             }
 
@@ -63,6 +70,7 @@ namespace Spectrum128kEmulator.Tap
             {
                 return new TapeLoadPlan(
                     TapeLoadStrategy.RomBootstrapMounted,
+                    TapeLoadPlanReason.MixedBasicChainRequiresRom,
                     "Tape begins with an autorun BASIC stage that chains into a mounted BASIC loader before protected continuation.");
             }
 
@@ -74,6 +82,7 @@ namespace Spectrum128kEmulator.Tap
                 {
                     return new TapeLoadPlan(
                         TapeLoadStrategy.RomBootstrapMounted,
+                        TapeLoadPlanReason.UnsatisfiedLeadingLoadRequests,
                         "Tape loader requests more standard LOAD stages than the safe bootstrap can satisfy before protected playback, so autorun must remain under ROM control.");
                 }
 
@@ -82,11 +91,13 @@ namespace Spectrum128kEmulator.Tap
                 {
                     return new TapeLoadPlan(
                         TapeLoadStrategy.RomBootstrapMounted,
+                        TapeLoadPlanReason.UnrepresentableMountedContinuation,
                         "Tape requires mounted continuation that cannot be represented safely by the bootstrap executor, so autorun must remain under ROM control.");
                 }
 
                 return new TapeLoadPlan(
                     TapeLoadStrategy.BootstrapHybrid,
+                    TapeLoadPlanReason.MixedTapeBootstrap,
                     "Tape begins with a BASIC stage followed by raw standard byte streams and should enter the mounted remainder through the bootstrap loader path.");
             }
 
@@ -98,6 +109,7 @@ namespace Spectrum128kEmulator.Tap
                 {
                     return new TapeLoadPlan(
                         TapeLoadStrategy.RomBootstrapMounted,
+                        TapeLoadPlanReason.ProtectedBasicRequiresRom,
                         "Tape begins with a protected BASIC loader whose interpreter handoff must execute under ROM control.");
                 }
 
@@ -106,16 +118,19 @@ namespace Spectrum128kEmulator.Tap
                 {
                     return new TapeLoadPlan(
                         TapeLoadStrategy.RomBootstrapMounted,
+                        TapeLoadPlanReason.UnsatisfiedLeadingLoadRequests,
                         "Tape loader cannot complete its LOAD sequence through the safe bootstrap path, so autorun must remain under ROM control.");
                 }
 
                 return new TapeLoadPlan(
                     TapeLoadStrategy.BootstrapHybrid,
+                    TapeLoadPlanReason.BasicBootstrapMounted,
                     "Tape begins with a standard BASIC loader and requires mounted continuation.");
             }
 
             return new TapeLoadPlan(
                 TapeLoadStrategy.MountedRealtime,
+                TapeLoadPlanReason.NoSafeAccelerationPath,
                 "Tape does not have a safe fake-load bootstrap path.");
         }
     }

@@ -18,6 +18,7 @@ namespace Spectrum128kEmulator.Tests
             MethodInfo createPlan = tapLoaderType.GetMethod("CreateExecutionPlan", BindingFlags.NonPublic | BindingFlags.Static)!;
             Type planType = tapLoaderType.Assembly.GetType("Spectrum128kEmulator.Tap.TapeLoadPlan")!;
             var strategyProperty = planType.GetProperty("Strategy")!;
+            var reasonCodeProperty = planType.GetProperty("ReasonCode")!;
             try
             {
                 byte[] standardTape = BuildTap(
@@ -29,6 +30,7 @@ namespace Spectrum128kEmulator.Tests
                 var standardMachine = new Spectrum128Machine(tempFolder);
                 object standardPlan = createPlan.Invoke(null, new[] { standardMachine, standardBlocks })!;
                 Assert.Equal("FullFakeLoad", strategyProperty.GetValue(standardPlan)!.ToString());
+                Assert.Equal("StandardTapeFullyAccelerated", reasonCodeProperty.GetValue(standardPlan)!.ToString());
 
                 byte[] romDrivenProgram = BuildBasicProgram(
                     BuildBasicLine(10,
@@ -50,6 +52,7 @@ namespace Spectrum128kEmulator.Tests
                 var romDrivenMachine = new Spectrum128Machine(tempFolder);
                 object romDrivenPlan = createPlan.Invoke(null, new[] { romDrivenMachine, romDrivenBlocks })!;
                 Assert.Equal("RomBootstrapMounted", strategyProperty.GetValue(romDrivenPlan)!.ToString());
+                Assert.Equal("StandardBasicChainRequiresRom", reasonCodeProperty.GetValue(romDrivenPlan)!.ToString());
 
                 byte[] nonContiguousBasicTape = BuildTap(
                     BuildHeaderBlock(type: 0, fileName: "BOOT", dataLength: (ushort)romDrivenProgram.Length, parameter1: 10, parameter2: (ushort)romDrivenProgram.Length),
@@ -62,6 +65,7 @@ namespace Spectrum128kEmulator.Tests
                 var nonContiguousBasicMachine = new Spectrum128Machine(tempFolder);
                 object nonContiguousBasicPlan = createPlan.Invoke(null, new[] { nonContiguousBasicMachine, nonContiguousBasicBlocks })!;
                 Assert.Equal("RomBootstrapMounted", strategyProperty.GetValue(nonContiguousBasicPlan)!.ToString());
+                Assert.Equal("StandardBasicChainRequiresRom", reasonCodeProperty.GetValue(nonContiguousBasicPlan)!.ToString());
 
                 byte[] hybridProgram = BuildBasicProgram(
                     BuildBasicLine(10,
@@ -77,6 +81,7 @@ namespace Spectrum128kEmulator.Tests
                 var hybridMachine = new Spectrum128Machine(tempFolder);
                 object hybridPlan = createPlan.Invoke(null, new[] { hybridMachine, hybridBlocks })!;
                 Assert.Equal("BootstrapHybrid", strategyProperty.GetValue(hybridPlan)!.ToString());
+                Assert.Equal("StandardTapeRequiresMountedSemantics", reasonCodeProperty.GetValue(hybridPlan)!.ToString());
 
                 byte[] protectedHybridTape = BuildTap(
                     BuildHeaderBlock(type: 0, fileName: "BOOT", dataLength: (ushort)romDrivenProgram.Length, parameter1: 10, parameter2: (ushort)romDrivenProgram.Length),
@@ -87,6 +92,7 @@ namespace Spectrum128kEmulator.Tests
                 var protectedHybridMachine = new Spectrum128Machine(tempFolder);
                 object protectedHybridPlan = createPlan.Invoke(null, new[] { protectedHybridMachine, protectedHybridBlocks })!;
                 Assert.Equal("BootstrapHybrid", strategyProperty.GetValue(protectedHybridPlan)!.ToString());
+                Assert.Equal("StandardTapeRequiresMountedSemantics", reasonCodeProperty.GetValue(protectedHybridPlan)!.ToString());
 
                 byte[] mountedOnlyTape = BuildTap(
                     BuildHeaderBlock(type: 3, fileName: "CODE", dataLength: 2, parameter1: 0x8000, parameter2: 0),
@@ -95,6 +101,7 @@ namespace Spectrum128kEmulator.Tests
                 var mountedMachine = new Spectrum128Machine(tempFolder);
                 object mountedPlan = createPlan.Invoke(null, new[] { mountedMachine, mountedBlocks })!;
                 Assert.Equal("MountedRealtime", strategyProperty.GetValue(mountedPlan)!.ToString());
+                Assert.Equal("NoSafeAccelerationPath", reasonCodeProperty.GetValue(mountedPlan)!.ToString());
             }
             finally
             {
@@ -187,6 +194,8 @@ namespace Spectrum128kEmulator.Tests
                 TapeExecutionResult result = TapLoader.LoadWithPolicy(machine, tapePath);
 
                 Assert.Equal(TapeLoadStrategy.RomBootstrapMounted, result.Strategy);
+                Assert.Equal(TapeLoadPlanReason.UnsupportedStandardBootstrapControlFlow, result.ReasonCode);
+                Assert.Contains("ROM control", result.Reason, StringComparison.OrdinalIgnoreCase);
                 Assert.Equal(2, result.ConsumedBlockCount);
                 Assert.True(machine.HasMountedTape);
                 Assert.Equal((ushort)0x1B9E, machine.Cpu.Regs.PC);

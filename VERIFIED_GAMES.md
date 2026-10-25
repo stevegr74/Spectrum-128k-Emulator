@@ -47,11 +47,13 @@ that every level, control path, or hardware edge case has been tested.
 
 ## Regression Validation
 
-The complete table currently represents 30 media paths. The latest full pass
-loaded every path to its documented checkpoint, visually inspected the resulting
-frame, and continued execution for at least 1,000 additional frames where the
-checkpoint allowed it. No delayed BASIC errors, blank screens, or post-load
-crashes were observed.
+The complete table currently represents 30 media paths. The Milestone 20
+structural acceptance pass loaded every path and ran each for 1,200 headless
+frames without an emulator exception or automatic BASIC-error dump. The preceding
+manual acceptance pass reached each documented checkpoint, visually inspected the
+resulting frame, and continued execution for at least 1,000 additional frames
+where the checkpoint allowed it. No delayed BASIC errors, blank screens, or
+post-load crashes were observed.
 
 The interaction-dependent checks also confirmed that Target Renegade follows
 the distinct 48K multiload and 128K full-load paths, New Zealand Story resumes

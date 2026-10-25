@@ -77,9 +77,9 @@ Current limitations and active work:
 Each feature is developed on its own branch. Milestone 19 is complete, delivering
 the bank-aware debugger foundation, symbolic analysis, conservative control/data
 cross-references, persistent code/data markings, hexadecimal memory inspection,
-and a compact paging/CPU-state workspace. Milestone 20 is hardening the tape
-architecture through explicit state ownership, stronger transition tests, and
-behavior-preserving decomposition. Milestone 21 will
+and a compact paging/CPU-state workspace. Milestone 20 is complete, with explicit
+tape-state ownership, structured load and transport diagnostics, stronger
+transition tests, and behavior-preserving decomposition. Milestone 21 will
 add a bank-aware Poke Manager with a maintainable cheat library and safe one-off
 memory writes. Tape compatibility and the turbo-to-realtime audio transition
 continue in parallel, with the verified media matrix plus ZEXDOC/ZEXALL used as
@@ -98,10 +98,15 @@ Spectrum128kEmulator/
 |   |-- Audio/                             AY/beeper synthesis and sample clock
 |   |-- Debugging/                         instruction-boundary execution controller
 |   |-- Tape/                              TAP/TZX parsing, transport, and bootstrap policy
-|   |   |-- MountedTape.cs                 pulse/EAR playback and ROM-load traps
-|   |   |-- TapLoader.cs                   TAP orchestration and load-strategy planning
+|   |   |-- MountedTape.cs                 pulse/EAR playback state
+|   |   |-- MountedTape.RomLoading.cs      ROM-load traps and byte-stream handling
+|   |   |-- TapLoader.cs                   TAP orchestration and plan execution
+|   |   |-- TapLoader.TimingAndParsing.cs  TAP parsing and pulse timing
 |   |   |-- TapLoader.BasicBootstrap.cs    BASIC bootstrap analysis and execution
-|   |   |-- TapeLoadContracts.cs           load plans, results, and transport state
+|   |   |-- TapLoader.BasicExpressions.cs  bootstrap expression parser
+|   |   |-- TapLoader.MountedContinuation.cs  mounted-load bootstrap handoff
+|   |   |-- TapeLoadPlanner.cs             capability-gated strategy selection
+|   |   |-- TapeLoadContracts.cs           plans, reason codes, results, and transport state
 |   |   `-- MountedLoadContinuationController.cs  ROM-profile-aware loader resume policy
 |   |-- Z80/                               CPU execution plus side-effect-free instruction decoding
 |   |-- Ula/                               timing profiles plus event-driven raster capture and immutable frames
@@ -354,7 +359,7 @@ compatibility and polish; completed milestones remain regression baselines.
 | 17 | Complete | Event-driven beam capture for bitmap, per-line attributes, border timing, and 128K shadow-screen changes, validated against Arkanoid and published diagnostics |
 | 18 | Complete | Instruction-boundary Run/Pause, Step Into/Over/Out, run to cursor, CPU context, and persistent breakpoints |
 | 19 | Complete | Bank-aware inspection, labels, conservative control/data cross-references, persistent code/data marking, and hexadecimal memory navigation |
-| 20 | In progress | Tape state ownership, transition coverage, diagnostics, and behavior-preserving subsystem decomposition |
+| 20 | Complete | Tape state ownership, transition coverage, structured diagnostics, and behavior-preserving subsystem decomposition |
 | 21 | Planned | Bank-aware Poke Manager, maintainable cheat library, media matching, and safe one-off memory writes |
 
 ### Milestone 16 - ULA Timing Conformance And Port Accuracy Complete
@@ -397,7 +402,7 @@ compatibility and polish; completed milestones remain regression baselines.
 - Completed conservative absolute-address data read/write cross-references, including byte/word widths and bank qualification, without treating indirect accesses or arbitrary data as executable code
 - Completed an independent hexadecimal/ASCII memory inspector with mapped and physical-bank views plus navigation from registers, stack entries, listing addresses, and direct control/data targets
 
-### Milestone 20 - Tape Architecture Hardening In Progress
+### Milestone 20 - Tape Architecture Hardening Complete
 - Documented current tape-state ownership and invariants across transport, load-strategy selection, continuation handling, threading, and Quick State restoration in [Tape State Ownership](docs/tape-state-ownership.md)
 - Added focused machine-level lifecycle coverage for no-tape behavior, media replacement, eject, model reset, and stopped/ended Quick State restoration
 - Isolated tape read, loader-activity, handoff, and automatic-resume counters plus their Quick State in a dedicated activity tracker without changing transition policy
@@ -408,12 +413,12 @@ compatibility and polish; completed milestones remain regression baselines.
 - Extended activity-based handoff detection to keyboard loops that discard EAR with either `AND` or `OR`; qualifying polls may span intervening music/animation frames, while any genuine EAR read cancels the pending stop
 - Locked the recent compatibility fixes behind synthetic regressions for early-stop prevention, cross-frame keyboard evidence, EAR-sensitive cancellation, exact-cursor ROM resume, `INT`/division tokenization, and bootstrap byte-extraction expressions
 - Re-ran every entry in the verified-media matrix with post-load execution soak; Target Renegade 48K/128K, New Zealand Story, Indiana Jones, and Oracle's Cave also passed their mode-specific or interactive multiload checkpoints
-- Add table-driven transition coverage for fast loading, real-time fallback, pause/resume, stop markers, tape end, multiloads, media replacement, reset, and Quick State restoration
-- Split the large tape regression suite into responsibility-based test classes without reducing existing coverage
-- Keep pulse/EAR transport, fast/ROM/protected load strategy, and BASIC/machine-code continuation as separate cooperating responsibilities rather than one combined state machine
-- Reduce `TapLoader.BasicBootstrap.cs`, `TapLoader.cs`, and `MountedTape.cs` incrementally, starting with behavior-preserving extractions and leaving `MountedLoadContinuationController` focused on resume state
-- Extend structured transition diagnostics into unsupported acceleration and invalid continuation states while retaining distinct pause, tape-end, and ROM-handoff reasons
-- Use one branch per extraction and retain the full automated suite plus the verified media matrix as regression gates; do not mix compatibility changes into structural branches
+- Added table-driven lifecycle coverage alongside focused regressions for fast loading, real-time fallback, pause/resume, stop markers, tape end, multiloads, media replacement, reset, and Quick State restoration
+- Split the large tape regression suite into transport, mounted-playback, and load-planning test files without reducing coverage
+- Kept pulse/EAR transport, fast/ROM/protected load strategy, and BASIC/machine-code continuation as separate cooperating responsibilities rather than one combined state machine
+- Reduced the three largest tape implementation files through behavior-preserving partial-class extractions for parsing/timing, ROM loading, BASIC expressions, and mounted continuation; `MountedLoadContinuationController` remains focused on resume state
+- Added stable load-plan reason codes for unsupported acceleration, unsafe bootstrap control flow, and unrepresentable continuation while retaining readable explanations and distinct transport reasons for pause, tape end, and ROM handoff
+- Retained the full automated suite, ZEXDOC/ZEXALL, and the verified media matrix as regression gates throughout the structural work
 
 ### Milestone 21 - Poke Manager And Cheat Library Planned
 - Add a discoverable Poke Manager through the normal menus and right-click context menu without consuming another function key

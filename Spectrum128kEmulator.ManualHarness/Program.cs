@@ -454,7 +454,7 @@ static void ExecuteHarnessStep(Spectrum128Machine machine, string executionMode)
 
 static string DescribeTapeExecution(string format, TapeExecutionResult result)
 {
-    return result.Strategy switch
+    string execution = result.Strategy switch
     {
         TapeLoadStrategy.FullFakeLoad =>
             $"{format} full-load complete: blocks={result.TotalBlockCount} consumed={result.ConsumedBlockCount} autoStart={result.AutoStartFileName ?? "(none)"}",
@@ -467,6 +467,8 @@ static string DescribeTapeExecution(string format, TapeExecutionResult result)
         _ =>
             $"{format} mounted: blocks={result.TotalBlockCount} display={result.DisplayName}"
     };
+
+    return $"{execution} reason={result.ReasonCode} ({result.Reason})";
 }
 
 static void DumpTapeBlocks(string tapePath, bool stopTapeIf48k)

@@ -59,6 +59,7 @@ namespace Spectrum128kEmulator.Tests
                 Assert.False(machine.TryServiceTapeTrap());
                 Assert.Equal((byte)0, machine.PeekMemory(0x8000));
                 Assert.Equal(TapeLoadStrategy.MountedRealtime, plan.Strategy);
+                Assert.Equal(TapeLoadPlanReason.IncompatibleRomProfile, plan.ReasonCode);
                 Assert.Contains("not compatible", plan.Reason, StringComparison.OrdinalIgnoreCase);
             }
             finally

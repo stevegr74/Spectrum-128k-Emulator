@@ -57,15 +57,41 @@ namespace Spectrum128kEmulator.Tap
         MountedRealtime
     }
 
+    public enum TapeLoadPlanReason
+    {
+        Unspecified,
+        StandardTapeFullyAccelerated,
+        IncompatibleRomProfile,
+        StandardBasicChainRequiresRom,
+        UnsupportedStandardBootstrapControlFlow,
+        StandardTapeRequiresMountedSemantics,
+        ProtectedContinuationRequiresRom,
+        SafeLeadingBasicChain,
+        MixedBasicChainRequiresRom,
+        UnsatisfiedLeadingLoadRequests,
+        UnrepresentableMountedContinuation,
+        MixedTapeBootstrap,
+        ProtectedBasicRequiresRom,
+        BasicBootstrapMounted,
+        NoSafeAccelerationPath
+    }
+
     public sealed class TapeLoadPlan
     {
         public TapeLoadPlan(TapeLoadStrategy strategy, string reason)
+            : this(strategy, TapeLoadPlanReason.Unspecified, reason)
+        {
+        }
+
+        public TapeLoadPlan(TapeLoadStrategy strategy, TapeLoadPlanReason reasonCode, string reason)
         {
             Strategy = strategy;
+            ReasonCode = reasonCode;
             Reason = reason;
         }
 
         public TapeLoadStrategy Strategy { get; }
+        public TapeLoadPlanReason ReasonCode { get; }
         public string Reason { get; }
     }
 
@@ -95,12 +121,16 @@ namespace Spectrum128kEmulator.Tap
     {
         public TapeExecutionResult(
             TapeLoadStrategy strategy,
+            TapeLoadPlanReason reasonCode,
+            string reason,
             int totalBlockCount,
             int consumedBlockCount,
             string displayName,
             string? autoStartFileName)
         {
             Strategy = strategy;
+            ReasonCode = reasonCode;
+            Reason = reason;
             TotalBlockCount = totalBlockCount;
             ConsumedBlockCount = consumedBlockCount;
             DisplayName = displayName;
@@ -108,6 +138,8 @@ namespace Spectrum128kEmulator.Tap
         }
 
         public TapeLoadStrategy Strategy { get; }
+        public TapeLoadPlanReason ReasonCode { get; }
+        public string Reason { get; }
         public int TotalBlockCount { get; }
         public int ConsumedBlockCount { get; }
         public string DisplayName { get; }

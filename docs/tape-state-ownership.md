@@ -1,7 +1,7 @@
 # Tape State Ownership
 
-This document records the tape-state boundaries at the start of Milestone 20.
-It describes existing behavior. Structural changes must preserve these
+This document records the tape-state boundaries established by Milestone 20.
+It describes the hardened behavior. Future structural changes must preserve these
 invariants unless a compatibility fix explicitly changes one.
 
 ## Owners
@@ -13,7 +13,7 @@ invariants unless a compatibility fix explicitly changes one.
 | `TapeActivityTracker` | EAR/keyboard read counters, loader-activity and handoff observations, automatic stop/resume safety policy, and their Quick State | Pulse generation, public transport state, or continuation policy |
 | `MountedTape` | Block position, exact pulse/EAR cursor, pause and stop-marker state, ROM-trap stream position, header/data sequencing, and transport Quick State | Machine-wide reset policy or BASIC/machine-code continuation |
 | `MountedLoadContinuationController` | Pending BASIC/USR continuation, workspace restoration, resume gates, and continuation Quick State | Physical tape position or the visible transport state |
-| `TapeLoadPlanner` | Capability-gated selection of full fake load, safe-prefix loading, ROM bootstrap, hybrid bootstrap, or real-time mounting, with a diagnostic reason | Parsing, plan execution, transport state, or continuation state |
+| `TapeLoadPlanner` | Capability-gated selection of full fake load, safe-prefix loading, ROM bootstrap, hybrid bootstrap, or real-time mounting, with a stable reason code and readable explanation | Parsing, plan execution, transport state, or continuation state |
 | `TapLoader` and `TzxLoader` | File parsing, plan execution, bootstrap execution, and construction of the remaining mounted tape | Long-lived transport ownership after loading hands control to the machine |
 | Windows frontend | User commands and presentation of copied state | Mutation of tape internals or loader continuation state |
 
@@ -60,17 +60,14 @@ retain mutable tape objects for direct cross-thread control.
 | Eject | Tape released, `NoTape` |
 | Quick State restore | All captured transport and continuation state restored consistently |
 
-## Hardening Order
+## Completed Hardening
 
-1. Lock the lifecycle and restoration invariants with focused tests.
-2. Extract machine-level activity tracking and transport transition policy without changing behavior. Activity tracking and automatic handoff decisions are now isolated in `TapeActivityTracker`; media identity and lifecycle transitions are isolated in `TapeTransportController`.
-3. Separate loader-strategy and continuation orchestration behind explicit
-   boundaries. Strategy selection is now isolated in `TapeLoadPlanner`; execution
-   and continuation remain separate existing responsibilities.
-4. Improve transition diagnostics and split the large regression suite by
-   responsibility.
-5. Re-run the complete automated suite and representative difficult media after
-   every structural step.
+1. Locked lifecycle and restoration invariants with focused and table-driven tests.
+2. Isolated activity tracking and automatic handoff decisions in `TapeActivityTracker`, and media identity and lifecycle transitions in `TapeTransportController`.
+3. Isolated strategy selection in `TapeLoadPlanner`, leaving plan execution and continuation as separate responsibilities.
+4. Split parsing/timing, ROM loading, BASIC expression handling, and mounted continuation into focused partial-class files without changing their contracts.
+5. Added structured transport transitions plus stable load-plan reason codes, while preserving readable diagnostic explanations.
+6. Split the tape regression suite by responsibility and retained the complete automated suite, ZEXDOC/ZEXALL, and representative difficult media as acceptance gates.
 
 ## Regression Guards
 
@@ -88,6 +85,9 @@ focused checks for:
   restoration remain distinct transitions;
 - accelerated BASIC tokenization and execution preserve `INT`, division, and
   byte-extraction expressions used by protected loaders.
+- unsupported ROM acceleration, unsafe bootstrap control flow, and
+  unrepresentable mounted continuation expose stable reason codes without
+  requiring callers to parse diagnostic prose.
 
 The separate verified-media matrix remains the end-to-end acceptance gate for
 real loader behavior, including the distinct Target Renegade machine modes and
