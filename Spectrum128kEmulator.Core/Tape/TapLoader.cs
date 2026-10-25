@@ -1977,6 +1977,25 @@ namespace Spectrum128kEmulator.Tap
             return block.Flag == HeaderFlag && block.Payload != null && block.Payload.Length == TapHeaderPayloadLength;
         }
 
+        internal static bool HasInconsistentStandardBasicHeaderDataPair(IReadOnlyList<TapeBlock> blocks)
+        {
+            for (int index = 0; index + 1 < blocks.Count; index++)
+            {
+                if (!IsStandardHeaderBlock(blocks[index]))
+                    continue;
+
+                TapeBlock dataBlock = blocks[index + 1];
+                if (dataBlock.Flag != DataFlag || dataBlock.Payload == null)
+                    continue;
+
+                TapHeaderInfo header = ParseHeaderInfo(blocks[index]);
+                if (header.Type == ProgramType && header.ProgramLength > dataBlock.Payload.Length)
+                    return true;
+            }
+
+            return false;
+        }
+
         private static BootstrapExecutionResult ExecuteBootstrapBasicAutoStart(
             Spectrum128Machine machine,
             ushort programStart,

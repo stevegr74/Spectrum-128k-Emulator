@@ -1380,6 +1380,9 @@ namespace Spectrum128kEmulator.Tap
                 if (parsedLines.Count == 0)
                     return false;
 
+                if (!CanEvaluateProgramExpressions(machine, parsedLines, autoStartLine))
+                    return false;
+
                 if (CanExecuteProgram(parsedLines, autoStartLine) || CanExecuteProtectedProgram(parsedLines, autoStartLine))
                     return true;
 
@@ -1387,6 +1390,124 @@ namespace Spectrum128kEmulator.Tap
                     ? 0
                     : parsedLines.FindIndex(line => line.Number == autoStartLine);
                 return startLineIndex >= 0 && CanExecuteImmediateSideEffectProgram(parsedLines, startLineIndex);
+            }
+
+            private static bool CanEvaluateProgramExpressions(
+                Spectrum128Machine machine,
+                List<BasicLine> parsedLines,
+                ushort autoStartLine)
+            {
+                int startLineIndex = autoStartLine == 0
+                    ? 0
+                    : parsedLines.FindIndex(line => line.Number == autoStartLine);
+                if (startLineIndex < 0)
+                    return false;
+
+                var variables = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+                try
+                {
+                    for (int lineIndex = startLineIndex; lineIndex < parsedLines.Count; lineIndex++)
+                    {
+                        foreach (List<string> statement in parsedLines[lineIndex].Statements)
+                        {
+                            if (!CanEvaluateStatementExpressions(machine, variables, statement))
+                                return false;
+                        }
+                    }
+                }
+                catch (Exception exception) when (
+                    exception is InvalidOperationException or DivideByZeroException or OverflowException)
+                {
+                    return false;
+                }
+
+                return true;
+            }
+
+            private static bool CanEvaluateStatementExpressions(
+                Spectrum128Machine machine,
+                Dictionary<string, int> variables,
+                List<string> statement)
+            {
+                if (statement.Count == 0)
+                    return true;
+
+                string keyword = NormalizeStatementKeyword(statement[0]);
+                switch (keyword)
+                {
+                    case "BORDER":
+                    case "PAPER":
+                    case "INK":
+                    case "CLEAR":
+                    case "RESTORE":
+                        return statement.Count == 1 || CanParseExpression(machine, variables, statement, 1, statement.Count - 1);
+
+                    case "POKE":
+                    {
+                        int commaIndex = statement.IndexOf(",");
+                        return commaIndex > 1 &&
+                               commaIndex < statement.Count - 1 &&
+                               CanParseExpression(machine, variables, statement, 1, commaIndex - 1) &&
+                               CanParseExpression(machine, variables, statement, commaIndex + 1, statement.Count - 1);
+                    }
+
+                    case "DATA":
+                    {
+                        int itemStart = 1;
+                        while (itemStart < statement.Count)
+                        {
+                            int itemEnd = statement.IndexOf(",", itemStart);
+                            if (itemEnd < 0)
+                                itemEnd = statement.Count;
+                            if (itemEnd == itemStart ||
+                                !CanParseExpression(machine, variables, statement, itemStart, itemEnd - 1))
+                            {
+                                return false;
+                            }
+
+                            itemStart = itemEnd + 1;
+                        }
+
+                        return true;
+                    }
+
+                    case "FOR":
+                    {
+                        int equalsIndex = statement.IndexOf("=");
+                        int toIndex = statement.IndexOf("TO");
+                        return equalsIndex > 1 &&
+                               toIndex > equalsIndex + 1 &&
+                               toIndex < statement.Count - 1 &&
+                               CanParseExpression(machine, variables, statement, equalsIndex + 1, toIndex - 1) &&
+                               CanParseExpression(machine, variables, statement, toIndex + 1, statement.Count - 1);
+                    }
+
+                    case "RANDOMIZE":
+                    {
+                        int usrIndex = statement.IndexOf("USR");
+                        int expressionStart = usrIndex >= 0 ? usrIndex + 1 : 1;
+                        return expressionStart >= statement.Count ||
+                               CanParseExpression(machine, variables, statement, expressionStart, statement.Count - 1);
+                    }
+
+                    default:
+                        return true;
+                }
+            }
+
+            private static bool CanParseExpression(
+                Spectrum128Machine machine,
+                Dictionary<string, int> variables,
+                List<string> tokens,
+                int startIndex,
+                int endIndex)
+            {
+                if (startIndex > endIndex)
+                    return false;
+
+                var parser = new ExpressionParser(machine, variables, tokens, startIndex, endIndex);
+                parser.Parse();
+                return true;
             }
 
             public static bool CanRunPreloadedProgramUnderRom(
