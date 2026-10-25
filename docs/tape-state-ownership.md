@@ -13,7 +13,8 @@ invariants unless a compatibility fix explicitly changes one.
 | `TapeActivityTracker` | EAR/keyboard read counters, loader-activity and handoff observations, automatic stop/resume safety policy, and their Quick State | Pulse generation, public transport state, or continuation policy |
 | `MountedTape` | Block position, exact pulse/EAR cursor, pause and stop-marker state, ROM-trap stream position, header/data sequencing, and transport Quick State | Machine-wide reset policy or BASIC/machine-code continuation |
 | `MountedLoadContinuationController` | Pending BASIC/USR continuation, workspace restoration, resume gates, and continuation Quick State | Physical tape position or the visible transport state |
-| `TapLoader` and `TzxLoader` | File parsing, load-strategy selection, bootstrap execution, and construction of the remaining mounted tape | Long-lived transport ownership after loading hands control to the machine |
+| `TapeLoadPlanner` | Capability-gated selection of full fake load, safe-prefix loading, ROM bootstrap, hybrid bootstrap, or real-time mounting, with a diagnostic reason | Parsing, plan execution, transport state, or continuation state |
+| `TapLoader` and `TzxLoader` | File parsing, plan execution, bootstrap execution, and construction of the remaining mounted tape | Long-lived transport ownership after loading hands control to the machine |
 | Windows frontend | User commands and presentation of copied state | Mutation of tape internals or loader continuation state |
 
 The background emulation loop owns mutable machine and tape state. UI code may
@@ -62,7 +63,8 @@ retain mutable tape objects for direct cross-thread control.
 1. Lock the lifecycle and restoration invariants with focused tests.
 2. Extract machine-level activity tracking and transport transition policy without changing behavior. Activity tracking and automatic handoff decisions are now isolated in `TapeActivityTracker`; media identity and lifecycle transitions are isolated in `TapeTransportController`.
 3. Separate loader-strategy and continuation orchestration behind explicit
-   boundaries.
+   boundaries. Strategy selection is now isolated in `TapeLoadPlanner`; execution
+   and continuation remain separate existing responsibilities.
 4. Improve transition diagnostics and split the large regression suite by
    responsibility.
 5. Re-run the complete automated suite and representative difficult media after

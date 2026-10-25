@@ -131,6 +131,7 @@ namespace Spectrum128kEmulator
         private MountedTape? mountedTape => tapeTransport.MountedTape;
         public MountedTape? MountedTape => tapeTransport.MountedTape;
         public TapeTransportState TapeTransportState => tapeTransport.State;
+        public TapeTransportTransition LastTapeTransportTransition => tapeTransport.LastTransition;
         public bool IsTapeStoppedAtMarker => tapeTransport.IsStoppedAtMarker;
 
         public Spectrum128Machine(string romFolder)

@@ -402,6 +402,8 @@ compatibility and polish; completed milestones remain regression baselines.
 - Isolated tape read, loader-activity, handoff, and automatic-resume counters plus their Quick State in a dedicated activity tracker without changing transition policy
 - Centralized mounted-media identity, transport state, lifecycle transitions, and exact transport Quick State restoration in a dedicated controller
 - Moved automatic handoff stop/resume decisions behind the activity tracker and added direct coverage for all safety gates plus exact EAR-phase preservation
+- Extracted capability-gated load-strategy selection into a dedicated planner while leaving plan execution and loader continuation behavior unchanged
+- Added structured transport transition reasons for reset, mount, manual stop/resume, automatic handoff stop/ROM resume, stop markers, tape end, and eject; the reason is preserved by Quick State and included in diagnostics
 - Add table-driven transition coverage for fast loading, real-time fallback, pause/resume, stop markers, tape end, multiloads, media replacement, reset, and Quick State restoration
 - Split the large tape regression suite into responsibility-based test classes without reducing existing coverage
 - Keep pulse/EAR transport, fast/ROM/protected load strategy, and BASIC/machine-code continuation as separate cooperating responsibilities rather than one combined state machine

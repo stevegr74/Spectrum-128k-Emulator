@@ -96,7 +96,7 @@ namespace Spectrum128kEmulator
             sb.AppendLine($"Frame={FrameCount} Border={BorderColor} PagedRamBank={PagedRamBank} ScreenBank={ScreenBank} RomBank={CurrentRomBank} PagingLocked={PagingLocked}");
             sb.AppendLine($"RomProfile={RomProfile.Name} AddressTapeServices={(SupportsRomTapeAcceleration ? 1 : 0)}");
             sb.AppendLine($"SpeakerHigh={speakerHigh} SpeakerEdge={SpeakerEdge} FlashPhase={FlashPhase} MountedTape={mountedTape?.DisplayName ?? "(none)"}");
-            sb.AppendLine($"TapeTransport={TapeTransportState} MarkerStop={(IsTapeStoppedAtMarker ? 1 : 0)}");
+            sb.AppendLine($"TapeTransport={TapeTransportState} Transition={LastTapeTransportTransition} MarkerStop={(IsTapeStoppedAtMarker ? 1 : 0)}");
             if (mountedTape != null)
                 sb.AppendLine($"TapeDebug={mountedTape.DebugPlaybackState}");
             sb.AppendLine($"TapeActivityReads={tapeActivity.PortReadCount} KeyboardOnly={tapeActivity.KeyboardOnlyPortReadCount} Observed={(tapeActivity.LoaderActivityObserved ? 1 : 0)} HandoffFrames={tapeActivity.HandoffFrames}");

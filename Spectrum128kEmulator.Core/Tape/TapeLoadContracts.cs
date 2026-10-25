@@ -77,6 +77,20 @@ namespace Spectrum128kEmulator.Tap
         Ended
     }
 
+    public enum TapeTransportTransition
+    {
+        None,
+        Reset,
+        Mounted,
+        ManualStop,
+        ManualResume,
+        AutomaticHandoffStop,
+        AutomaticRomResume,
+        StopMarker,
+        Ended,
+        Ejected
+    }
+
     public sealed class TapeExecutionResult
     {
         public TapeExecutionResult(

@@ -204,6 +204,7 @@ namespace Spectrum128kEmulator.Tests
 
                 Assert.True(machine.HasMountedTape);
                 Assert.Equal(TapeTransportState.Stopped, machine.TapeTransportState);
+                Assert.Equal(TapeTransportTransition.AutomaticHandoffStop, machine.LastTapeTransportTransition);
                 Assert.True(machine.MountedTape!.IsPlaybackPaused);
 
                 Assert.Equal(TapeTransportState.Playing, machine.ToggleTapeTransport());
@@ -324,6 +325,7 @@ namespace Spectrum128kEmulator.Tests
                 machine.DebugReadPort(0x00FE);
 
                 Assert.Equal(TapeTransportState.Playing, machine.TapeTransportState);
+                Assert.Equal(TapeTransportTransition.AutomaticRomResume, machine.LastTapeTransportTransition);
                 Assert.False(machine.MountedTape!.IsPlaybackPaused);
             }
             finally

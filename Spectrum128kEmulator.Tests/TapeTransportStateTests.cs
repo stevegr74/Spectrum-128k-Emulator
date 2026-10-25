@@ -16,6 +16,7 @@ namespace Spectrum128kEmulator.Tests
                 var machine = new Spectrum128Machine(romFolder);
 
                 AssertTransport(machine, TapeTransportState.NoTape, null);
+                Assert.Equal(TapeTransportTransition.None, machine.LastTapeTransportTransition);
                 Assert.Equal(TapeTransportState.NoTape, machine.ToggleTapeTransport());
                 AssertTransport(machine, TapeTransportState.NoTape, null);
             }
@@ -42,6 +43,7 @@ namespace Spectrum128kEmulator.Tests
                 machine.MountTape(replacement);
 
                 AssertTransport(machine, TapeTransportState.Playing, replacement);
+                Assert.Equal(TapeTransportTransition.Mounted, machine.LastTapeTransportTransition);
                 Assert.False(replacement.IsPlaybackPaused);
                 Assert.True(replacement.ReadEarBit(0));
                 Assert.True(replacement.ReadEarBit(100));
@@ -62,10 +64,12 @@ namespace Spectrum128kEmulator.Tests
                 var machine = new Spectrum128Machine(romFolder);
                 machine.MountTape(CreatePlayingTape("eject.tap"));
                 machine.ToggleTapeTransport();
+                Assert.Equal(TapeTransportTransition.ManualStop, machine.LastTapeTransportTransition);
 
                 machine.EjectTape();
 
                 AssertTransport(machine, TapeTransportState.NoTape, null);
+                Assert.Equal(TapeTransportTransition.Ejected, machine.LastTapeTransportTransition);
             }
             finally
             {
@@ -88,7 +92,36 @@ namespace Spectrum128kEmulator.Tests
                 machine.Reset(model);
 
                 AssertTransport(machine, TapeTransportState.NoTape, null);
+                Assert.Equal(TapeTransportTransition.Reset, machine.LastTapeTransportTransition);
                 Assert.False(machine.HasPendingMountedLoadUsrContinuation);
+            }
+            finally
+            {
+                Directory.Delete(romFolder, true);
+            }
+        }
+
+        [Fact]
+        public void StopMarker_RecordsStructuredTransitionReason()
+        {
+            string romFolder = CreateTempRoms();
+            try
+            {
+                var machine = new Spectrum128Machine(romFolder);
+                machine.MountTape(new MountedTape(
+                    "marker.tzx",
+                    new[]
+                    {
+                        TapeBlock.CreatePureTone(pulseLength: 1, pulseCount: 1),
+                        TapeBlock.CreateStopTape(),
+                        TapeBlock.CreatePureTone(pulseLength: 100, pulseCount: 1)
+                    }));
+
+                machine.ExecuteTimeSlice(32);
+                machine.ExecuteTimeSlice(32);
+
+                AssertTransport(machine, TapeTransportState.Stopped, machine.MountedTape);
+                Assert.Equal(TapeTransportTransition.StopMarker, machine.LastTapeTransportTransition);
             }
             finally
             {
@@ -115,7 +148,9 @@ namespace Spectrum128kEmulator.Tests
                 machine.RestoreQuickState(state);
 
                 AssertTransport(machine, TapeTransportState.Stopped, capturedTape);
+                Assert.Equal(TapeTransportTransition.ManualStop, machine.LastTapeTransportTransition);
                 Assert.Equal(TapeTransportState.Playing, machine.ToggleTapeTransport());
+                Assert.Equal(TapeTransportTransition.ManualResume, machine.LastTapeTransportTransition);
                 Assert.True(capturedTape.ReadEarBit(100));
                 Assert.False(capturedTape.ReadEarBit(101));
             }
@@ -143,6 +178,7 @@ namespace Spectrum128kEmulator.Tests
                 machine.RestoreQuickState(state);
 
                 AssertTransport(machine, TapeTransportState.Ended, null);
+                Assert.Equal(TapeTransportTransition.Ended, machine.LastTapeTransportTransition);
             }
             finally
             {
