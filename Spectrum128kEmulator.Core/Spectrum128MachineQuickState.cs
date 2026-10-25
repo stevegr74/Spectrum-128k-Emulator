@@ -44,9 +44,7 @@ namespace Spectrum128kEmulator
             internal int TStatesUntilNextInterrupt;
             internal bool RealignInterruptPhaseAfterNextAccept;
             internal ulong? InterruptPulseEndTStates;
-            internal MountedTape? MountedTape;
-            internal MountedTape.QuickState? MountedTapeState;
-            internal TapeTransportState TapeTransportState;
+            internal TapeTransportController.QuickState TapeTransportState = null!;
             internal TapeActivityTracker.QuickState TapeActivityState = null!;
             internal RzxPlaybackSession? RzxPlayback;
             internal RzxPlaybackSession.QuickState? RzxPlaybackState;
@@ -109,9 +107,7 @@ namespace Spectrum128kEmulator
                 TStatesUntilNextInterrupt = tStatesUntilNextInterrupt,
                 RealignInterruptPhaseAfterNextAccept = realignInterruptPhaseAfterNextAccept,
                 InterruptPulseEndTStates = interruptPulseEndTStates,
-                MountedTape = mountedTape,
-                MountedTapeState = mountedTape?.CaptureQuickState(),
-                TapeTransportState = TapeTransportState,
+                TapeTransportState = tapeTransport.CaptureQuickState(),
                 TapeActivityState = tapeActivity.CaptureQuickState(),
                 RzxPlayback = rzxPlayback,
                 RzxPlaybackState = rzxPlayback?.CaptureQuickState(),
@@ -188,10 +184,7 @@ namespace Spectrum128kEmulator
 
         private void RestoreMediaState(QuickState state)
         {
-            mountedTape = state.MountedTape;
-            if (mountedTape != null && state.MountedTapeState != null)
-                mountedTape.RestoreQuickState(state.MountedTapeState);
-            TapeTransportState = state.TapeTransportState;
+            tapeTransport.RestoreQuickState(state.TapeTransportState);
             tapeActivity.RestoreQuickState(state.TapeActivityState);
 
             rzxPlayback = state.RzxPlayback;

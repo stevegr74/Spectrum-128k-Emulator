@@ -1909,7 +1909,7 @@ namespace Spectrum128kEmulator.Tests
                 var machine = new Spectrum128Machine(tempFolder);
                 TapLoader.BootstrapBasicProgramAndMountRemaining(machine, tapePath);
 
-                object mountedTape = GetPrivateField(machine, "mountedTape");
+                MountedTape mountedTape = Assert.IsType<MountedTape>(machine.MountedTape);
                 int playbackBlockIndex = (int)GetPrivateField(mountedTape, "earPlaybackBlockIndex");
                 int nextBlockIndex = (int)GetPrivateField(mountedTape, "nextBlockIndex");
 
@@ -2182,7 +2182,7 @@ namespace Spectrum128kEmulator.Tests
                 machine.Cpu.Regs.DE = 1;
                 machine.Cpu.Regs.A = 0xFF;
                 machine.Cpu.Regs.F = 0x01;
-                object mountedTape = GetPrivateField(machine, "mountedTape");
+                MountedTape mountedTape = Assert.IsType<MountedTape>(machine.MountedTape);
                 SetPrivateField(mountedTape, "earPlaybackBlockIndex", 3);
                 SetPrivateField(mountedTape, "earPlaybackStarted", true);
                 SetPrivateField(
@@ -2236,7 +2236,7 @@ namespace Spectrum128kEmulator.Tests
                 machine.Cpu.Regs.DE = 1;
                 machine.Cpu.Regs.A = 0xFF;
                 machine.Cpu.Regs.F = 0x01;
-                object mountedTape = GetPrivateField(machine, "mountedTape");
+                MountedTape mountedTape = Assert.IsType<MountedTape>(machine.MountedTape);
                 SetPrivateField(mountedTape, "earPlaybackBlockIndex", 3);
                 SetPrivateField(mountedTape, "earPlaybackStarted", true);
                 SetPrivateField(
@@ -2293,7 +2293,7 @@ namespace Spectrum128kEmulator.Tests
                 bool handled = machine.TryServiceTapeTrap();
 
                 Assert.False(handled);
-                object mountedTape = GetPrivateField(machine, "mountedTape");
+                MountedTape mountedTape = Assert.IsType<MountedTape>(machine.MountedTape);
                 Assert.Equal(1, (int)GetPrivateField(mountedTape, "nextBlockIndex"));
                 Assert.Equal(1, (int)GetPrivateField(mountedTape, "earPlaybackBlockIndex"));
             }
@@ -2640,7 +2640,7 @@ namespace Spectrum128kEmulator.Tests
                 Assert.Equal("rom-driven.tap", machine.MountedTapeName);
                 Assert.Equal((ushort)10, ReadWord(machine, 23618));
                 Assert.Equal((byte)0, machine.PeekMemory(23620));
-                object mountedTape = GetPrivateField(machine, "mountedTape");
+                MountedTape mountedTape = Assert.IsType<MountedTape>(machine.MountedTape);
                 Assert.Equal("Pause", GetPrivateField(mountedTape, "earPlaybackState").ToString());
                 Assert.Equal(3546900, (int)GetPrivateField(mountedTape, "earPulseLengthTStates"));
                 Assert.Equal(2, (int)GetPrivateField(mountedTape, "earPlaybackBlockIndex"));

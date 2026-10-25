@@ -38,6 +38,7 @@ namespace Spectrum128kEmulator
         };
         private readonly ulong[] keyboardRowScanCounts = new ulong[8];
         private readonly TapeActivityTracker tapeActivity = new TapeActivityTracker();
+        private readonly TapeTransportController tapeTransport = new TapeTransportController();
         
         // AY-3-8912
         private readonly Audio.Ay8912 ay = new Audio.Ay8912();
@@ -126,11 +127,11 @@ namespace Spectrum128kEmulator
         }
 
         private byte last7ffdValue = 0xFF;
-        private MountedTape? mountedTape;
         private RzxPlaybackSession? rzxPlayback;
-        public MountedTape? MountedTape => mountedTape;
-        public TapeTransportState TapeTransportState { get; private set; } = TapeTransportState.NoTape;
-        public bool IsTapeStoppedAtMarker => mountedTape?.IsPausedByStopMarker == true;
+        private MountedTape? mountedTape => tapeTransport.MountedTape;
+        public MountedTape? MountedTape => tapeTransport.MountedTape;
+        public TapeTransportState TapeTransportState => tapeTransport.State;
+        public bool IsTapeStoppedAtMarker => tapeTransport.IsStoppedAtMarker;
 
         public Spectrum128Machine(string romFolder)
             : this(romFolder, romProfileOverride: null)
@@ -229,8 +230,7 @@ namespace Spectrum128kEmulator
             FrameCount = 0;
             LastAboveWriteFrame = -1;
             last7ffdValue = model == SpectrumMachineModel.Spectrum48K ? (byte)0x10 : (byte)0xFF;
-            mountedTape = null;
-            TapeTransportState = TapeTransportState.NoTape;
+            tapeTransport.Reset();
             ResetMountedTapeActivityTracking();
             rzxPlayback = null;
             mountedLoadContinuation.Clear();
@@ -386,16 +386,9 @@ namespace Spectrum128kEmulator
                 bool tapeHasEnded = activeTape?.HasCompletedPlayback == true ||
                     (activeTape?.IsExhaustedAndIdle == true && !HasPendingMountedLoadUsrContinuation);
                 if (tapeHasEnded && ReferenceEquals(mountedTape, activeTape))
-                {
-                    mountedTape = null;
-                    TapeTransportState = TapeTransportState.Ended;
-                }
+                    tapeTransport.CompleteIfCurrent(activeTape);
                 else if (ReferenceEquals(mountedTape, activeTape) && activeTape != null)
-                {
-                    TapeTransportState = activeTape.IsPlaybackPaused
-                        ? TapeTransportState.Stopped
-                        : TapeTransportState.Playing;
-                }
+                    tapeTransport.SynchronizeState(activeTape);
 
                 tStatesBudget -= actualExecutedTStates;
                 if (tStatesBudget < 0)
@@ -736,13 +729,8 @@ namespace Spectrum128kEmulator
 
         public void MountTape(MountedTape tape)
         {
-            mountedTape = tape ?? throw new ArgumentNullException(nameof(tape));
-            mountedTape.ConfigurePlaybackClock(CurrentCpuClockHz);
-            mountedTape.Reset();
+            tapeTransport.Mount(tape, CurrentCpuClockHz);
             ResetMountedTapeActivityTracking();
-            TapeTransportState = mountedTape.IsPlaybackPaused
-                ? TapeTransportState.Stopped
-                : TapeTransportState.Playing;
         }
 
         public TapeTransportState ToggleTapeTransport()
@@ -750,24 +738,9 @@ namespace Spectrum128kEmulator
             if (mountedTape == null)
                 return TapeTransportState;
 
-            if (mountedTape.IsPlaybackPaused)
-            {
-                mountedTape.ResumePlayback(cpu.TStates);
-                ResetMountedTapeActivityTracking();
-                TapeTransportState = mountedTape.HasCompletedPlayback
-                    ? TapeTransportState.Ended
-                    : mountedTape.IsPlaybackPaused
-                        ? TapeTransportState.Stopped
-                        : TapeTransportState.Playing;
-            }
-            else
-            {
-                mountedTape.PausePlayback(cpu.TStates);
-                ResetMountedTapeActivityTracking();
-                TapeTransportState = TapeTransportState.Stopped;
-            }
-
-            return TapeTransportState;
+            TapeTransportState state = tapeTransport.Toggle(cpu.TStates);
+            ResetMountedTapeActivityTracking();
+            return state;
         }
 
         public void AttachRzxPlayback(RzxPlaybackSession playback)
@@ -782,9 +755,8 @@ namespace Spectrum128kEmulator
 
         public void EjectTape()
         {
-            mountedTape = null;
+            tapeTransport.Eject();
             ResetMountedTapeActivityTracking();
-            TapeTransportState = TapeTransportState.NoTape;
         }
 
         public bool TryServiceTapeTrap()
@@ -921,10 +893,7 @@ namespace Spectrum128kEmulator
         {
             MachineModel = SpectrumMachineModel.Spectrum128K;
             if (mountedTape != null && !mountedTape.HasMoreBlocks)
-            {
-                mountedTape = null;
-                TapeTransportState = TapeTransportState.Ended;
-            }
+                tapeTransport.CompleteIfCurrent(mountedTape);
             z80.ResetExecutionStatePreserveTiming();
             CurrentRomBank = 1;
             PagingLocked = false;
@@ -1145,7 +1114,7 @@ namespace Spectrum128kEmulator
 
             if (activeTape.ResumePlayback(sampleTStates))
             {
-                TapeTransportState = TapeTransportState.Playing;
+                tapeTransport.MarkPlaying(activeTape);
                 Trace?.Invoke(
                     $"[TapeTransport] Auto-resume frame={FrameCount} pc=0x{cpu.Regs.PC:X4} {activeTape.DebugPlaybackState}");
             }
@@ -1223,7 +1192,7 @@ namespace Spectrum128kEmulator
 
             if (activeTape.PausePlayback(cpu.TStates))
             {
-                TapeTransportState = TapeTransportState.Stopped;
+                tapeTransport.MarkStopped(activeTape);
                 tapeActivity.AutoPausedAtHandoff = true;
                 tapeActivity.AutomaticResumeReads = 0;
                 Trace?.Invoke(

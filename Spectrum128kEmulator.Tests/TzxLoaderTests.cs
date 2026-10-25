@@ -612,7 +612,7 @@ namespace Spectrum128kEmulator.Tests
                 Assert.Equal(5, result48k.TotalBlockCount);
                 Assert.True(machine48k.HasMountedTape);
 
-                object mountedTape48k = GetPrivateField(machine48k, "mountedTape");
+                Tap.MountedTape mountedTape48k = Assert.IsType<Tap.MountedTape>(machine48k.MountedTape);
                 var blocks48k = (IReadOnlyList<Tap.TapeBlock>)GetPrivateField(mountedTape48k, "blocks");
                 Assert.Equal(Tap.TapeBlockKind.StopTape, blocks48k[2].Kind);
                 Assert.Equal(Tap.TapeBlockKind.Data, blocks48k[3].Kind);
@@ -665,7 +665,7 @@ namespace Spectrum128kEmulator.Tests
                 Assert.Equal("BootstrapHybrid", result.Strategy.ToString());
                 Assert.Equal(3, result.ConsumedBlockCount);
                 Assert.True(machine.HasMountedTape);
-                object mountedTape = GetPrivateField(machine, "mountedTape");
+                Tap.MountedTape mountedTape = Assert.IsType<Tap.MountedTape>(machine.MountedTape);
                 int nextBlockIndex = (int)GetPrivateField(mountedTape, "nextBlockIndex");
                 int playbackBlockIndex = (int)GetPrivateField(mountedTape, "earPlaybackBlockIndex");
                 Assert.Equal(3, nextBlockIndex);
@@ -723,7 +723,7 @@ namespace Spectrum128kEmulator.Tests
                 Assert.Equal("LeadingStandardChainFakeLoad", result.Strategy.ToString());
                 Assert.Equal(7, result.ConsumedBlockCount);
                 Assert.True(machine.HasMountedTape);
-                object mountedTape = GetPrivateField(machine, "mountedTape");
+                Tap.MountedTape mountedTape = Assert.IsType<Tap.MountedTape>(machine.MountedTape);
                 int nextBlockIndex = (int)GetPrivateField(mountedTape, "nextBlockIndex");
                 int playbackBlockIndex = (int)GetPrivateField(mountedTape, "earPlaybackBlockIndex");
                 Assert.Equal(7, nextBlockIndex);
@@ -1138,7 +1138,7 @@ namespace Spectrum128kEmulator.Tests
                 Assert.True(machine.HasMountedTape);
                 Assert.Equal((byte)5, machine.PeekMemory(23624));
 
-                object mountedTape = GetPrivateField(machine, "mountedTape");
+                Tap.MountedTape mountedTape = Assert.IsType<Tap.MountedTape>(machine.MountedTape);
                 int nextBlockIndex = (int)GetPrivateField(mountedTape, "nextBlockIndex");
                 int playbackBlockIndex = (int)GetPrivateField(mountedTape, "earPlaybackBlockIndex");
 
