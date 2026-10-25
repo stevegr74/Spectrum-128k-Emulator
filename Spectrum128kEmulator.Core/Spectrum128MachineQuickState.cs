@@ -39,6 +39,7 @@ namespace Spectrum128kEmulator
             internal UlaRasterCapture.QuickState UlaRasterState = null!;
             internal AyAudioState? FrameStartAyState;
             internal bool CaptureAudioFramesEnabled;
+            internal bool CurrentAudioFrameCaptureValid;
             internal int FloatingBusDisplayStartAdjustTStates;
             internal int FloatingBusSampleAdjustTStates;
             internal int TStatesUntilNextInterrupt;
@@ -102,6 +103,7 @@ namespace Spectrum128kEmulator
                     ? null
                     : new AyAudioState(frameStartAyState.GetRegistersCopy()),
                 CaptureAudioFramesEnabled = captureAudioFramesEnabled,
+                CurrentAudioFrameCaptureValid = currentAudioFrameCaptureValid,
                 FloatingBusDisplayStartAdjustTStates = floatingBusDisplayStartAdjustTStates,
                 FloatingBusSampleAdjustTStates = floatingBusSampleAdjustTStates,
                 TStatesUntilNextInterrupt = tStatesUntilNextInterrupt,
@@ -149,6 +151,7 @@ namespace Spectrum128kEmulator
             currentFrameExecutedTStates = state.CurrentFrameExecutedTStates;
             lastAudioFrameTStates = state.LastAudioFrameTStates;
             captureAudioFramesEnabled = state.CaptureAudioFramesEnabled;
+            currentAudioFrameCaptureValid = state.CurrentAudioFrameCaptureValid;
             floatingBusDisplayStartAdjustTStates = state.FloatingBusDisplayStartAdjustTStates;
             floatingBusSampleAdjustTStates = state.FloatingBusSampleAdjustTStates;
             tStatesUntilNextInterrupt = state.TStatesUntilNextInterrupt;

@@ -49,7 +49,7 @@ Current limitations and active work:
 
 - opcode/immediate fetches, ordinary/indexed/block/stack memory accesses, port I/O, border, and floating-bus timing use model-specific machine-cycle positions validated against published 48K and 128K diagnostics
 - beam-aware 48K and original 128K/+2 video is implemented and validated; broader timing-sensitive software coverage remains ongoing
-- exact audio timing and turbo-to-real-time tape handoff still need polish in some titles
+- clock-driven audio and the turbo-to-real-time handoff are hardened; broader subjective title-by-title audio comparison remains ongoing
 - broader protected/custom TZX compatibility remains ongoing
 
 ### Implementation Notes
@@ -68,22 +68,25 @@ Current limitations and active work:
 - Maskable interrupt acceptance resets both Z80 interrupt flip-flops; `LD A,I`/`LD A,R`, `RETN`/`RETI`, and delayed `EI` behavior have focused regressions across both execution schedulers.
 - Model-specific ULA profiles now drive contention, floating-bus fetches, frame timing, and raster mapping; original 128K/+2 floating-bus reads follow the selected bank 5 or bank 7 screen, and `IN (0xFFFD)` reads the selected AY register.
 - Border, beeper, and AY writes are timestamped at the completed I/O cycle, including contended and repeating block-I/O paths; border changes are reconstructed in hardware-sized eight-pixel latch groups without stretching visible pixels across horizontal flyback.
+- Audio sample counts are accumulated from emulated T-states without long-run fractional drift; turbo loading suppresses host audio and discards any partially captured transition frame before resuming from the next complete frame boundary.
 - Contended opcode, prefix, and immediate-byte fetches use their individual machine-cycle offsets; corrected indexed-instruction totals cover ignored `DD`/`FD` prefixes, absolute IX/IY loads and stores, stack exchange, and stack-pointer transfer.
 - Interrupt scheduling carries instruction-boundary overshoot into the next frame, preserving the 69,888-T-state 48K and 70,908-T-state 128K frame cadence without truncating instructions.
 - An event-driven ULA raster latches bitmap and per-scanline attribute bytes at their fetch times, including mid-frame 128K bank 5/bank 7 screen switches; each immutable completed frame owns its matching border timeline across the background-loop/UI boundary.
 
 ## Development Priorities
 
-Each feature is developed on its own branch. Milestone 19 is complete, delivering
-the bank-aware debugger foundation, symbolic analysis, conservative control/data
-cross-references, persistent code/data markings, hexadecimal memory inspection,
-and a compact paging/CPU-state workspace. Milestone 20 is complete, with explicit
+Each feature is developed on its own branch. Milestone 7 is complete, with
+clock-driven beeper/AY generation and a tested turbo-to-real-time handoff.
+Milestone 19 delivered the bank-aware debugger foundation, symbolic analysis,
+conservative control/data cross-references, persistent code/data markings,
+hexadecimal memory inspection, and a compact paging/CPU-state workspace.
+Milestone 20 is complete, with explicit
 tape-state ownership, structured load and transport diagnostics, stronger
 transition tests, and behavior-preserving decomposition. Milestone 21 will
 add a bank-aware Poke Manager with a maintainable cheat library and safe one-off
-memory writes. Tape compatibility and the turbo-to-realtime audio transition
-continue in parallel, with the verified media matrix plus ZEXDOC/ZEXALL used as
-regression gates.
+memory writes. Tape compatibility and broader title-specific audio fidelity
+validation continue in parallel, with the verified media matrix plus
+ZEXDOC/ZEXALL used as regression gates.
 
 ---
 
@@ -259,8 +262,8 @@ Test coverage includes:
 - exact port event timestamps, block-I/O timing, and border latch/raster mapping
 - timed opcode, prefix, immediate, ordinary, indexed, block, stack, and interrupt-vector memory cycles
 - AY register write and selected-register port-read behaviour
-- Audio sample generation
-- Audio pipeline behaviour
+- Audio sample generation, long-run 48K/128K sample-clock drift, and clipping diagnostics
+- Audio pipeline behaviour, including turbo suppression, clean frame-boundary resume, and Quick State transition restoration
 - Z80 instruction decoding, bank-aware disassembly navigation/search, paging-map presentation, grouped CPU-state changes and address links, labels, classifications, control/data cross-references, hexadecimal memory inspection, listing export, settings, snapshot behavior, and STA WinForms interaction
 - Quick State deterministic machine, tape-cursor, and RZX-cursor restoration
 - ZEXDOC and ZEXALL compliance validation via the dedicated runner
@@ -287,7 +290,7 @@ Current snapshot status:
   - v2/v3 page-block support implemented
   - 128K paging and RAM-bank restoration supported for applicable v2/v3 snapshots
   - interrupt state and interrupt mode restored from snapshot metadata
-  - 48K `.z80` uses a dedicated generic restore path
+  - 48K-layout v1/v2/v3 snapshots can run on the selected 48K or 128K hardware model
 
 Snapshots can be loaded with `F9` (`.sna`) and `F10` (`.z80`) in the UI.
 
@@ -303,10 +306,12 @@ dotnet run --project Spectrum128kEmulator.ManualHarness
 
 This runs the emulator without UI and logs state.
 
-Its generic diagnostics accept `frames=`, `model=48|128`, `quiet=1`, `dumpblocks=1`, `strategy=`,
+Its generic diagnostics accept `frames=`, `model=48|128`, `quiet=1`, `audioanalysis=1`, `dumpblocks=1`, `strategy=`,
 scheduled key/register/memory events, memory-write watches, instruction traces, and
 execution breakpoints. It writes a machine dump and BMP frame image only for the run being
-investigated; game-specific probes are deliberately kept out of the harness.
+investigated; audio analysis reports generated frame/sample counts, nonzero samples,
+peak, RMS, clipping, and maximum adjacent-sample delta. Game-specific probes are
+deliberately kept out of the harness.
 
 The [ULA timing validation runbook](test-assets/ula/README.md) records how the
 48K/128K Timing Test and floating-bus diagnostics are run without redistributing
@@ -335,8 +340,8 @@ Notes:
 
 ## Roadmap
 
-Milestone numbers record delivery order. Milestones 6 and 7 stay open for wider
-compatibility and polish; completed milestones remain regression baselines.
+Milestone numbers record delivery order. Milestone 6 stays open for wider tape
+compatibility; completed milestones remain regression baselines.
 
 | Milestone | Status | Outcome |
 | --- | --- | --- |
@@ -346,7 +351,7 @@ compatibility and polish; completed milestones remain regression baselines.
 | 4 | Complete | ZEXDOC/ZEXALL CPU baseline and hardware-derived block-I/O flag regressions |
 | 5 | Complete | 48K/128K `.sna` plus `.z80` v1/v2/v3 support |
 | 6 | In progress | Structure-driven TAP/TZX bootstrap, ROM, protected, mounted, VERIFY, and sequencing paths |
-| 7 | In progress | Beeper/AY synthesis and mixing; live-tape transition polish remains |
+| 7 | Complete | Clock-driven beeper/AY synthesis, mixing, and clean turbo-to-real-time audio handoff |
 | 8 | Complete | Headless core/UI split and clock-driven audio buffering |
 | 9 | Complete | Initial ULA contention, floating-bus, and timestamped border baseline |
 | 10 | Complete | Side-effect-free Z80 decoder foundation |
@@ -361,6 +366,15 @@ compatibility and polish; completed milestones remain regression baselines.
 | 19 | Complete | Bank-aware inspection, labels, conservative control/data cross-references, persistent code/data marking, and hexadecimal memory navigation |
 | 20 | Complete | Tape state ownership, transition coverage, structured diagnostics, and behavior-preserving subsystem decomposition |
 | 21 | Planned | Bank-aware Poke Manager, maintainable cheat library, media matching, and safe one-off memory writes |
+
+### Milestone 7 - Audio And Turbo Handoff Complete
+- Generates 48K beeper and 128K AY tone, noise, and envelope output from timestamped machine events through one mixed sample pipeline
+- Uses a fractional T-state sample clock with no cumulative sample drift across tested ten-minute 48K and 128K runs
+- Keeps AY oscillator, noise, envelope, and mixer state continuous across emulated frames and Quick State restoration
+- Suppresses host audio during accelerated tape execution and resumes only from a fully captured frame, discarding the incomplete transition frame rather than synthesizing missing history
+- Preserves the transition-frame validity state in Quick State so restoration cannot reintroduce a partial audio frame
+- Adds headless amplitude, RMS, clipping, and discontinuity diagnostics plus focused transition and explicit snapshot-model regressions
+- Confirms active, unclipped output across Exolon `.sna`/`.z80`, Target Renegade `.sna`/`.z80`, Cybernoid `.z80`, and 48K tape playback; Arkanoid gameplay timing and sound behavior also match JSspeccy closely, with only a slightly cooler timbre observed
 
 ### Milestone 16 - ULA Timing Conformance And Port Accuracy Complete
 - Implemented one model-specific timing profile for frame length, scanline length, contention start, display fetches, visible raster mapping, and the documented timing convention
@@ -436,6 +450,7 @@ compatibility and polish; completed milestones remain regression baselines.
 
 - Demo compatibility beyond the current validation matrix
 - Broader real-game validation
+- Selectable presentation palettes: an authentic CRT/composite-inspired default and the existing idealised `D7/FF` digital palette, without changing emulated colour attributes or saved state
 - Optional game library window with searchable artwork tiles, recent items, and an explicit file picker; prefer a scalable grid over a carousel-only interface
 - Additional platform frontends, including a browser/WebAssembly adapter using the established headless engine boundary
 

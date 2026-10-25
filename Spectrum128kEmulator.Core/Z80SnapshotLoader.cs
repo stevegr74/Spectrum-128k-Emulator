@@ -14,25 +14,27 @@ namespace Spectrum128kEmulator
 
         public static void Load(Spectrum128Machine machine, string path)
         {
-            Load(machine, path, SpectrumMachineModel.Spectrum128K);
+            ValidateLoadArguments(machine, path);
+            Load(machine, File.ReadAllBytes(path), hardwareModel: null);
         }
 
         public static void Load(Spectrum128Machine machine, string path, SpectrumMachineModel hardwareModel)
         {
-            if (machine == null)
-                throw new ArgumentNullException(nameof(machine));
-            if (string.IsNullOrWhiteSpace(path))
-                throw new ArgumentException("Snapshot path must be provided.", nameof(path));
-
+            ValidateLoadArguments(machine, path);
             Load(machine, File.ReadAllBytes(path), hardwareModel);
         }
 
         public static void Load(Spectrum128Machine machine, byte[] data)
         {
-            Load(machine, data, SpectrumMachineModel.Spectrum128K);
+            Load(machine, data, hardwareModel: null);
         }
 
         public static void Load(Spectrum128Machine machine, byte[] data, SpectrumMachineModel hardwareModel)
+        {
+            Load(machine, data, (SpectrumMachineModel?)hardwareModel);
+        }
+
+        private static void Load(Spectrum128Machine machine, byte[] data, SpectrumMachineModel? hardwareModel)
         {
             if (machine == null)
                 throw new ArgumentNullException(nameof(machine));
@@ -44,11 +46,11 @@ namespace Spectrum128kEmulator
             ushort programCounter = ReadWord(data, 6);
             if (programCounter != 0)
             {
-                LoadV1(machine, data, programCounter, hardwareModel);
+                LoadV1(machine, data, programCounter, hardwareModel ?? SpectrumMachineModel.Spectrum128K);
                 return;
             }
 
-            LoadV2OrV3(machine, data);
+            LoadV2OrV3(machine, data, hardwareModel);
         }
 
         public static void LoadZ80v1(Spectrum128Machine machine, string path)
@@ -88,7 +90,10 @@ namespace Spectrum128kEmulator
             FinalizeLoad(machine, iff1, iff2, interruptMode);
         }
 
-        private static void LoadV2OrV3(Spectrum128Machine machine, byte[] data)
+        private static void LoadV2OrV3(
+            Spectrum128Machine machine,
+            byte[] data,
+            SpectrumMachineModel? hardwareModel)
         {
             if (data.Length < HeaderSizeV1 + 2)
                 throw new InvalidOperationException("Extended .z80 snapshot is truncated before the additional header length.");
@@ -118,7 +123,10 @@ namespace Spectrum128kEmulator
             if (Is48kHardware(additionalHeaderLength, hardwareMode))
             {
                 Load48kPageBlocks(machine, data, blockOffset);
-                machine.ConfigureFor48kZ80Snapshot(borderColor);
+                if (hardwareModel.HasValue)
+                    machine.ConfigureFor48kSnapshot(borderColor, hardwareModel.Value);
+                else
+                    machine.ConfigureFor48kZ80Snapshot(borderColor);
             }
             else if (Is128kHardware(additionalHeaderLength, hardwareMode))
             {
@@ -132,6 +140,14 @@ namespace Spectrum128kEmulator
             }
 
             FinalizeLoad(machine, iff1, iff2, interruptMode);
+        }
+
+        private static void ValidateLoadArguments(Spectrum128Machine machine, string path)
+        {
+            if (machine == null)
+                throw new ArgumentNullException(nameof(machine));
+            if (string.IsNullOrWhiteSpace(path))
+                throw new ArgumentException("Snapshot path must be provided.", nameof(path));
         }
 
         private static void RestoreCommonRegisters(Z80Registers regs, byte[] data, ushort programCounter)
