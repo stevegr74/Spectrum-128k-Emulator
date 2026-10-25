@@ -76,9 +76,9 @@ Current limitations and active work:
 Each feature is developed on its own branch. Milestone 19 is complete, delivering
 the bank-aware debugger foundation, symbolic analysis, conservative control/data
 cross-references, persistent code/data markings, hexadecimal memory inspection,
-and a compact paging/CPU-state workspace. Milestone 20 will harden the tape
-architecture through behavior-preserving decomposition and stronger transition
-tests. Milestone 21 will
+and a compact paging/CPU-state workspace. Milestone 20 is hardening the tape
+architecture through explicit state ownership, stronger transition tests, and
+behavior-preserving decomposition. Milestone 21 will
 add a bank-aware Poke Manager with a maintainable cheat library and safe one-off
 memory writes. Tape compatibility and the turbo-to-realtime audio transition
 continue in parallel, with the verified media matrix plus ZEXDOC/ZEXALL used as
@@ -353,7 +353,7 @@ compatibility and polish; completed milestones remain regression baselines.
 | 17 | Complete | Event-driven beam capture for bitmap, per-line attributes, border timing, and 128K shadow-screen changes, validated against Arkanoid and published diagnostics |
 | 18 | Complete | Instruction-boundary Run/Pause, Step Into/Over/Out, run to cursor, CPU context, and persistent breakpoints |
 | 19 | Complete | Bank-aware inspection, labels, conservative control/data cross-references, persistent code/data marking, and hexadecimal memory navigation |
-| 20 | Planned | Tape state ownership, transition coverage, diagnostics, and behavior-preserving subsystem decomposition |
+| 20 | In progress | Tape state ownership, transition coverage, diagnostics, and behavior-preserving subsystem decomposition |
 | 21 | Planned | Bank-aware Poke Manager, maintainable cheat library, media matching, and safe one-off memory writes |
 
 ### Milestone 16 - ULA Timing Conformance And Port Accuracy Complete
@@ -396,8 +396,9 @@ compatibility and polish; completed milestones remain regression baselines.
 - Completed conservative absolute-address data read/write cross-references, including byte/word widths and bank qualification, without treating indirect accesses or arbitrary data as executable code
 - Completed an independent hexadecimal/ASCII memory inspector with mapped and physical-bank views plus navigation from registers, stack entries, listing addresses, and direct control/data targets
 
-### Milestone 20 - Tape Architecture Hardening Planned
-- Audit tape state ownership and document invariants across transport, load-strategy selection, and continuation handling
+### Milestone 20 - Tape Architecture Hardening In Progress
+- Documented current tape-state ownership and invariants across transport, load-strategy selection, continuation handling, threading, and Quick State restoration in [Tape State Ownership](docs/tape-state-ownership.md)
+- Added focused machine-level lifecycle coverage for no-tape behavior, media replacement, eject, model reset, and stopped/ended Quick State restoration
 - Add table-driven transition coverage for fast loading, real-time fallback, pause/resume, stop markers, tape end, multiloads, media replacement, reset, and Quick State restoration
 - Split the large tape regression suite into responsibility-based test classes without reducing existing coverage
 - Keep pulse/EAR transport, fast/ROM/protected load strategy, and BASIC/machine-code continuation as separate cooperating responsibilities rather than one combined state machine
