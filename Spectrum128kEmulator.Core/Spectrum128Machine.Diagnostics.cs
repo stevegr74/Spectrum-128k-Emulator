@@ -99,7 +99,7 @@ namespace Spectrum128kEmulator
             sb.AppendLine($"TapeTransport={TapeTransportState} MarkerStop={(IsTapeStoppedAtMarker ? 1 : 0)}");
             if (mountedTape != null)
                 sb.AppendLine($"TapeDebug={mountedTape.DebugPlaybackState}");
-            sb.AppendLine($"TapeActivityReads={mountedTapePortReadCount} KeyboardOnly={mountedTapeKeyboardOnlyPortReadCount} Observed={(mountedTapeLoaderActivityObserved ? 1 : 0)} HandoffFrames={mountedTapeHandoffFrames}");
+            sb.AppendLine($"TapeActivityReads={tapeActivity.PortReadCount} KeyboardOnly={tapeActivity.KeyboardOnlyPortReadCount} Observed={(tapeActivity.LoaderActivityObserved ? 1 : 0)} HandoffFrames={tapeActivity.HandoffFrames}");
             sb.AppendLine();
 
             sb.AppendLine("=== CPU STATE ===");

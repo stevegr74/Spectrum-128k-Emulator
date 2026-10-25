@@ -8,7 +8,8 @@ invariants unless a compatibility fix explicitly changes one.
 
 | Component | Owns | Does not own |
 | --- | --- | --- |
-| `Spectrum128Machine` | Mounted-media identity, the public transport state, automatic handoff counters, transport transitions, and aggregate Quick State capture/restore | Tape parsing, pulse decoding, or loader-strategy selection |
+| `Spectrum128Machine` | Mounted-media identity, the public transport state, transport transition coordination, and aggregate Quick State capture/restore | Tape parsing, pulse decoding, or loader-strategy selection |
+| `TapeActivityTracker` | EAR/keyboard read counters, loader-activity and handoff observations, automatic-resume progress, and their Quick State | Pulse position, transport commands, or continuation policy |
 | `MountedTape` | Block position, exact pulse/EAR cursor, pause and stop-marker state, ROM-trap stream position, header/data sequencing, and transport Quick State | Machine-wide reset policy or BASIC/machine-code continuation |
 | `MountedLoadContinuationController` | Pending BASIC/USR continuation, workspace restoration, resume gates, and continuation Quick State | Physical tape position or the visible transport state |
 | `TapLoader` and `TzxLoader` | File parsing, load-strategy selection, bootstrap execution, and construction of the remaining mounted tape | Long-lived transport ownership after loading hands control to the machine |
@@ -58,7 +59,7 @@ retain mutable tape objects for direct cross-thread control.
 ## Hardening Order
 
 1. Lock the lifecycle and restoration invariants with focused tests.
-2. Extract machine-level transport transition policy without changing behavior.
+2. Extract machine-level activity tracking and transport transition policy without changing behavior. Activity tracking is now isolated in `TapeActivityTracker`.
 3. Separate loader-strategy and continuation orchestration behind explicit
    boundaries.
 4. Improve transition diagnostics and split the large regression suite by

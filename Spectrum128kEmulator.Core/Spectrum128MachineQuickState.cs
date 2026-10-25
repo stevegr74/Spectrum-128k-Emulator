@@ -47,14 +47,7 @@ namespace Spectrum128kEmulator
             internal MountedTape? MountedTape;
             internal MountedTape.QuickState? MountedTapeState;
             internal TapeTransportState TapeTransportState;
-            internal ulong MountedTapePortReadCount;
-            internal ulong MountedTapePortReadCountAtFrameStart;
-            internal ulong MountedTapeKeyboardOnlyPortReadCount;
-            internal ulong MountedTapeKeyboardOnlyPortReadCountAtFrameStart;
-            internal bool MountedTapeLoaderActivityObserved;
-            internal int MountedTapeHandoffFrames;
-            internal bool MountedTapeAutoPausedAtHandoff;
-            internal int MountedTapeAutomaticResumeReads;
+            internal TapeActivityTracker.QuickState TapeActivityState = null!;
             internal RzxPlaybackSession? RzxPlayback;
             internal RzxPlaybackSession.QuickState? RzxPlaybackState;
             internal MountedLoadContinuationController.QuickState MountedLoadContinuationState = null!;
@@ -119,14 +112,7 @@ namespace Spectrum128kEmulator
                 MountedTape = mountedTape,
                 MountedTapeState = mountedTape?.CaptureQuickState(),
                 TapeTransportState = TapeTransportState,
-                MountedTapePortReadCount = mountedTapePortReadCount,
-                MountedTapePortReadCountAtFrameStart = mountedTapePortReadCountAtFrameStart,
-                MountedTapeKeyboardOnlyPortReadCount = mountedTapeKeyboardOnlyPortReadCount,
-                MountedTapeKeyboardOnlyPortReadCountAtFrameStart = mountedTapeKeyboardOnlyPortReadCountAtFrameStart,
-                MountedTapeLoaderActivityObserved = mountedTapeLoaderActivityObserved,
-                MountedTapeHandoffFrames = mountedTapeHandoffFrames,
-                MountedTapeAutoPausedAtHandoff = mountedTapeAutoPausedAtHandoff,
-                MountedTapeAutomaticResumeReads = mountedTapeAutomaticResumeReads,
+                TapeActivityState = tapeActivity.CaptureQuickState(),
                 RzxPlayback = rzxPlayback,
                 RzxPlaybackState = rzxPlayback?.CaptureQuickState(),
                 MountedLoadContinuationState = mountedLoadContinuation.CaptureQuickState()
@@ -206,14 +192,7 @@ namespace Spectrum128kEmulator
             if (mountedTape != null && state.MountedTapeState != null)
                 mountedTape.RestoreQuickState(state.MountedTapeState);
             TapeTransportState = state.TapeTransportState;
-            mountedTapePortReadCount = state.MountedTapePortReadCount;
-            mountedTapePortReadCountAtFrameStart = state.MountedTapePortReadCountAtFrameStart;
-            mountedTapeKeyboardOnlyPortReadCount = state.MountedTapeKeyboardOnlyPortReadCount;
-            mountedTapeKeyboardOnlyPortReadCountAtFrameStart = state.MountedTapeKeyboardOnlyPortReadCountAtFrameStart;
-            mountedTapeLoaderActivityObserved = state.MountedTapeLoaderActivityObserved;
-            mountedTapeHandoffFrames = state.MountedTapeHandoffFrames;
-            mountedTapeAutoPausedAtHandoff = state.MountedTapeAutoPausedAtHandoff;
-            mountedTapeAutomaticResumeReads = state.MountedTapeAutomaticResumeReads;
+            tapeActivity.RestoreQuickState(state.TapeActivityState);
 
             rzxPlayback = state.RzxPlayback;
             if (rzxPlayback != null && state.RzxPlaybackState != null)

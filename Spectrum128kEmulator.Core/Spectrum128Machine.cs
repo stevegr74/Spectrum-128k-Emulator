@@ -37,14 +37,7 @@ namespace Spectrum128kEmulator
             0xFF, 0xFF, 0xFF, 0xFF
         };
         private readonly ulong[] keyboardRowScanCounts = new ulong[8];
-        private ulong mountedTapePortReadCount;
-        private ulong mountedTapePortReadCountAtFrameStart;
-        private ulong mountedTapeKeyboardOnlyPortReadCount;
-        private ulong mountedTapeKeyboardOnlyPortReadCountAtFrameStart;
-        private bool mountedTapeLoaderActivityObserved;
-        private int mountedTapeHandoffFrames;
-        private bool mountedTapeAutoPausedAtHandoff;
-        private int mountedTapeAutomaticResumeReads;
+        private readonly TapeActivityTracker tapeActivity = new TapeActivityTracker();
         
         // AY-3-8912
         private readonly Audio.Ay8912 ay = new Audio.Ay8912();
@@ -915,7 +908,7 @@ namespace Spectrum128kEmulator
                 return false;
 
             if (ReferenceEquals(mountedTape, activeTape))
-                mountedTapeLoaderActivityObserved = true;
+                tapeActivity.LoaderActivityObserved = true;
             return true;
         }
 
@@ -1109,9 +1102,9 @@ namespace Spectrum128kEmulator
             bool keyboardOnlyRead = mountedTape != null && IsKeyboardOnlyAccumulatorRead();
             if (mountedTape != null)
             {
-                mountedTapePortReadCount++;
+                tapeActivity.PortReadCount++;
                 if (keyboardOnlyRead)
-                    mountedTapeKeyboardOnlyPortReadCount++;
+                    tapeActivity.KeyboardOnlyPortReadCount++;
 
                 TryAutomaticallyResumeTapeForRomLoaderRead(sampleTStates);
             }
@@ -1132,22 +1125,22 @@ namespace Spectrum128kEmulator
         {
             MountedTape? activeTape = mountedTape;
             if (activeTape == null ||
-                !mountedTapeAutoPausedAtHandoff ||
+                !tapeActivity.AutoPausedAtHandoff ||
                 !activeTape.IsPlaybackPaused ||
                 activeTape.IsPausedByStopMarker)
             {
-                mountedTapeAutomaticResumeReads = 0;
+                tapeActivity.AutomaticResumeReads = 0;
                 return;
             }
 
             if (!RomProfile.IsTapeInputRoutinePortRead(cpu.Regs.PC))
             {
-                mountedTapeAutomaticResumeReads = 0;
+                tapeActivity.AutomaticResumeReads = 0;
                 return;
             }
 
-            mountedTapeAutomaticResumeReads++;
-            if (mountedTapeAutomaticResumeReads < TapeLoaderSearchReadsBeforeAutomaticResume)
+            tapeActivity.AutomaticResumeReads++;
+            if (tapeActivity.AutomaticResumeReads < TapeLoaderSearchReadsBeforeAutomaticResume)
                 return;
 
             if (activeTape.ResumePlayback(sampleTStates))
@@ -1182,11 +1175,11 @@ namespace Spectrum128kEmulator
 
         private void UpdateAutomaticTapeStopAtFrameBoundary()
         {
-            ulong readsThisFrame = mountedTapePortReadCount - mountedTapePortReadCountAtFrameStart;
-            mountedTapePortReadCountAtFrameStart = mountedTapePortReadCount;
+            ulong readsThisFrame = tapeActivity.PortReadCount - tapeActivity.PortReadCountAtFrameStart;
+            tapeActivity.PortReadCountAtFrameStart = tapeActivity.PortReadCount;
             ulong keyboardOnlyReadsThisFrame =
-                mountedTapeKeyboardOnlyPortReadCount - mountedTapeKeyboardOnlyPortReadCountAtFrameStart;
-            mountedTapeKeyboardOnlyPortReadCountAtFrameStart = mountedTapeKeyboardOnlyPortReadCount;
+                tapeActivity.KeyboardOnlyPortReadCount - tapeActivity.KeyboardOnlyPortReadCountAtFrameStart;
+            tapeActivity.KeyboardOnlyPortReadCountAtFrameStart = tapeActivity.KeyboardOnlyPortReadCount;
             ulong earSensitiveReadsThisFrame = readsThisFrame >= keyboardOnlyReadsThisFrame
                 ? readsThisFrame - keyboardOnlyReadsThisFrame
                 : 0;
@@ -1194,15 +1187,15 @@ namespace Spectrum128kEmulator
             MountedTape? activeTape = mountedTape;
             if (activeTape == null || activeTape.IsPlaybackPaused || activeTape.HasCompletedPlayback)
             {
-                mountedTapeLoaderActivityObserved = false;
-                mountedTapeHandoffFrames = 0;
+                tapeActivity.LoaderActivityObserved = false;
+                tapeActivity.HandoffFrames = 0;
                 return;
             }
 
             if (earSensitiveReadsThisFrame > TapeLoaderActivityReadsPerFrame)
             {
-                mountedTapeLoaderActivityObserved = true;
-                mountedTapeHandoffFrames = 0;
+                tapeActivity.LoaderActivityObserved = true;
+                tapeActivity.HandoffFrames = 0;
                 return;
             }
 
@@ -1213,42 +1206,35 @@ namespace Spectrum128kEmulator
                 cpu.IsHalted &&
                 readsThisFrame <= TapeLoaderActivityReadsPerFrame;
             bool loaderHasRelinquishedTape =
-                mountedTapeLoaderActivityObserved &&
+                tapeActivity.LoaderActivityObserved &&
                 (sustainedKeyboardOnlyWait || lowRateHaltLoop) &&
                 cpu.Regs.PC >= 0x4000 &&
                 activeTape.IsActivelyDrivingEarLine &&
                 !HasPendingMountedLoadUsrContinuation;
             if (!loaderHasRelinquishedTape)
             {
-                mountedTapeHandoffFrames = 0;
+                tapeActivity.HandoffFrames = 0;
                 return;
             }
 
-            mountedTapeHandoffFrames++;
-            if (mountedTapeHandoffFrames < TapeLoaderHandoffFramesBeforeStop)
+            tapeActivity.HandoffFrames++;
+            if (tapeActivity.HandoffFrames < TapeLoaderHandoffFramesBeforeStop)
                 return;
 
             if (activeTape.PausePlayback(cpu.TStates))
             {
                 TapeTransportState = TapeTransportState.Stopped;
-                mountedTapeAutoPausedAtHandoff = true;
-                mountedTapeAutomaticResumeReads = 0;
+                tapeActivity.AutoPausedAtHandoff = true;
+                tapeActivity.AutomaticResumeReads = 0;
                 Trace?.Invoke(
                     $"[TapeTransport] Auto-stop frame={FrameCount} pc=0x{cpu.Regs.PC:X4} {activeTape.DebugPlaybackState}");
             }
-            mountedTapeHandoffFrames = 0;
+            tapeActivity.HandoffFrames = 0;
         }
 
         private void ResetMountedTapeActivityTracking()
         {
-            mountedTapePortReadCount = 0;
-            mountedTapePortReadCountAtFrameStart = 0;
-            mountedTapeKeyboardOnlyPortReadCount = 0;
-            mountedTapeKeyboardOnlyPortReadCountAtFrameStart = 0;
-            mountedTapeLoaderActivityObserved = false;
-            mountedTapeHandoffFrames = 0;
-            mountedTapeAutoPausedAtHandoff = false;
-            mountedTapeAutomaticResumeReads = 0;
+            tapeActivity.Reset();
         }
 
         private byte ReadFloatingBus(ulong sampleTStates)
