@@ -44,6 +44,10 @@ retain mutable tape objects for direct cross-thread control.
 10. Quick State captures the mounted media, exact tape cursor, public transport
     state, automatic-handoff counters, and loader continuation as one aggregate.
     Restore must reattach media before restoring tape and continuation state.
+11. Load strategy and continuation decisions are independent of media names and
+    game hashes. A preloaded custom-loader handoff is accepted only when BASIC
+    execution changed one unique loader wait loop in live RAM; unchanged or
+    ambiguous byte patterns cannot redirect execution.
 
 ## Public Transitions
 
@@ -84,7 +88,9 @@ focused checks for:
 - manual stops, stop markers, completion, replacement, reset, and Quick State
   restoration remain distinct transitions;
 - accelerated BASIC tokenization and execution preserve `INT`, division, and
-  byte-extraction expressions used by protected loaders.
+  byte-extraction expressions used by protected loaders;
+- application RAM is not classified as a ROM return path, and unchanged loader
+  wait-loop lookalikes cannot redirect bootstrap execution;
 - unsupported ROM acceleration, unsafe bootstrap control flow, and
   unrepresentable mounted continuation expose stable reason codes without
   requiring callers to parse diagnostic prose.

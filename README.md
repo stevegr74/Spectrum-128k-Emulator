@@ -62,6 +62,7 @@ Current limitations and active work:
 - Accelerated BASIC bootstrap expressions preserve `INT` and division semantics used by byte-extraction loader idioms instead of rejecting otherwise safe programs.
 - Protected playback and Quick State preserve precise tape pulse, EAR, loader-continuation and replay positions.
 - Mounted-loader continuation state, BASIC workspace preservation, resume gating, and Quick State capture are isolated from the machine in a dedicated controller.
+- Tape strategy and continuation decisions do not inspect media names or game hashes; preloaded custom-loader handoff requires a unique wait loop that the executed BASIC bootstrap demonstrably patched in live RAM.
 - The background emulation loop owns mutable machine state; the UI consumes copied snapshots and uses nested pause leases for safe inspection.
 - Windows key messages are captured before control/menu preprocessing, then applied by the emulation loop through a scan-aware matrix bridge; shared Spectrum chords retain independent host-key ownership and use emulated T-states rather than UI scheduler ticks.
 - The undocumented Z80 Q latch is tracked by flag-writing semantics, including prefix and interrupt boundaries, with focused regressions alongside ZEXDOC/ZEXALL.
@@ -432,6 +433,7 @@ compatibility; completed milestones remain regression baselines.
 - Kept pulse/EAR transport, fast/ROM/protected load strategy, and BASIC/machine-code continuation as separate cooperating responsibilities rather than one combined state machine
 - Reduced the three largest tape implementation files through behavior-preserving partial-class extractions for parsing/timing, ROM loading, BASIC expressions, and mounted continuation; `MountedLoadContinuationController` remains focused on resume state
 - Added stable load-plan reason codes for unsupported acceleration, unsafe bootstrap control flow, and unrepresentable continuation while retaining readable explanations and distinct transport reasons for pause, tape end, and ROM handoff
+- Removed the application-RAM continuation whitelist and replaced arbitrary custom-loader byte matching with a unique BASIC-patched wait-loop transition, guarded against unchanged lookalikes
 - Retained the full automated suite, ZEXDOC/ZEXALL, and the verified media matrix as regression gates throughout the structural work
 - Completed final interactive acceptance with the hardened tape paths and transport behavior confirmed working as expected
 
