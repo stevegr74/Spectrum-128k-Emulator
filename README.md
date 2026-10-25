@@ -16,7 +16,7 @@ This project focuses on correctness, clean architecture, and incremental develop
 - `.tap` and `.tzx` parsing, fast bootstrap, ROM-driven loading, protected/mounted playback, VERIFY, and multi-block sequencing
 - Manual/resumable tape transport with 48K stop-marker support and persistent status feedback
 - Platform-neutral headless core with Windows presentation/audio adapters
-- Paused `F6` debugger with immutable mapped/physical-bank captures, CPU/stack context, execution controls, breakpoints, bank-qualified labels, control/data cross-references, hexadecimal memory inspection, persistent code/data markings, search, navigation, copy, and export
+- Paused `F6` debugger with immutable mapped/physical-bank captures, a visual paging map, grouped CPU/stack context, execution controls, breakpoints, bank-qualified labels, control/data cross-references, hexadecimal memory inspection, persistent code/data markings, search, navigation, copy, and export
 - In-memory `F7`/`F8` Quick State save and restore
 - Headless manual diagnostics and Z80 compliance runners
 
@@ -30,7 +30,7 @@ This project focuses on correctness, clean architecture, and incremental develop
 
 ### Bank-Aware Debugger
 
-![Paused Z80 debugger showing mapped memory, paging context, labels, and execution controls](docs/images/debugger-bank-aware.png)
+![Paused Z80 debugger showing the paging map, grouped CPU state, memory inspector, and execution controls](docs/images/debugger-bank-aware.png)
 
 ---
 
@@ -73,11 +73,12 @@ Current limitations and active work:
 
 ## Development Priorities
 
-Each feature is developed on its own branch. Milestone 19 completes the bank-aware
-debugger foundation, including symbolic analysis, conservative control/data
-cross-references, persistent code/data markings, and hexadecimal memory inspection.
-Milestone 20 will harden the tape architecture through behavior-preserving
-decomposition and stronger transition tests. Milestone 21 will
+Each feature is developed on its own branch. Milestone 19 is complete, delivering
+the bank-aware debugger foundation, symbolic analysis, conservative control/data
+cross-references, persistent code/data markings, hexadecimal memory inspection,
+and a compact paging/CPU-state workspace. Milestone 20 will harden the tape
+architecture through behavior-preserving decomposition and stronger transition
+tests. Milestone 21 will
 add a bank-aware Poke Manager with a maintainable cheat library and safe one-off
 memory writes. Tape compatibility and the turbo-to-realtime audio transition
 continue in parallel, with the verified media matrix plus ZEXDOC/ZEXALL used as
@@ -94,6 +95,7 @@ and diagnostic tools:
 Spectrum128kEmulator/
 |-- Spectrum128kEmulator.Core/             net8.0 platform-neutral emulator
 |   |-- Audio/                             AY/beeper synthesis and sample clock
+|   |-- Debugging/                         instruction-boundary execution controller
 |   |-- Tape/                              TAP/TZX parsing, transport, and bootstrap policy
 |   |   |-- MountedTape.cs                 pulse/EAR playback and ROM-load traps
 |   |   |-- TapLoader.cs                   TAP orchestration and load-strategy planning
@@ -192,10 +194,14 @@ discarded on exit.
 The debugger captures the mapped logical 64K, both ROM banks, all eight RAM
 banks, registers, flags, interrupt state, stack context, model, and paging state.
 Its grouped CPU panel highlights values changed since the previous stopped
-capture; register addresses open in Memory, while the PC and stack values
-navigate the disassembly listing.
-Its memory-view selector keeps mapped addresses distinct from bank-qualified
-physical offsets; search, history, copy, and export follow the selected view.
+capture, shows the instruction at `PC`, and retains the main and alternate
+registers, individual flags, interrupt state, timing, and four stack words.
+Register addresses open in Memory, while the PC and stack values navigate the
+disassembly listing. The visual paging map identifies the current ROM, all three
+mapped RAM slots, and the active display bank; its compact fallback preserves the
+same context at narrow window widths. The memory-view selector keeps mapped
+addresses distinct from bank-qualified physical offsets; search, history, copy,
+and export follow the selected view.
 Bank-qualified labels persist between sessions, can be imported or exported as
 plain-text symbol files, and are created automatically when an unlabeled direct
 call or branch target is followed.
@@ -249,7 +255,7 @@ Test coverage includes:
 - AY register write and selected-register port-read behaviour
 - Audio sample generation
 - Audio pipeline behaviour
-- Z80 instruction decoding, bank-aware disassembly navigation/search, labels, classifications, control/data cross-references, hexadecimal memory inspection, listing export, settings, snapshot behavior, and STA WinForms interaction
+- Z80 instruction decoding, bank-aware disassembly navigation/search, paging-map presentation, grouped CPU-state changes and address links, labels, classifications, control/data cross-references, hexadecimal memory inspection, listing export, settings, snapshot behavior, and STA WinForms interaction
 - Quick State deterministic machine, tape-cursor, and RZX-cursor restoration
 - ZEXDOC and ZEXALL compliance validation via the dedicated runner
 
@@ -374,7 +380,7 @@ compatibility and polish; completed milestones remain regression baselines.
 - Opens paused by default, with explicit Run/Pause controls and a visibly frozen capture while execution is active
 - Implements Step Into, call-aware Step Over, stack-aware Step Out, and Run to Cursor at instruction boundaries
 - Provides persistent enabled/disabled address breakpoints with a compact list and listing highlights
-- Shows main and alternate registers, flags, interrupt state, stack context, timing, and the instruction at the current `PC`
+- Shows a compact grouped CPU panel with main and alternate registers, individual flags, interrupt state, stack context, timing, the instruction at `PC`, changed-value highlighting, and direct register/stack navigation
 - Keeps execution and breakpoint policy in a platform-neutral debugger service, with deterministic controller, interrupt-boundary, CPU, and scheduler tests
 - Refreshes the immutable capture only after a safe stop, avoiding mutable-state inspection while execution is active
 
@@ -383,6 +389,7 @@ compatibility and polish; completed milestones remain regression baselines.
 - Completed explicit mapped versus bank-qualified offset context across navigation history, search, copy, and 64K/16K export
 - Completed persistent user labels, automatic followed-target labels, symbol-aware navigation, and bank-qualified symbol import/export
 - Completed refreshed paging context without conflating physical offsets with logical CPU addresses
+- Completed a responsive four-slot paging map for the current ROM, mapped RAM banks, active display bank, listing address, captured PC, and machine model
 - Completed stable bank-qualified listings suitable for diagnostics and comparison between emulator runs
 - Completed incoming and outgoing direct control-flow cross-references for calls and jumps, with recursive analysis limited to explicit code roots and conservative bank qualification
 - Completed and acceptance-tested persistent bank-qualified code/data/unknown range marking; confirmed data renders as `DB` and is excluded from mnemonic search and recursive control-flow decoding
