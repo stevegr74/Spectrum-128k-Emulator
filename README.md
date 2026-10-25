@@ -59,6 +59,7 @@ Current limitations and active work:
 - ROM-driven tape handoffs preserve consumed-block pauses, exact TZX pause signal transitions, and zero-duration stop markers.
 - TZX pulse and pause timings use their 3.5 MHz tape-time basis and are scaled to the selected machine clock; unstructured ROM loads return to their actual caller so banked multiload stages can continue safely.
 - Mounted playback detects stable keyboard/HALT handoffs, pauses at multiload boundaries, and preserves custom ROM flag and LOAD/VERIFY state across accelerated blocks.
+- Accelerated BASIC bootstrap expressions preserve `INT` and division semantics used by byte-extraction loader idioms instead of rejecting otherwise safe programs.
 - Protected playback and Quick State preserve precise tape pulse, EAR, loader-continuation and replay positions.
 - Mounted-loader continuation state, BASIC workspace preservation, resume gating, and Quick State capture are isolated from the machine in a dedicated controller.
 - The background emulation loop owns mutable machine state; the UI consumes copied snapshots and uses nested pause leases for safe inspection.
@@ -405,6 +406,8 @@ compatibility and polish; completed milestones remain regression baselines.
 - Extracted capability-gated load-strategy selection into a dedicated planner while leaving plan execution and loader continuation behavior unchanged
 - Added structured transport transition reasons for reset, mount, manual stop/resume, automatic handoff stop/ROM resume, stop markers, tape end, and eject; the reason is preserved by Quick State and included in diagnostics
 - Extended activity-based handoff detection to keyboard loops that discard EAR with either `AND` or `OR`; qualifying polls may span intervening music/animation frames, while any genuine EAR read cancels the pending stop
+- Locked the recent compatibility fixes behind synthetic regressions for early-stop prevention, cross-frame keyboard evidence, EAR-sensitive cancellation, exact-cursor ROM resume, `INT`/division tokenization, and bootstrap byte-extraction expressions
+- Re-ran every entry in the verified-media matrix with post-load execution soak; Target Renegade 48K/128K, New Zealand Story, Indiana Jones, and Oracle's Cave also passed their mode-specific or interactive multiload checkpoints
 - Add table-driven transition coverage for fast loading, real-time fallback, pause/resume, stop markers, tape end, multiloads, media replacement, reset, and Quick State restoration
 - Split the large tape regression suite into responsibility-based test classes without reducing existing coverage
 - Keep pulse/EAR transport, fast/ROM/protected load strategy, and BASIC/machine-code continuation as separate cooperating responsibilities rather than one combined state machine

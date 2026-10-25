@@ -71,3 +71,24 @@ retain mutable tape objects for direct cross-thread control.
    responsibility.
 5. Re-run the complete automated suite and representative difficult media after
    every structural step.
+
+## Regression Guards
+
+The automated suite uses synthetic tape blocks and BASIC programs rather than
+copyrighted game media. It locks the transport and continuation behavior behind
+focused checks for:
+
+- automatic handoff stops only after three qualifying keyboard-wait frames;
+- idle frames may separate positive evidence but cannot create it, while an
+  EAR-sensitive read cancels accumulated evidence;
+- keyboard loops that discard EAR with either `AND` or `OR` are recognized;
+- automatic ROM resume requires a genuine automatic handoff and preserves the
+  exact pulse/EAR cursor;
+- manual stops, stop markers, completion, replacement, reset, and Quick State
+  restoration remain distinct transitions;
+- accelerated BASIC tokenization and execution preserve `INT`, division, and
+  byte-extraction expressions used by protected loaders.
+
+The separate verified-media matrix remains the end-to-end acceptance gate for
+real loader behavior, including the distinct Target Renegade machine modes and
+the New Zealand Story and Indiana Jones multiload resumes.

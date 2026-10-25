@@ -3005,6 +3005,59 @@ namespace Spectrum128kEmulator.Tests
         }
 
         [Fact]
+        public void BasicBootstrapExecutor_Tokenizes_Int_And_Division()
+        {
+            Type executorType = typeof(TapLoader).GetNestedType("BasicBootstrapExecutor", BindingFlags.NonPublic)!;
+            MethodInfo tokenize = executorType.GetMethod("Tokenize", BindingFlags.NonPublic | BindingFlags.Static)!;
+            object tokenSpans = tokenize.Invoke(null, new object[]
+            {
+                Token(186).Concat(Ascii("(-513/256)\r")).ToArray()
+            })!;
+
+            string[] tokens = ((System.Collections.IEnumerable)tokenSpans)
+                .Cast<object>()
+                .Select(token => token.GetType().GetProperty("Text")!.GetValue(token)!.ToString()!)
+                .ToArray();
+
+            Assert.Equal(new[] { "INT", "(", "-", "513", "/", "256", ")" }, tokens);
+        }
+
+        [Fact]
+        public void BasicBootstrapExpression_IntDivisionRoundsNegativeValuesDown()
+        {
+            string tempFolder = CreateTempRoms();
+
+            try
+            {
+                var machine = new Spectrum128Machine(tempFolder);
+                Type parserType = typeof(TapLoader).GetNestedType("ExpressionParser", BindingFlags.NonPublic)!;
+                ConstructorInfo parserCtor = parserType
+                    .GetConstructors(BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic)
+                    .Single(ctor => ctor.GetParameters().Length == 6);
+                var tokens = new List<string> { "INT", "(", "-", "513", "/", "256", ")" };
+                object parser = parserCtor.Invoke(new object[]
+                {
+                    machine,
+                    new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase),
+                    tokens,
+                    0,
+                    tokens.Count - 1,
+                    false
+                });
+
+                int value = (int)parserType
+                    .GetMethod("Parse", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic)!
+                    .Invoke(parser, Array.Empty<object>())!;
+
+                Assert.Equal(-3, value);
+            }
+            finally
+            {
+                Directory.Delete(tempFolder, true);
+            }
+        }
+
+        [Fact]
         public void BasicBootstrapExecutor_ImmediateProtectedProgram_DoesNotRequireRomDrivenMountedPath()
         {
             string tempFolder = CreateTempRoms();

@@ -45,6 +45,21 @@ that every level, control path, or hardware edge case has been tested.
 | --- | --- | --- |
 | Auf Wiedersehen Monty | `aufmonty.rzx` | Replay loads and runs through the RZX input path |
 
+## Regression Validation
+
+The complete table currently represents 30 media paths. The latest full pass
+loaded every path to its documented checkpoint, visually inspected the resulting
+frame, and continued execution for at least 1,000 additional frames where the
+checkpoint allowed it. No delayed BASIC errors, blank screens, or post-load
+crashes were observed.
+
+The interaction-dependent checks also confirmed that Target Renegade follows
+the distinct 48K multiload and 128K full-load paths, New Zealand Story resumes
+automatically into level 1-1, Indiana Jones resumes into level 1 and preserves
+the next tape boundary, and Oracle's Cave accepts a quest selection and enters
+the generated cave. Synthetic tests cover the underlying loader transitions so
+these checks do not depend on distributing the game media with the repository.
+
 ## Recording New Results
 
 When adding an entry, include the exact release or filename where it matters,

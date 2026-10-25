@@ -3423,7 +3423,8 @@ namespace Spectrum128kEmulator.Tap
                     else if (token == "/")
                     {
                         index++;
-                        value /= ParseUnary();
+                        int divisor = ParseUnary();
+                        value = (int)Math.Floor((double)value / divisor);
                     }
                     else
                     {

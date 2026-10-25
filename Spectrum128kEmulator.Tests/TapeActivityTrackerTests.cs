@@ -93,6 +93,24 @@ namespace Spectrum128kEmulator.Tests
         }
 
         [Fact]
+        public void AutomaticHandoff_IdleFramesBeforeKeyboardEvidenceDoNotCauseEarlyStop()
+        {
+            var tracker = new TapeActivityTracker();
+            MountedTape tape = CreateDrivingTape();
+            tracker.ObserveLoaderActivity();
+
+            Assert.False(RecordIdleFrame(tracker, tape));
+            Assert.False(RecordIdleFrame(tracker, tape));
+            Assert.False(RecordIdleFrame(tracker, tape));
+            Assert.False(RecordKeyboardWaitFrame(tracker, tape));
+            Assert.False(RecordKeyboardWaitFrame(tracker, tape));
+            Assert.False(tape.IsPlaybackPaused);
+
+            Assert.True(RecordKeyboardWaitFrame(tracker, tape));
+            Assert.True(tape.IsPlaybackPaused);
+        }
+
+        [Fact]
         public void AutomaticHandoff_EarReadCancelsAccumulatedKeyboardEvidence()
         {
             var tracker = new TapeActivityTracker();
