@@ -2952,6 +2952,59 @@ namespace Spectrum128kEmulator.Tests
         }
 
         [Fact]
+        public void ExecuteBootstrapBasicAutoStart_Evaluates_Int_Division_In_Poke_Value()
+        {
+            string tempFolder = CreateTempRoms();
+
+            try
+            {
+                byte[] program = BuildBasicProgram(
+                    BuildBasicLine(10,
+                        Token(228), Ascii("513"), NumberMarker(513),
+                        Colon(),
+                        Token(227), Ascii("z"),
+                        Colon(),
+                        Token(244), Ascii("32000"), NumberMarker(32000), Comma(),
+                        Ascii("z-256"), NumberMarker(256), Ascii("*"), Token(186),
+                        Ascii("(z/256"), NumberMarker(256), Ascii(")")));
+
+                var machine = new Spectrum128Machine(tempFolder);
+                MethodInfo initializeMachine = typeof(TapLoader).GetMethod("InitializeMachineForFakeTapeLoad", BindingFlags.NonPublic | BindingFlags.Static)!;
+                MethodInfo loadBasicProgram = typeof(TapLoader)
+                    .GetMethods(BindingFlags.NonPublic | BindingFlags.Static)
+                    .Single(method =>
+                    {
+                        if (method.Name != "LoadBasicProgram")
+                            return false;
+                        ParameterInfo[] parameters = method.GetParameters();
+                        return parameters.Length == 3 &&
+                               parameters[0].ParameterType == typeof(Spectrum128Machine) &&
+                               parameters[2].ParameterType == typeof(byte[]);
+                    });
+                MethodInfo parseHeaderInfo = typeof(TapLoader).GetMethod("ParseHeaderInfo", BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Static)!;
+                MethodInfo executeBootstrap = typeof(TapLoader).GetMethod("ExecuteBootstrapBasicAutoStart", BindingFlags.NonPublic | BindingFlags.Static)!;
+
+                initializeMachine.Invoke(null, new object[] { machine, false });
+                TapeBlock headerBlock = TapeBlock.CreateData(BuildHeaderBlock(
+                    type: 0,
+                    fileName: "INTDIV",
+                    dataLength: (ushort)program.Length,
+                    parameter1: 10,
+                    parameter2: (ushort)program.Length), 2168, 8063, 667, 735, 855, 1710, 8, 1000);
+                object header = parseHeaderInfo.Invoke(null, new object[] { headerBlock })!;
+                loadBasicProgram.Invoke(null, new object[] { machine, header, program });
+
+                executeBootstrap.Invoke(null, new object[] { machine, (ushort)23755, (ushort)program.Length, (ushort)10, false });
+
+                Assert.Equal((byte)1, machine.PeekMemory(32000));
+            }
+            finally
+            {
+                Directory.Delete(tempFolder, true);
+            }
+        }
+
+        [Fact]
         public void BasicBootstrapExecutor_ImmediateProtectedProgram_DoesNotRequireRomDrivenMountedPath()
         {
             string tempFolder = CreateTempRoms();

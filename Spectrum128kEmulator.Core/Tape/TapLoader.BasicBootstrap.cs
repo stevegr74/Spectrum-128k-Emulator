@@ -1274,7 +1274,7 @@ namespace Spectrum128kEmulator.Tap
                         continue;
                     }
 
-                    if ("()+-*=,:".IndexOf(c) >= 0)
+                    if ("()+-*/=,:".IndexOf(c) >= 0)
                         tokens.Add(new TokenSpan(c.ToString(), i));
                 }
 
@@ -3312,6 +3312,7 @@ namespace Spectrum128kEmulator.Tap
             {
                 keyword = value switch
                 {
+                    186 => "INT",
                     190 => "PEEK",
                     192 => "USR",
                     217 => "INK",
@@ -3419,6 +3420,11 @@ namespace Spectrum128kEmulator.Tap
                         index++;
                         value *= ParseUnary();
                     }
+                    else if (token == "/")
+                    {
+                        index++;
+                        value /= ParseUnary();
+                    }
                     else
                     {
                         break;
@@ -3459,6 +3465,9 @@ namespace Spectrum128kEmulator.Tap
                     int address = ParsePrimary();
                     return machine.PeekMemory((ushort)address);
                 }
+
+                if (token == "INT")
+                    return ParsePrimary();
 
                 if (int.TryParse(token, out int number))
                     return number;
