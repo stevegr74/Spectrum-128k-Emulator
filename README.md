@@ -18,6 +18,7 @@ This project focuses on correctness, clean architecture, and incremental develop
 - Platform-neutral headless core with Windows presentation/audio adapters
 - Paused `F6` debugger with immutable mapped/physical-bank captures, a visual paging map, grouped CPU/stack context, execution controls, breakpoints, bank-qualified labels, control/data cross-references, hexadecimal memory inspection, persistent code/data markings, search, navigation, copy, and export
 - In-memory `F7`/`F8` Quick State save and restore
+- Paused Poke Manager with an editable validated library, checksum-aware suggestions, mapped or physical-bank one-off writes, previews, and guarded restoration
 - Headless manual diagnostics and Z80 compliance runners
 
 ---
@@ -37,10 +38,10 @@ This project focuses on correctness, clean architecture, and incremental develop
 ## Current Status
 
 `master` is a stable, playable baseline with a headless core, clock-driven audio,
-explicit machine models, resumable tape transport, a paused execution debugger, and a
-temporary Quick State slot. ZEXDOC and ZEXALL pass in the headless compliance
-runner, although they are not proof that every undocumented hardware interaction
-is complete.
+explicit machine models, resumable tape transport, a paused execution debugger,
+a temporary Quick State slot, and a bank-aware Poke Manager. ZEXDOC and ZEXALL
+pass in the headless compliance runner, although they are not proof that every
+undocumented hardware interaction is complete.
 
 Manually tested titles, formats, and reached checkpoints are tracked in
 [Verified Games And Media](VERIFIED_GAMES.md).
@@ -65,6 +66,7 @@ Current limitations and active work:
 - Mounted-loader continuation state, BASIC workspace preservation, resume gating, and Quick State capture are isolated from the machine in a dedicated controller.
 - Tape strategy and continuation decisions do not inspect media names or game hashes; preloaded custom-loader handoff requires a unique wait loop that the executed BASIC bootstrap demonstrably patched in live RAM.
 - The background emulation loop owns mutable machine state; the UI consumes copied snapshots and uses nested pause leases for safe inspection.
+- The Poke Manager pauses emulation before inspecting or changing RAM; exact media checksums are trusted matches, filename aliases are discovery hints only, and restoration is refused if the running program has since changed an applied byte.
 - Windows key messages are captured before control/menu preprocessing, then applied by the emulation loop through a scan-aware matrix bridge; shared Spectrum chords retain independent host-key ownership and use emulated T-states rather than UI scheduler ticks.
 - The undocumented Z80 Q latch is tracked by flag-writing semantics, including prefix and interrupt boundaries, with focused regressions alongside ZEXDOC/ZEXALL.
 - Maskable interrupt acceptance resets both Z80 interrupt flip-flops; `LD A,I`/`LD A,R`, `RETN`/`RETI`, and delayed `EI` behavior have focused regressions across both execution schedulers.
@@ -85,9 +87,9 @@ conservative control/data cross-references, persistent code/data markings,
 hexadecimal memory inspection, and a compact paging/CPU-state workspace.
 Milestone 20 is complete, with explicit
 tape-state ownership, structured load and transport diagnostics, stronger
-transition tests, and behavior-preserving decomposition. Milestone 21 will
-add a bank-aware Poke Manager with a maintainable cheat library and safe one-off
-memory writes. Milestone 22 will add SZX snapshot loading, followed by a
+transition tests, and behavior-preserving decomposition. Milestone 21's
+bank-aware Poke Manager is implemented and ready for acceptance testing.
+Milestone 22 will add SZX snapshot loading, followed by a
 model-selectable 48K/128K on-screen keyboard in Milestone 23. Tape compatibility
 and broader title-specific audio fidelity validation continue in parallel, with
 the verified media matrix plus ZEXDOC/ZEXALL used as regression gates.
@@ -104,6 +106,7 @@ Spectrum128kEmulator/
 |-- Spectrum128kEmulator.Core/             net8.0 platform-neutral emulator
 |   |-- Audio/                             AY/beeper synthesis and sample clock
 |   |-- Debugging/                         instruction-boundary execution controller
+|   |-- Pokes/                             library validation, matching, preview, apply, and restore
 |   |-- Tape/                              TAP/TZX parsing, transport, and bootstrap policy
 |   |   |-- MountedTape.cs                 pulse/EAR playback state
 |   |   |-- MountedTape.RomLoading.cs      ROM-load traps and byte-stream handling
@@ -130,8 +133,9 @@ Spectrum128kEmulator/
 |-- Audio/                                 Windows audio pipeline and output adapters
 |-- Disassembly/                           debugger UI, bank captures, symbolic analysis, memory inspection, and export
 |-- Host/                                  background loop, pause ownership, and UI snapshots
-|-- Forms/                                 main window partials and shortcut-reference dialog
+|-- Forms/                                 main window partials, Poke Manager, and shortcut-reference dialog
 |-- Input/                                 WinForms-to-Spectrum keyboard bridge
+|-- Pokes/                                 editable validated game/poke library and format guide
 |-- Video/                                 display modes, pixel-art scaling, and presentation adapter
 |-- docs/images/                           README screenshots of the emulator and debugger
 |-- Program.cs                             Windows application entry point
@@ -180,7 +184,8 @@ Expected ROMs:
 
 The emulator starts in fixed-size `2x Enhanced` mode. `F4` cycles 1x native
 (`320x240`), Scale2x (`640x480`), and Scale3x (`960x720`). Right-clicking the
-display exposes the same controls in function-key order.
+display exposes the same controls in function-key order, followed by actions
+that do not consume a function key.
 
 | Key | Action |
 | --- | --- |
@@ -195,6 +200,14 @@ display exposes the same controls in function-key order.
 | `F10` | Load a `.z80` snapshot or `.rzx` recording |
 | `F11` | Mount a `.tap` or `.tzx` tape image |
 | `F12` | Write a machine diagnostic dump |
+
+The right-click menu also opens the Poke Manager. Emulation remains paused while
+it is open. Its Library tab reads the user-maintainable `Pokes/pokes.json` file;
+exact SHA-256 matches are authoritative, while filename aliases are visibly
+labelled as suggestions only. The initial catalogue is intentionally empty until
+version-specific entries are verified. The One-off tab supports mapped RAM or an
+explicit physical RAM bank, previews current and replacement bytes, and can
+restore the most recent session poke when the game has not changed those bytes.
 
 Tape changes show a top-left badge: full text for three seconds, then a compact
 playing icon; paused/auto-stopped icons hide after five seconds. The title bar
@@ -253,6 +266,7 @@ Test coverage includes:
 - ROM boot smoke tests
 - Focused opcode regression tests
 - Snapshot loading
+- Poke-library schema, checksum/alias matching, mapped and physical-bank application, guarded restoration, and STA WinForms interaction
 - Tape parsing
 - TZX parsing
 - RZX replay parsing
@@ -369,7 +383,7 @@ compatibility; completed milestones remain regression baselines.
 | 18 | Complete | Instruction-boundary Run/Pause, Step Into/Over/Out, run to cursor, CPU context, and persistent breakpoints |
 | 19 | Complete | Bank-aware inspection, labels, conservative control/data cross-references, persistent code/data marking, and hexadecimal memory navigation |
 | 20 | Complete | Tape state ownership, transition coverage, structured diagnostics, and behavior-preserving subsystem decomposition |
-| 21 | Planned | Bank-aware Poke Manager, maintainable cheat library, media matching, and safe one-off memory writes |
+| 21 | In progress | Bank-aware Poke Manager implemented and ready for acceptance testing; curated entries remain version-verified data work |
 | 22 | Planned | SZX snapshot loading for supported 48K and 128K machine state, with explicit handling of unsupported peripherals |
 | 23 | Planned | Pop-up on-screen keyboard with selectable authentic 48K and 128K layouts |
 
@@ -442,14 +456,15 @@ compatibility; completed milestones remain regression baselines.
 - Retained the full automated suite, ZEXDOC/ZEXALL, and the verified media matrix as regression gates throughout the structural work
 - Completed final interactive acceptance with the hardened tape paths and transport behavior confirmed working as expected
 
-### Milestone 21 - Poke Manager And Cheat Library Planned
-- Add a discoverable Poke Manager through the normal menus and right-click context menu without consuming another function key
-- Store curated game entries, aliases, model requirements, and multi-address pokes in a validated human-maintainable data file rather than hardcoded UI logic
-- Suggest compatible entries from loaded-media checksums, with filename aliases used only for discovery rather than compatibility guarantees
-- Support one-off mapped-64K and physical-bank writes with explicit address context, value validation, and a preview of every affected byte
-- Apply each poke atomically on the emulation thread through the existing pause-lease ownership model, and retain safe session-local original-byte restoration where possible
-- Keep the first version to deliberate one-time writes; defer frozen values, conditional trainers, and cheat discovery until their continuous-mutation semantics are designed and tested
-- Add schema, duplicate-entry, media-matching, bank-selection, atomic-write, restoration, and frontend workflow tests
+### Milestone 21 - Poke Manager And Cheat Library In Progress
+- Added a discoverable Poke Manager through the right-click context menu without consuming another function key; emulation remains paused while it is open
+- Added a versioned, validated, human-maintainable `Pokes/pokes.json` library for game titles, aliases, model requirements, exact media checksums, named multi-address pokes, and mapped or bank-qualified writes
+- Added model-aware library browsing with exact SHA-256 matches clearly distinguished from filename-only discovery suggestions
+- Added one-off mapped-64K and physical-bank writes with explicit address context, hexadecimal or decimal input validation, duplicate-target rejection, and a current/new byte preview
+- Applies a selected set atomically while the emulation loop is paused and keeps a session-local restoration stack; restoration is refused if the program has since changed an applied byte
+- Keeps the first version to deliberate one-time writes; frozen values, conditional trainers, and cheat discovery remain deferred until their continuous-mutation semantics are designed and tested
+- Added schema, duplicate-entry, checksum/alias matching, bank-selection, model-safety, application, restoration, empty-library, layout, and frontend workflow tests
+- Completed visual QA at the active desktop DPI and a full 620-test regression run; interactive acceptance and progressively adding verified catalogue entries remain
 
 ### Milestone 22 - SZX Snapshot Support Planned
 - Add a dedicated chunk-based `.szx` parser with strict bounds checking, version validation, and clear diagnostics for malformed files

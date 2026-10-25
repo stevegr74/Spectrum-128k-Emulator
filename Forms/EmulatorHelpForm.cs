@@ -71,7 +71,7 @@ namespace Spectrum128kEmulator
                 ("F6", "Open or close the paused Z80 execution debugger"),
                 ("F7", "Save the current machine state to the temporary Quick State slot"),
                 ("F8", "Restore the temporary Quick State; unavailable until one is saved"),
-                ("Right-click", "Open the quick menu for all emulator actions")
+                ("Right-click", "Open the quick menu for emulator actions, including the Poke Manager")
             }));
             content.Controls.Add(CreateShortcutSection("Loading and Diagnostics", new[]
             {
