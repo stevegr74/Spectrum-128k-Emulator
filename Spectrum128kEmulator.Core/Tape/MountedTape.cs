@@ -22,6 +22,7 @@ namespace Spectrum128kEmulator.Tap
         private const int PauseLevelSettlingTStates = 3500;
         private const int TapeTimingClockHz = 3500000;
         private const int MaximumTerminalPauseMs = 1000;
+        private const int ProtectedStageHandoffPauseMs = 10000;
         private readonly IReadOnlyList<TapeBlock> blocks;
         private readonly bool skipCustomHeaderForEarPlayback;
         private readonly int initialBlockIndex;
@@ -30,6 +31,7 @@ namespace Spectrum128kEmulator.Tap
         private readonly int loadableTimingDivisor;
         private readonly bool initialEarLevelHigh;
         private int playbackClockHz = TapeTimingClockHz;
+        private bool stopAtProtectedStageHandoffs;
         private int nextBlockIndex;
         private int earPlaybackBlockIndex;
         private int earStreamByteIndex;
@@ -51,8 +53,9 @@ namespace Spectrum128kEmulator.Tap
         private bool playbackCompleted;
         private bool playbackPaused;
         private bool pausedByStopMarker;
+        private bool pausedByProtectedStageHandoff;
         private ulong pausedPulseElapsedTStates;
-        private int stopMarkerResumeBlockIndex;
+        private int pauseBoundaryResumeBlockIndex;
         private EarPlaybackState earPlaybackState;
         private TapeState state;
         private int? expectedDataLength;
@@ -120,7 +123,7 @@ namespace Spectrum128kEmulator.Tap
             $"State={state} EarState={earPlaybackState} Byte={earStreamByteIndex} Bit={earBitIndex} " +
             $"Pilot={earPilotPulsesRemaining} PulseLen={earPulseLengthTStates} PulseSeq={earPulseSequenceIndex} " +
             $"EarLevel={(earLevel ? 1 : 0)} Started={(earPlaybackStarted ? 1 : 0)} Retained={(retainedByteStreamTrapAvailable ? 1 : 0)} " +
-            $"Paused={(playbackPaused ? 1 : 0)} Marker={(pausedByStopMarker ? 1 : 0)} Complete={(playbackCompleted ? 1 : 0)} " +
+            $"Paused={(playbackPaused ? 1 : 0)} Marker={(pausedByStopMarker ? 1 : 0)} ProtectedHandoff={(pausedByProtectedStageHandoff ? 1 : 0)} Complete={(playbackCompleted ? 1 : 0)} " +
             $"RomTrapBlock={romStreamTrapBlockIndex} RomTrapByte={romStreamTrapByteIndex} " +
             $"CompletedRomBlock={completedRomLoadableBlockIndex}";
         public bool IsActivelyDrivingEarLine => !playbackPaused && earPlaybackState != EarPlaybackState.Idle;
@@ -136,6 +139,7 @@ namespace Spectrum128kEmulator.Tap
             !playbackPaused;
         public bool IsPlaybackPaused => playbackPaused;
         public bool IsPausedByStopMarker => pausedByStopMarker;
+        public bool IsPausedByProtectedStageHandoff => pausedByProtectedStageHandoff;
         public bool IsActivelyStreamingEarSignal =>
             !playbackPaused &&
             earPlaybackState is not EarPlaybackState.Idle
@@ -172,8 +176,9 @@ namespace Spectrum128kEmulator.Tap
             playbackCompleted = false;
             playbackPaused = false;
             pausedByStopMarker = false;
+            pausedByProtectedStageHandoff = false;
             pausedPulseElapsedTStates = 0;
-            stopMarkerResumeBlockIndex = -1;
+            pauseBoundaryResumeBlockIndex = -1;
             earPlaybackState = EarPlaybackState.Idle;
             expectedDataLength = null;
             pendingHeaderName = null;
@@ -193,12 +198,13 @@ namespace Spectrum128kEmulator.Tap
             StartEarPlaybackBlock(playbackStartBlockIndex, preserveSignalPhase: false);
         }
 
-        internal void ConfigurePlaybackClock(int clockHz)
+        internal void ConfigurePlaybackClock(int clockHz, bool stopAtProtectedStageHandoffs = false)
         {
             if (clockHz <= 0)
                 throw new ArgumentOutOfRangeException(nameof(clockHz));
 
             playbackClockHz = clockHz;
+            this.stopAtProtectedStageHandoffs = stopAtProtectedStageHandoffs;
         }
 
         public bool ReadEarBit(ulong currentTStates)
@@ -254,7 +260,8 @@ namespace Spectrum128kEmulator.Tap
                 : 0;
             playbackPaused = true;
             pausedByStopMarker = false;
-            stopMarkerResumeBlockIndex = -1;
+            pausedByProtectedStageHandoff = false;
+            pauseBoundaryResumeBlockIndex = -1;
             return true;
         }
 
@@ -263,13 +270,14 @@ namespace Spectrum128kEmulator.Tap
             if (!playbackPaused || playbackCompleted)
                 return false;
 
-            bool resumeAfterMarker = pausedByStopMarker;
-            int resumeBlockIndex = stopMarkerResumeBlockIndex;
+            bool resumeAtBlockBoundary = pausedByStopMarker || pausedByProtectedStageHandoff;
+            int resumeBlockIndex = pauseBoundaryResumeBlockIndex;
             playbackPaused = false;
             pausedByStopMarker = false;
-            stopMarkerResumeBlockIndex = -1;
+            pausedByProtectedStageHandoff = false;
+            pauseBoundaryResumeBlockIndex = -1;
 
-            if (resumeAfterMarker)
+            if (resumeAtBlockBoundary)
             {
                 pausedPulseElapsedTStates = 0;
                 StartEarPlaybackBlock(resumeBlockIndex, preserveSignalPhase: true);
@@ -1391,6 +1399,12 @@ namespace Spectrum128kEmulator.Tap
 
         private void BeginPause(TapeBlock block, int nextBlockIndex)
         {
+            if (ShouldStopAtProtectedStageHandoff(block, nextBlockIndex))
+            {
+                PauseAtProtectedStageHandoff(nextBlockIndex);
+                return;
+            }
+
             int pauseTStates = GetPauseLengthTStates(block, nextBlockIndex);
             earPlaybackState = EarPlaybackState.Pause;
             earNextBlockIndexAfterPause = nextBlockIndex;
@@ -1414,8 +1428,27 @@ namespace Spectrum128kEmulator.Tap
         {
             playbackPaused = true;
             pausedByStopMarker = true;
+            pausedByProtectedStageHandoff = false;
             pausedPulseElapsedTStates = 0;
-            stopMarkerResumeBlockIndex = resumeBlockIndex;
+            pauseBoundaryResumeBlockIndex = resumeBlockIndex;
+            earPlaybackState = EarPlaybackState.Idle;
+            earPulseLengthTStates = 0;
+        }
+
+        private bool ShouldStopAtProtectedStageHandoff(TapeBlock block, int nextBlockIndex) =>
+            stopAtProtectedStageHandoffs &&
+            block.Kind is TapeBlockKind.Data or TapeBlockKind.DirectRecording &&
+            !block.IsLoadableRomBlock &&
+            block.PauseAfterBlockMs >= ProtectedStageHandoffPauseMs &&
+            GetEarPlaybackStartBlockIndex(nextBlockIndex) < blocks.Count;
+
+        private void PauseAtProtectedStageHandoff(int resumeBlockIndex)
+        {
+            playbackPaused = true;
+            pausedByStopMarker = false;
+            pausedByProtectedStageHandoff = true;
+            pausedPulseElapsedTStates = 0;
+            pauseBoundaryResumeBlockIndex = resumeBlockIndex;
             earPlaybackState = EarPlaybackState.Idle;
             earPulseLengthTStates = 0;
         }

@@ -25,8 +25,10 @@ namespace Spectrum128kEmulator.Tap
             internal bool PlaybackCompleted;
             internal bool PlaybackPaused;
             internal bool PausedByStopMarker;
+            internal bool PausedByProtectedStageHandoff;
+            internal bool StopAtProtectedStageHandoffs;
             internal ulong PausedPulseElapsedTStates;
-            internal int StopMarkerResumeBlockIndex;
+            internal int PauseBoundaryResumeBlockIndex;
             internal int EarPlaybackStateValue;
             internal int TapeStateValue;
             internal int? ExpectedDataLength;
@@ -59,8 +61,10 @@ namespace Spectrum128kEmulator.Tap
                 PlaybackCompleted = playbackCompleted,
                 PlaybackPaused = playbackPaused,
                 PausedByStopMarker = pausedByStopMarker,
+                PausedByProtectedStageHandoff = pausedByProtectedStageHandoff,
+                StopAtProtectedStageHandoffs = stopAtProtectedStageHandoffs,
                 PausedPulseElapsedTStates = pausedPulseElapsedTStates,
-                StopMarkerResumeBlockIndex = stopMarkerResumeBlockIndex,
+                PauseBoundaryResumeBlockIndex = pauseBoundaryResumeBlockIndex,
                 EarPlaybackStateValue = (int)earPlaybackState,
                 TapeStateValue = (int)state,
                 ExpectedDataLength = expectedDataLength,
@@ -93,8 +97,10 @@ namespace Spectrum128kEmulator.Tap
             playbackCompleted = state.PlaybackCompleted;
             playbackPaused = state.PlaybackPaused;
             pausedByStopMarker = state.PausedByStopMarker;
+            pausedByProtectedStageHandoff = state.PausedByProtectedStageHandoff;
+            stopAtProtectedStageHandoffs = state.StopAtProtectedStageHandoffs;
             pausedPulseElapsedTStates = state.PausedPulseElapsedTStates;
-            stopMarkerResumeBlockIndex = state.StopMarkerResumeBlockIndex;
+            pauseBoundaryResumeBlockIndex = state.PauseBoundaryResumeBlockIndex;
             earPlaybackState = (EarPlaybackState)state.EarPlaybackStateValue;
             this.state = (TapeState)state.TapeStateValue;
             expectedDataLength = state.ExpectedDataLength;

@@ -730,7 +730,10 @@ namespace Spectrum128kEmulator
 
         public void MountTape(MountedTape tape)
         {
-            tapeTransport.Mount(tape, CurrentCpuClockHz);
+            tapeTransport.Mount(
+                tape,
+                CurrentCpuClockHz,
+                stopAtProtectedStageHandoffs: MachineModel == SpectrumMachineModel.Spectrum48K);
             ResetMountedTapeActivityTracking();
         }
 

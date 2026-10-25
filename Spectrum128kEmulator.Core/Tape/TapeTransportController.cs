@@ -22,10 +22,15 @@ namespace Spectrum128kEmulator.Tap
             LastTransition = TapeTransportTransition.Reset;
         }
 
-        public void Mount(MountedTape tape, int playbackClockHz)
+        public void Mount(
+            MountedTape tape,
+            int playbackClockHz,
+            bool stopAtProtectedStageHandoffs)
         {
             MountedTape = tape ?? throw new ArgumentNullException(nameof(tape));
-            MountedTape.ConfigurePlaybackClock(playbackClockHz);
+            MountedTape.ConfigurePlaybackClock(
+                playbackClockHz,
+                stopAtProtectedStageHandoffs);
             MountedTape.Reset();
             SynchronizeState(MountedTape);
             LastTransition = TapeTransportTransition.Mounted;
@@ -77,8 +82,13 @@ namespace Spectrum128kEmulator.Tap
                 : tape.IsPlaybackPaused
                     ? TapeTransportState.Stopped
                     : TapeTransportState.Playing;
-            if (State != previousState && tape.IsPausedByStopMarker)
-                LastTransition = TapeTransportTransition.StopMarker;
+            if (State != previousState)
+            {
+                if (tape.IsPausedByStopMarker)
+                    LastTransition = TapeTransportTransition.StopMarker;
+                else if (tape.IsPausedByProtectedStageHandoff)
+                    LastTransition = TapeTransportTransition.ProtectedStageHandoff;
+            }
         }
 
         public void MarkPlaying(MountedTape tape)

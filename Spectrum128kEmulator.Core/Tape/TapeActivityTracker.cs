@@ -42,7 +42,8 @@ namespace Spectrum128kEmulator.Tap
             if (tape == null ||
                 !AutoPausedAtHandoff ||
                 !tape.IsPlaybackPaused ||
-                tape.IsPausedByStopMarker)
+                tape.IsPausedByStopMarker ||
+                tape.IsPausedByProtectedStageHandoff)
             {
                 AutomaticResumeReads = 0;
                 return false;

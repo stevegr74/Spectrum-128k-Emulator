@@ -130,6 +130,42 @@ namespace Spectrum128kEmulator.Tests
         }
 
         [Fact]
+        public void ProtectedStageHandoff_In48kMode_StopsTransportWithStructuredReason()
+        {
+            string romFolder = CreateTempRoms();
+            try
+            {
+                var machine = new Spectrum128Machine(romFolder);
+                machine.Reset(SpectrumMachineModel.Spectrum48K);
+                machine.MountTape(new MountedTape(
+                    "multiload.tzx",
+                    new[]
+                    {
+                        TapeBlock.CreateByteStreamData(
+                            new byte[] { 0x80, 0x00 },
+                            zeroBitPulseLength: 1,
+                            oneBitPulseLength: 1,
+                            usedBitsInLastByte: 8,
+                            pauseAfterBlockMs: 10000),
+                        TapeBlock.CreatePureTone(pulseLength: 100, pulseCount: 2)
+                    }));
+
+                machine.DebugReadPort(0x00FE);
+                machine.ExecuteTimeSlice(100);
+
+                AssertTransport(machine, TapeTransportState.Stopped, machine.MountedTape);
+                Assert.Equal(
+                    TapeTransportTransition.ProtectedStageHandoff,
+                    machine.LastTapeTransportTransition);
+                Assert.True(machine.MountedTape!.IsPausedByProtectedStageHandoff);
+            }
+            finally
+            {
+                Directory.Delete(romFolder, true);
+            }
+        }
+
+        [Fact]
         public void QuickState_RestoresMountedTapeCursorAndStoppedTransport()
         {
             string romFolder = CreateTempRoms();

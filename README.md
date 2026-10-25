@@ -14,7 +14,7 @@ This project focuses on correctness, clean architecture, and incremental develop
 - 48K beeper and AY-3-8912 tone, noise, envelope, and mixing through a clock-driven audio pipeline
 - 48K/128K `.sna`, `.z80` v1/v2/v3, and `.rzx` loading/replay
 - `.tap` and `.tzx` parsing, fast bootstrap, ROM-driven loading, protected/mounted playback, VERIFY, and multi-block sequencing
-- Manual/resumable tape transport with 48K stop-marker support and persistent status feedback
+- Manual/resumable tape transport with 48K stop-marker and protected-stage handoff support, plus persistent status feedback
 - Platform-neutral headless core with Windows presentation/audio adapters
 - Paused `F6` debugger with immutable mapped/physical-bank captures, a visual paging map, grouped CPU/stack context, execution controls, breakpoints, bank-qualified labels, control/data cross-references, hexadecimal memory inspection, persistent code/data markings, search, navigation, copy, and export
 - In-memory `F7`/`F8` Quick State save and restore
@@ -246,7 +246,7 @@ Test coverage includes:
 - VERIFY handling
 - Tape sequencing and reset behaviour
 - banked tape-loader regression coverage
-- Tape transport pause/resume and 48K stop-marker behaviour
+- Tape transport pause/resume, 48K stop markers, protected-stage handoffs, and exact Quick State restoration
 - 48K/128K machine-model behavior
 - complete 48K/128K contention phases, boundaries, I/O cases, and contended-bank behavior
 - 48K/128K floating-bus fetches, including 128K shadow-screen bank selection
@@ -404,11 +404,12 @@ compatibility and polish; completed milestones remain regression baselines.
 - Moved automatic handoff stop/resume decisions behind the activity tracker and added direct coverage for all safety gates plus exact EAR-phase preservation
 - Extracted capability-gated load-strategy selection into a dedicated planner while leaving plan execution and loader continuation behavior unchanged
 - Added structured transport transition reasons for reset, mount, manual stop/resume, automatic handoff stop/ROM resume, stop markers, tape end, and eject; the reason is preserved by Quick State and included in diagnostics
+- Restored 48K protected multiload boundaries: a long protected-stage pause stops before later playable blocks and resumes at the exact boundary, while 128K playback remains continuous
 - Add table-driven transition coverage for fast loading, real-time fallback, pause/resume, stop markers, tape end, multiloads, media replacement, reset, and Quick State restoration
 - Split the large tape regression suite into responsibility-based test classes without reducing existing coverage
 - Keep pulse/EAR transport, fast/ROM/protected load strategy, and BASIC/machine-code continuation as separate cooperating responsibilities rather than one combined state machine
 - Reduce `TapLoader.BasicBootstrap.cs`, `TapLoader.cs`, and `MountedTape.cs` incrementally, starting with behavior-preserving extractions and leaving `MountedLoadContinuationController` focused on resume state
-- Add structured transition diagnostics that distinguish pauses, tape end, ROM handoff, unsupported acceleration, and invalid continuation state
+- Extend structured transition diagnostics into unsupported acceleration and invalid continuation states while retaining distinct pause, tape-end, and ROM-handoff reasons
 - Use one branch per extraction and retain the full automated suite plus the verified media matrix as regression gates; do not mix compatibility changes into structural branches
 
 ### Milestone 21 - Poke Manager And Cheat Library Planned
