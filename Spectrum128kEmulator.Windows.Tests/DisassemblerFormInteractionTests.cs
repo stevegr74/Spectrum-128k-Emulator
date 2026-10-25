@@ -8,6 +8,78 @@ namespace Spectrum128kEmulator.Tests
     public class DisassemblerFormInteractionTests
     {
         [Fact]
+        public void Form_ShowsDataReferencesAndInspectsFrozenMemory()
+        {
+            Exception? failure = null;
+            var thread = new Thread(() =>
+            {
+                string folder = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"));
+                try
+                {
+                    Directory.CreateDirectory(folder);
+                    DisassemblySnapshot snapshot = CreateSnapshotWithCpu();
+                    using var form = new DisassemblerForm(
+                        () => snapshot,
+                        new DisassemblerWindowSettingsStore(Path.Combine(folder, "disassembler.json")));
+                    form.Show();
+                    Application.DoEvents();
+
+                    NavigateTo(form, "8020");
+                    ListView listing = Descendants(form).OfType<ListView>().Single();
+                    ListBox references = Descendants(form).OfType<ListBox>()
+                        .Single(list => list.Name == "CrossReferenceList");
+                    Assert.Equal("LD A,(9000H)", listing.Items[0].SubItems[4].Text);
+                    Assert.Equal("R 9000", listing.Items[0].SubItems[5].Text);
+                    Assert.Contains("OUT READ8   MAP:9000", references.Items[0]!.ToString());
+
+                    typeof(DisassemblerForm)
+                        .GetMethod("InspectSelectedInstructionTarget", BindingFlags.Instance | BindingFlags.NonPublic)!
+                        .Invoke(form, null);
+                    Application.DoEvents();
+
+                    TabControl tabs = Descendants(form).OfType<TabControl>().Single();
+                    ListBox memory = Descendants(form).OfType<ListBox>()
+                        .Single(list => list.Name == "MemoryInspectorList");
+                    ComboBox sources = Descendants(form).OfType<ComboBox>()
+                        .Single(combo => combo.Name == "MemorySourceComboBox");
+                    Assert.Equal("Memory", tabs.SelectedTab!.Text);
+                    Assert.Contains("9000", memory.SelectedItem!.ToString());
+                    Assert.Contains("[5A]", memory.SelectedItem!.ToString());
+                    Assert.Contains(sources.Items.Cast<object>(), item => item.ToString()!.StartsWith("SP "));
+
+                    sources.SelectedIndex = 1;
+                    Application.DoEvents();
+                    Assert.Contains("A000", memory.SelectedItem!.ToString());
+
+                    NavigateTo(form, "8020");
+                    typeof(DisassemblerForm)
+                        .GetMethod("NavigateToSelectedTarget", BindingFlags.Instance | BindingFlags.NonPublic)!
+                        .Invoke(form, null);
+                    Application.DoEvents();
+                    Assert.Equal("9000", listing.Items[0].Text);
+                    Assert.Contains("IN  READ8   MAP:8020", references.Items[0]!.ToString());
+
+                    form.Close();
+                    Application.DoEvents();
+                }
+                catch (Exception ex)
+                {
+                    failure = ex;
+                }
+                finally
+                {
+                    if (Directory.Exists(folder))
+                        Directory.Delete(folder, true);
+                }
+            });
+            thread.SetApartmentState(ApartmentState.STA);
+            thread.Start();
+            Assert.True(thread.Join(TimeSpan.FromSeconds(15)), "The WinForms memory-inspector test timed out.");
+            if (failure != null)
+                throw new Xunit.Sdk.XunitException(failure.ToString());
+        }
+
+        [Fact]
         public void Form_SwitchesBanksFollowsTargetsAndPersistsSymbols()
         {
             Exception? failure = null;
@@ -32,9 +104,9 @@ namespace Spectrum128kEmulator.Tests
                     Button runToCursor = Descendants(form).OfType<Button>()
                         .Single(button => button.Text == "Run to Cursor");
                     Button go = Descendants(form).OfType<Button>()
-                        .Single(button => button.Text == "Go");
+                        .Single(button => button.Name == "ListingGoButton");
                     TextBox address = Descendants(form).OfType<TextBox>()
-                        .Single(textBox => textBox.MaxLength == 6);
+                        .Single(textBox => textBox.Name == "ListingAddressTextBox");
                     ToolStripMenuItem classificationMenu = listing.ContextMenuStrip!.Items
                         .OfType<ToolStripMenuItem>()
                         .Single(item => item.Text == "Classification");
@@ -206,6 +278,51 @@ namespace Spectrum128kEmulator.Tests
                 analysisContext: analysisContext);
         }
 
+        private static DisassemblySnapshot CreateSnapshotWithCpu()
+        {
+            var memory = new byte[65536];
+            memory[0x8000] = 0xC9;
+            memory[0x8020] = 0x3A;
+            memory[0x8021] = 0x00;
+            memory[0x8022] = 0x90;
+            memory[0x8023] = 0xC9;
+            memory[0x9000] = 0x5A;
+            memory[0xA000] = 0x41;
+            var cpu = new DisassemblyCpuState(
+                AF: 0x1200,
+                BC: 0x8100,
+                DE: 0x8200,
+                HL: 0x8300,
+                AlternateAF: 0,
+                AlternateBC: 0,
+                AlternateDE: 0,
+                AlternateHL: 0,
+                IX: 0x8400,
+                IY: 0x8500,
+                SP: 0xA000,
+                PC: 0x8000,
+                I: 0,
+                R: 0,
+                IFF1: true,
+                IFF2: true,
+                InterruptMode: 1,
+                IsHalted: false,
+                InterruptPending: false,
+                TStates: 100,
+                StackWords: [0x8020]);
+            return new DisassemblySnapshot(
+                memory,
+                0x8000,
+                SpectrumMachineModel.Spectrum128K,
+                currentRomBank: 1,
+                pagedRamBank: 7,
+                screenBank: 5,
+                cpuState: cpu,
+                romBanks: Enumerable.Range(0, 2).Select(_ => new byte[0x4000]).ToArray(),
+                ramBanks: Enumerable.Range(0, 8).Select(_ => new byte[0x4000]).ToArray(),
+                analysisContext: "memory-inspector-test");
+        }
+
         private static void SetClassification(DisassemblerForm form, DisassemblyClassification classification) =>
             typeof(DisassemblerForm)
                 .GetMethod("SetClassificationAtSelection", BindingFlags.Instance | BindingFlags.NonPublic)!
@@ -214,9 +331,9 @@ namespace Spectrum128kEmulator.Tests
         private static void NavigateTo(DisassemblerForm form, string address)
         {
             TextBox addressBox = Descendants(form).OfType<TextBox>()
-                .Single(textBox => textBox.MaxLength == 6);
+                .Single(textBox => textBox.Name == "ListingAddressTextBox");
             Button go = Descendants(form).OfType<Button>()
-                .Single(button => button.Text == "Go");
+                .Single(button => button.Name == "ListingGoButton");
             addressBox.Text = address;
             go.PerformClick();
             Application.DoEvents();

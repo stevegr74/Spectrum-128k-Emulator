@@ -94,8 +94,9 @@ namespace Spectrum128kEmulator
                 ("Ctrl+R", "Refresh the immutable capture while remaining paused"),
                 ("Ctrl+C", "Copy selected rows with capture metadata"),
                 ("Ctrl+Shift+C", "Copy every displayed row with capture metadata"),
-                ("Memory view", "Inspect mapped 64K, ROM banks, or RAM banks from the immutable capture"),
-                ("Ctrl+L / Right-click", "Edit labels or mark selected bytes as code, data, or unknown; the menu also manages symbols"),
+                ("Memory view", "Select mapped 64K, ROM banks, or RAM banks for the disassembly listing"),
+                ("Memory tab", "Inspect hexadecimal and ASCII bytes from registers, stack values, listing addresses, or direct targets"),
+                ("Ctrl+L / Right-click", "Edit labels, mark code/data/unknown, manage symbols, or inspect an address or target in memory"),
                 ("Ctrl+E", "Export a complete 64K mapped or 16K physical-bank listing")
             }));
             content.Controls.Add(CreateShortcutSection("Spectrum Keyboard", new[]

@@ -19,6 +19,7 @@ namespace Spectrum128kEmulator
         {
             executionRunning = false;
             snapshot = captureSnapshot();
+            RefreshMemorySources();
             SetSelectedAddressSpace(DisassemblyAddressSpace.Mapped);
             PopulateAddressSpaceChoices();
             NavigateTo(

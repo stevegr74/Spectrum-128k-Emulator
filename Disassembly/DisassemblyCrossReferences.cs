@@ -6,7 +6,9 @@ namespace Spectrum128kEmulator
     {
         Call,
         Jump,
-        RelativeJump
+        RelativeJump,
+        DataRead,
+        DataWrite
     }
 
     public readonly record struct DisassemblyLocation(
@@ -17,13 +19,15 @@ namespace Spectrum128kEmulator
         DisassemblyLocation Source,
         DisassemblyLocation Target,
         DisassemblyCrossReferenceKind Kind,
-        string Mnemonic);
+        string Mnemonic,
+        int Width = 1);
 
     public sealed class DisassemblyCrossReferenceIndex
     {
         private const int MaximumInstructions = 32768;
         private readonly Dictionary<DisassemblyLocation, List<DisassemblyCrossReference>> incoming = new();
         private readonly Dictionary<DisassemblyLocation, List<DisassemblyCrossReference>> outgoing = new();
+        private readonly List<DisassemblyCrossReference> references = new();
 
         public static DisassemblyCrossReferenceIndex Build(
             DisassemblySnapshot snapshot,
@@ -82,6 +86,22 @@ namespace Spectrum128kEmulator
                         }
                     }
 
+                    if (TryGetAbsoluteDataReference(
+                        instruction,
+                        out ushort dataAddress,
+                        out DisassemblyCrossReferenceKind dataKind,
+                        out int width))
+                    {
+                        var source = new DisassemblyLocation(addressSpace, instructionAddress);
+                        DisassemblyLocation dataTarget = ResolveAbsoluteTarget(snapshot, addressSpace, dataAddress);
+                        index.Add(new DisassemblyCrossReference(
+                            source,
+                            dataTarget,
+                            dataKind,
+                            mnemonic,
+                            width));
+                    }
+
                     if (EndsSequentialFlow(mnemonic))
                         break;
 
@@ -103,8 +123,19 @@ namespace Spectrum128kEmulator
 
         private void Add(DisassemblyCrossReference reference)
         {
+            references.Add(reference);
             Add(incoming, reference.Target, reference);
             Add(outgoing, reference.Source, reference);
+        }
+
+        internal void MergeFrom(DisassemblyCrossReferenceIndex other)
+        {
+            ArgumentNullException.ThrowIfNull(other);
+            foreach (DisassemblyCrossReference reference in other.references)
+            {
+                if (!references.Contains(reference))
+                    Add(reference);
+            }
         }
 
         private static void Add(
@@ -186,16 +217,82 @@ namespace Spectrum128kEmulator
                 return true;
             }
 
+            target = ResolveAbsoluteTarget(snapshot, sourceSpace, encodedTarget);
+            return true;
+        }
+
+        private static DisassemblyLocation ResolveAbsoluteTarget(
+            DisassemblySnapshot snapshot,
+            DisassemblyAddressSpace sourceSpace,
+            ushort address)
+        {
+            if (sourceSpace.Kind == DisassemblyAddressSpaceKind.Mapped)
+                return new DisassemblyLocation(sourceSpace, address);
+
+            if (sourceSpace.Kind == DisassemblyAddressSpaceKind.Rom && address < 0x4000)
+                return new DisassemblyLocation(sourceSpace, address);
+
             if (sourceSpace.Kind == DisassemblyAddressSpaceKind.Ram &&
-                TryResolveMappedRamOffset(snapshot, sourceSpace.Bank, encodedTarget, out ushort offset))
+                TryResolveMappedRamOffset(snapshot, sourceSpace.Bank, address, out ushort offset))
             {
-                target = new DisassemblyLocation(sourceSpace, offset);
+                return new DisassemblyLocation(sourceSpace, offset);
+            }
+
+            return new DisassemblyLocation(DisassemblyAddressSpace.Mapped, address);
+        }
+
+        private static bool TryGetAbsoluteDataReference(
+            Z80Instruction instruction,
+            out ushort address,
+            out DisassemblyCrossReferenceKind kind,
+            out int width)
+        {
+            byte[] bytes = instruction.Bytes;
+            address = 0;
+            kind = default;
+            width = 1;
+
+            if (bytes.Length >= 3 && bytes[0] is 0x22 or 0x2A or 0x32 or 0x3A)
+            {
+                address = Word(bytes, 1);
+                kind = bytes[0] is 0x22 or 0x32
+                    ? DisassemblyCrossReferenceKind.DataWrite
+                    : DisassemblyCrossReferenceKind.DataRead;
+                width = bytes[0] is 0x22 or 0x2A ? 2 : 1;
                 return true;
             }
 
-            target = new DisassemblyLocation(DisassemblyAddressSpace.Mapped, encodedTarget);
-            return true;
+            if (bytes.Length >= 4 && bytes[0] == 0xED)
+            {
+                byte opcode = bytes[1];
+                int x = opcode >> 6;
+                int z = opcode & 0x07;
+                if (x == 1 && z == 3)
+                {
+                    address = Word(bytes, 2);
+                    kind = (opcode & 0x08) == 0
+                        ? DisassemblyCrossReferenceKind.DataWrite
+                        : DisassemblyCrossReferenceKind.DataRead;
+                    width = 2;
+                    return true;
+                }
+            }
+
+            if (bytes.Length >= 4 && bytes[0] is 0xDD or 0xFD && bytes[1] is 0x22 or 0x2A)
+            {
+                address = Word(bytes, 2);
+                kind = bytes[1] == 0x22
+                    ? DisassemblyCrossReferenceKind.DataWrite
+                    : DisassemblyCrossReferenceKind.DataRead;
+                width = 2;
+                return true;
+            }
+
+            return false;
         }
+
+        private static ushort Word(byte[] bytes, int offset) =>
+            (ushort)(bytes[offset] | (bytes[offset + 1] << 8));
 
         private static bool TryResolveMappedRamOffset(
             DisassemblySnapshot snapshot,

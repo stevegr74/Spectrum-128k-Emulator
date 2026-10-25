@@ -9,17 +9,25 @@ namespace Spectrum128kEmulator
             var panel = new Panel
             {
                 Dock = DockStyle.Right,
-                Width = 220,
+                Width = 340,
                 Padding = new Padding(10, 0, 0, 0),
                 BackColor = Paper
             };
 
-            Panel crossReferencePanel = CreateCrossReferencePanel();
+            inspectorTabs.Dock = DockStyle.Fill;
+            inspectorTabs.Font = new Font(FontFamily.GenericSansSerif, 8.0f);
+            var referencesPage = new TabPage("References") { BackColor = Paper };
+            referencesPage.Controls.Add(CreateCrossReferencePanel());
+            var memoryPage = new TabPage("Memory") { BackColor = Paper };
+            memoryPage.Controls.Add(CreateMemoryPanel());
+            inspectorTabs.TabPages.Add(referencesPage);
+            inspectorTabs.TabPages.Add(memoryPage);
+
             Panel breakpointPanel = CreateBreakpointPanel();
             breakpointPanel.Dock = DockStyle.Bottom;
-            breakpointPanel.Height = 220;
+            breakpointPanel.Height = 130;
 
-            panel.Controls.Add(crossReferencePanel);
+            panel.Controls.Add(inspectorTabs);
             panel.Controls.Add(breakpointPanel);
             return panel;
         }
@@ -48,16 +56,37 @@ namespace Spectrum128kEmulator
             crossReferenceList.Font = new Font("Consolas", 8.5f);
             crossReferenceList.IntegralHeight = false;
             crossReferenceList.DoubleClick += (_, _) => NavigateToSelectedCrossReference();
+            var menu = new ContextMenuStrip();
+            menu.Items.Add("Follow Reference", null, (_, _) => NavigateToSelectedCrossReference());
+            menu.Items.Add("Inspect Referenced Memory", null, (_, _) => InspectSelectedCrossReference());
+            crossReferenceList.ContextMenuStrip = menu;
             return panel;
         }
 
         private void BuildCrossReferenceIndex()
         {
-            IEnumerable<ushort> roots = classifications.GetCodeEntryPoints(selectedAddressSpace).Append(listingAddress);
-            if (selectedAddressSpace.Kind == DisassemblyAddressSpaceKind.Mapped)
-                roots = roots.Append(snapshot.ProgramCounter);
+            var combined = new DisassemblyCrossReferenceIndex();
+            foreach (DisassemblyAddressSpace addressSpace in snapshot.AvailableAddressSpaces)
+            {
+                IEnumerable<ushort> roots = classifications.GetCodeEntryPoints(addressSpace)
+                    .Concat(analysisRoots
+                        .Where(location => location.AddressSpace == addressSpace)
+                        .Select(location => location.Address));
+                if (addressSpace == selectedAddressSpace)
+                    roots = roots.Append(listingAddress);
+                if (addressSpace.Kind == DisassemblyAddressSpaceKind.Mapped)
+                    roots = roots.Append(snapshot.ProgramCounter);
 
-            crossReferences = DisassemblyCrossReferenceIndex.Build(snapshot, selectedAddressSpace, roots, classifications);
+                ushort[] distinctRoots = roots.Distinct().ToArray();
+                if (distinctRoots.Length == 0)
+                    continue;
+                combined.MergeFrom(DisassemblyCrossReferenceIndex.Build(
+                    snapshot,
+                    addressSpace,
+                    distinctRoots,
+                    classifications));
+            }
+            crossReferences = combined;
         }
 
         private void RefreshCrossReferenceList()
@@ -88,12 +117,33 @@ namespace Spectrum128kEmulator
             if (crossReferenceList.SelectedItem is not CrossReferenceListItem item)
                 return;
 
+            analysisRoots.Add(item.Reference.Source);
             PreserveCurrentHistorySelection();
             SetSelectedAddressSpace(item.NavigationTarget.AddressSpace);
             NavigateTo(
                 item.NavigationTarget.Address,
                 status: $"Followed {item.DirectionText.ToLowerInvariant()} cross-reference to {item.NavigationTarget.AddressSpace.FormatAddress(item.NavigationTarget.Address)}.");
         }
+
+        private void InspectSelectedCrossReference()
+        {
+            if (crossReferenceList.SelectedItem is not CrossReferenceListItem item)
+                return;
+
+            InspectMemory(
+                item.NavigationTarget,
+                $"Inspecting {item.DirectionText.ToLowerInvariant()} reference at {item.NavigationTarget.AddressSpace.FormatAddress(item.NavigationTarget.Address)}.");
+        }
+
+        private static string FormatReferenceKind(DisassemblyCrossReference reference) => reference.Kind switch
+        {
+            DisassemblyCrossReferenceKind.Call => "call",
+            DisassemblyCrossReferenceKind.RelativeJump => "relative jump",
+            DisassemblyCrossReferenceKind.Jump => "jump",
+            DisassemblyCrossReferenceKind.DataRead => reference.Width == 1 ? "byte read" : "word read",
+            DisassemblyCrossReferenceKind.DataWrite => reference.Width == 1 ? "byte write" : "word write",
+            _ => "reference"
+        };
 
         private sealed record CrossReferenceListItem(
             string DirectionText,
@@ -113,9 +163,15 @@ namespace Spectrum128kEmulator
                 {
                     DisassemblyCrossReferenceKind.Call => "CALL",
                     DisassemblyCrossReferenceKind.RelativeJump => "REL",
-                    _ => "JUMP"
+                    DisassemblyCrossReferenceKind.Jump => "JUMP",
+                    DisassemblyCrossReferenceKind.DataRead => Reference.Width == 1 ? "READ8" : "READ16",
+                    DisassemblyCrossReferenceKind.DataWrite => Reference.Width == 1 ? "WRITE8" : "WRITE16",
+                    _ => "REF"
                 };
-                return $"{DirectionText,-3} {kind,-4} {AddressSpacePrefix(location.AddressSpace)}:{location.Address:X4}";
+                string paddedKind = Reference.Kind is DisassemblyCrossReferenceKind.DataRead or DisassemblyCrossReferenceKind.DataWrite
+                    ? $"{kind,-7}"
+                    : $"{kind,-4}";
+                return $"{DirectionText,-3} {paddedKind} {AddressSpacePrefix(location.AddressSpace)}:{location.Address:X4}";
             }
         }
     }

@@ -84,6 +84,50 @@ namespace Spectrum128kEmulator.Tests
             Assert.Empty(inactiveBank.GetIncoming(DisassemblyAddressSpace.Ram(6), 0x0200));
         }
 
+        [Fact]
+        public void Build_RecordsOnlyStaticallyResolvedDataReadsAndWrites()
+        {
+            var memory = new byte[65536];
+            Write(memory, 0x8000, 0x3A, 0x00, 0x90);       // LD A,(9000H)
+            Write(memory, 0x8003, 0x22, 0x10, 0x90);       // LD (9010H),HL
+            Write(memory, 0x8006, 0xED, 0x4B, 0x20, 0x90); // LD BC,(9020H)
+            Write(memory, 0x800A, 0xDD, 0x22, 0x30, 0x90); // LD (9030H),IX
+            Write(memory, 0x800E, 0x7E);                   // LD A,(HL), not statically known
+            memory[0x800F] = 0xC9;
+
+            DisassemblyCrossReferenceIndex index = DisassemblyCrossReferenceIndex.Build(
+                CreateSnapshot(memory),
+                DisassemblyAddressSpace.Mapped,
+                [0x8000]);
+
+            AssertDataReference(index, 0x8000, 0x9000, DisassemblyCrossReferenceKind.DataRead, 1);
+            AssertDataReference(index, 0x8003, 0x9010, DisassemblyCrossReferenceKind.DataWrite, 2);
+            AssertDataReference(index, 0x8006, 0x9020, DisassemblyCrossReferenceKind.DataRead, 2);
+            AssertDataReference(index, 0x800A, 0x9030, DisassemblyCrossReferenceKind.DataWrite, 2);
+            Assert.Empty(index.GetOutgoing(DisassemblyAddressSpace.Mapped, 0x800E));
+        }
+
+        [Fact]
+        public void Build_QualifiesDataTargetAgainstCapturedPhysicalBank()
+        {
+            byte[][] ramBanks = CreateBanks(8);
+            Write(ramBanks[7], 0x0100, 0x3A, 0x00, 0xC2); // LD A,(C200H)
+            ramBanks[7][0x0103] = 0xC9;
+            Write(ramBanks[6], 0x0100, 0x3A, 0x00, 0xC2);
+            ramBanks[6][0x0103] = 0xC9;
+
+            DisassemblySnapshot snapshot = CreateSnapshot(new byte[65536], ramBanks);
+            DisassemblyCrossReference active = Assert.Single(
+                DisassemblyCrossReferenceIndex.Build(snapshot, DisassemblyAddressSpace.Ram(7), [0x0100])
+                    .GetOutgoing(DisassemblyAddressSpace.Ram(7), 0x0100));
+            DisassemblyCrossReference inactive = Assert.Single(
+                DisassemblyCrossReferenceIndex.Build(snapshot, DisassemblyAddressSpace.Ram(6), [0x0100])
+                    .GetOutgoing(DisassemblyAddressSpace.Ram(6), 0x0100));
+
+            Assert.Equal(new DisassemblyLocation(DisassemblyAddressSpace.Ram(7), 0x0200), active.Target);
+            Assert.Equal(new DisassemblyLocation(DisassemblyAddressSpace.Mapped, 0xC200), inactive.Target);
+        }
+
         private static void AssertReference(
             IReadOnlyList<DisassemblyCrossReference> references,
             ushort source,
@@ -94,6 +138,20 @@ namespace Spectrum128kEmulator.Tests
             Assert.Equal(new DisassemblyLocation(DisassemblyAddressSpace.Mapped, source), reference.Source);
             Assert.Equal(new DisassemblyLocation(DisassemblyAddressSpace.Mapped, target), reference.Target);
             Assert.Equal(kind, reference.Kind);
+        }
+
+        private static void AssertDataReference(
+            DisassemblyCrossReferenceIndex index,
+            ushort source,
+            ushort target,
+            DisassemblyCrossReferenceKind kind,
+            int width)
+        {
+            DisassemblyCrossReference reference = Assert.Single(
+                index.GetOutgoing(DisassemblyAddressSpace.Mapped, source));
+            Assert.Equal(new DisassemblyLocation(DisassemblyAddressSpace.Mapped, target), reference.Target);
+            Assert.Equal(kind, reference.Kind);
+            Assert.Equal(width, reference.Width);
         }
 
         private static DisassemblySnapshot CreateSnapshot(byte[] memory, IReadOnlyList<byte[]>? ramBanks = null) =>

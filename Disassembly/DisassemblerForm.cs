@@ -13,6 +13,7 @@ namespace Spectrum128kEmulator
         private readonly DebuggerExecutionController executionController;
         private readonly Action<DebuggerExecutionCommand, ushort?> requestExecution;
         private readonly DisassemblyNavigationHistory navigationHistory = new();
+        private readonly HashSet<DisassemblyLocation> analysisRoots = new();
         private readonly DisassemblySymbolTable symbols;
         private readonly DisassemblyClassificationMap classifications;
         private readonly string classificationContext;
@@ -28,6 +29,11 @@ namespace Spectrum128kEmulator
         private readonly Label cpuStateLabel = new();
         private readonly ListView instructionList = new();
         private readonly ListBox crossReferenceList = new();
+        private readonly TabControl inspectorTabs = new();
+        private readonly ListBox memoryList = new();
+        private readonly TextBox memoryAddressTextBox = new();
+        private readonly ComboBox memorySourceComboBox = new();
+        private readonly Label memoryContextLabel = new();
         private readonly CheckedListBox breakpointList = new();
         private readonly Button backButton;
         private readonly Button forwardButton;
@@ -52,7 +58,10 @@ namespace Spectrum128kEmulator
         private bool executionRunning;
         private bool refreshingBreakpointList;
         private bool changingAddressSpace;
+        private bool changingMemorySource;
         private DisassemblyCrossReferenceIndex crossReferences = new();
+        private DisassemblyAddressSpace memoryAddressSpace;
+        private ushort memoryAddress;
 
         public DisassemblerForm(Func<DisassemblySnapshot> captureSnapshot)
             : this(
@@ -105,6 +114,11 @@ namespace Spectrum128kEmulator
             executionController.ReplaceBreakpoints(settings.Breakpoints.Select(
                 breakpoint => new DebuggerBreakpoint(breakpoint.Address, breakpoint.Enabled)));
             selectedAddressSpace = RestoreAddressSpace(settings, snapshot);
+            memoryAddressSpace = selectedAddressSpace;
+            memoryAddress = selectedAddressSpace.Kind == DisassemblyAddressSpaceKind.Mapped
+                ? snapshot.ProgramCounter
+                : (ushort)0;
+            analysisRoots.Add(new DisassemblyLocation(DisassemblyAddressSpace.Mapped, snapshot.ProgramCounter));
             backButton = CreateButton("< Back", 18, 29, 68);
             forwardButton = CreateButton("Forward >", 94, 29, 82);
 
@@ -206,6 +220,7 @@ namespace Spectrum128kEmulator
             toolbar.Controls.Add(forwardButton);
 
             toolbar.Controls.Add(CreateToolbarLabel("ADDRESS", 190, 8));
+            addressTextBox.Name = "ListingAddressTextBox";
             addressTextBox.Location = new Point(190, 31);
             addressTextBox.Size = new Size(88, 24);
             addressTextBox.Font = listingFont;
@@ -214,6 +229,7 @@ namespace Spectrum128kEmulator
             toolbar.Controls.Add(addressTextBox);
 
             Button goButton = CreateButton("Go", 286, 29, 50);
+            goButton.Name = "ListingGoButton";
             goButton.Click += (_, _) => NavigateFromAddressBox();
             toolbar.Controls.Add(goButton);
             Button pcButton = CreateButton("PC", 344, 29, 48);
@@ -345,6 +361,8 @@ namespace Spectrum128kEmulator
         {
             var menu = new ContextMenuStrip();
             ToolStripItem followTargetItem = menu.Items.Add("Follow Target", null, (_, _) => NavigateToSelectedTarget());
+            ToolStripItem inspectAddressItem = menu.Items.Add("Inspect Address in Memory", null, (_, _) => InspectSelectedInstructionAddress());
+            ToolStripItem inspectTargetItem = menu.Items.Add("Inspect Direct Target in Memory", null, (_, _) => InspectSelectedInstructionTarget());
             ToolStripItem editLabelItem = menu.Items.Add("Add/Edit Label...", null, (_, _) => EditLabelAtSelection());
             ToolStripItem removeLabelItem = menu.Items.Add("Remove Label", null, (_, _) => RemoveLabelAtSelection());
             ToolStripMenuItem classificationItem = new("Classification");
@@ -364,8 +382,9 @@ namespace Spectrum128kEmulator
             menu.Items.Add("Export Symbols...", null, (_, _) => ExportSymbols());
             menu.Opening += (_, _) =>
             {
-                followTargetItem.Enabled = SelectedInstruction()?.BranchTarget is ushort target &&
-                    target < selectedAddressSpace.Length;
+                followTargetItem.Enabled = TryGetSelectedDirectReference(out _);
+                inspectAddressItem.Enabled = SelectedInstruction() != null;
+                inspectTargetItem.Enabled = TryGetSelectedDirectReference(out _);
                 editLabelItem.Enabled = SelectedInstruction() != null;
                 removeLabelItem.Enabled = SelectedInstruction() is Z80Instruction selected &&
                     symbols.GetName(selectedAddressSpace, selected.Address) != null;
@@ -411,6 +430,7 @@ namespace Spectrum128kEmulator
 
             ushort selectedAddress = SelectedInstruction()?.Address ?? listingAddress;
             snapshot = captureSnapshot();
+            RefreshMemorySources();
             if (!snapshot.AvailableAddressSpaces.Contains(selectedAddressSpace))
                 selectedAddressSpace = DisassemblyAddressSpace.Mapped;
             PopulateAddressSpaceChoices();
@@ -700,25 +720,37 @@ namespace Spectrum128kEmulator
             UpdateCpuState();
             UpdateExecutionControls();
             RefreshCrossReferenceList();
+            RefreshMemoryInspector();
         }
 
         private void NavigateToSelectedTarget()
         {
-            if (SelectedInstruction()?.BranchTarget is ushort target)
+            if (TryGetSelectedDirectReference(out DisassemblyCrossReference? reference))
             {
-                if (target >= selectedAddressSpace.Length)
+                analysisRoots.Add(reference!.Source);
+                PreserveCurrentHistorySelection();
+                SetSelectedAddressSpace(reference.Target.AddressSpace);
+                bool controlFlow = reference.Kind is DisassemblyCrossReferenceKind.Call or
+                    DisassemblyCrossReferenceKind.Jump or DisassemblyCrossReferenceKind.RelativeJump;
+                if (controlFlow)
                 {
-                    statusLabel.Text = $"Target {target:X4}H is outside {selectedAddressSpace.DisplayName}; switch to Mapped 64K to follow its logical address.";
-                    return;
+                    bool isCall = reference.Kind == DisassemblyCrossReferenceKind.Call;
+                    DisassemblySymbol symbol = symbols.EnsureAutomatic(
+                        reference.Target.AddressSpace,
+                        reference.Target.Address,
+                        isCall);
+                    NavigateTo(reference.Target.Address);
+                    statusLabel.Text = $"Followed target {symbol.Name} at {reference.Target.AddressSpace.FormatAddress(reference.Target.Address)}.";
                 }
-                bool isCall = SelectedInstruction()!.Mnemonic.StartsWith("CALL ", StringComparison.OrdinalIgnoreCase) ||
-                    SelectedInstruction()!.Mnemonic.StartsWith("RST ", StringComparison.OrdinalIgnoreCase);
-                DisassemblySymbol symbol = symbols.EnsureAutomatic(selectedAddressSpace, target, isCall);
-                NavigateTo(target);
-                statusLabel.Text = $"Followed target {symbol.Name} at {selectedAddressSpace.FormatAddress(target)}.";
+                else
+                {
+                    NavigateTo(
+                        reference.Target.Address,
+                        status: $"Followed data {FormatReferenceKind(reference)} to {reference.Target.AddressSpace.FormatAddress(reference.Target.Address)}.");
+                }
             }
             else
-                statusLabel.Text = "The selected instruction has no direct branch target.";
+                statusLabel.Text = "The selected instruction has no statically resolved target.";
         }
 
         private Z80Instruction? SelectedInstruction()
@@ -730,13 +762,32 @@ namespace Spectrum128kEmulator
 
         private string FormatTarget(Z80Instruction instruction)
         {
-            if (instruction.BranchTarget is not ushort target)
+            DisassemblyCrossReference? reference = crossReferences
+                .GetOutgoing(selectedAddressSpace, instruction.Address)
+                .FirstOrDefault();
+            if (reference == null)
                 return string.Empty;
 
-            string? label = target < selectedAddressSpace.Length
-                ? symbols.GetName(selectedAddressSpace, target)
+            DisassemblyLocation target = reference.Target;
+            string? label = symbols.GetName(target.AddressSpace, target.Address);
+            string address = target.AddressSpace == selectedAddressSpace
+                ? target.Address.ToString("X4")
+                : $"{AddressSpacePrefix(target.AddressSpace)}:{target.Address:X4}";
+            string prefix = reference.Kind switch
+            {
+                DisassemblyCrossReferenceKind.DataRead => "R ",
+                DisassemblyCrossReferenceKind.DataWrite => "W ",
+                _ => string.Empty
+            };
+            return label == null ? prefix + address : $"{prefix}{label} ({target.Address:X4})";
+        }
+
+        private bool TryGetSelectedDirectReference(out DisassemblyCrossReference? reference)
+        {
+            reference = SelectedInstruction() is Z80Instruction instruction
+                ? crossReferences.GetOutgoing(selectedAddressSpace, instruction.Address).FirstOrDefault()
                 : null;
-            return label == null ? target.ToString("X4") : $"{label} ({target:X4})";
+            return reference != null;
         }
 
         private void EditLabelAtSelection()
