@@ -12,6 +12,7 @@ that every level, control path, or hardware edge case has been tested.
 | Arkanoid (Hit Squad) | `.tzx` | LOAD capability gating falls back to the real-ROM protected path; loading reaches gameplay and beam-aware rendering eliminates the previously observed ship flicker |
 | Batman | `.tzx` | Chained BASIC and protected loading complete; game runs |
 | Booze Up | `.tzx` | Interactive BASIC loading remains under real-ROM control, reaches the loaded program, and detects the terminal tape state correctly |
+| Cabal | `48k.tzx`, `128k.tzx` | Both editions reach the player-selection menu through real-ROM bootstrap; 48K stops at its first multiload marker, while 128K completes and ends the tape cleanly |
 | Captain America | `.tzx` | Protected loader completes; game runs |
 | Donkey Kong (Erbe) | `.tzx` | Custom loader completes without corrupting the loading screen; game runs |
 | Exolon | `.tap`, `.tzx` | Both tape formats load and reach the game |
@@ -47,7 +48,7 @@ that every level, control path, or hardware edge case has been tested.
 
 ## Regression Validation
 
-The complete table currently represents 30 media paths. The Milestone 20
+The complete table currently represents 32 media paths. The Milestone 20
 structural acceptance pass loaded every path and ran each for 1,200 headless
 frames without an emulator exception or automatic BASIC-error dump. The preceding
 manual acceptance pass reached each documented checkpoint, visually inspected the

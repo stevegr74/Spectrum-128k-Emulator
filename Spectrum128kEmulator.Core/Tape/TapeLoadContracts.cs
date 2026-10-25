@@ -70,6 +70,7 @@ namespace Spectrum128kEmulator.Tap
         MixedBasicChainRequiresRom,
         UnsatisfiedLeadingLoadRequests,
         UnrepresentableMountedContinuation,
+        UnsupportedMixedBootstrapControlFlow,
         MixedTapeBootstrap,
         ProtectedBasicRequiresRom,
         BasicBootstrapMounted,

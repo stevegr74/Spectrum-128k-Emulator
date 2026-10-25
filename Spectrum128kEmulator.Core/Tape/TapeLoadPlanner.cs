@@ -77,6 +77,14 @@ namespace Spectrum128kEmulator.Tap
             if (TapLoader.RequiresMountedRealtimeForMixedTape(machine, blocks))
             {
                 bool use128kMode = TapLoader.Use128kTapeLoadMode(machine);
+                if (!TapLoader.CanExecuteLeadingBasicProgramWithBootstrap(machine, blocks, use128kMode))
+                {
+                    return new TapeLoadPlan(
+                        TapeLoadStrategy.RomBootstrapMounted,
+                        TapeLoadPlanReason.UnsupportedMixedBootstrapControlFlow,
+                        "Mixed tape requires mounted playback, but its autorun BASIC control flow must execute under ROM control.");
+                }
+
                 if (TapLoader.FindLeadingStandardBasicChainEndIndex(blocks) == 0 &&
                     !TapLoader.CanSatisfyLeadingBasicLoadRequestsBeforeProtectedRemainder(machine, blocks, use128kMode))
                 {
