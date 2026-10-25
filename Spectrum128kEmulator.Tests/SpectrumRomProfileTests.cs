@@ -18,6 +18,16 @@ namespace Spectrum128kEmulator.Tests
         }
 
         [Fact]
+        public void BundledRomProfile_Does_Not_Classify_Application_Ram_As_A_Rom_Return_Path()
+        {
+            string romFolder = Path.Combine(AppContext.BaseDirectory, "ROMs");
+            var machine = new Spectrum128Machine(romFolder);
+
+            Assert.False(machine.RomProfile.IsMountedLoadReturnAddress(0x5E87));
+            Assert.True(machine.RomProfile.IsMountedLoadReturnAddress(0x15FE));
+        }
+
+        [Fact]
         public void UnknownRomPair_Disables_AddressBasedTapeServices_And_Uses_RawPlayback()
         {
             string romFolder = CreateUnknownRoms();

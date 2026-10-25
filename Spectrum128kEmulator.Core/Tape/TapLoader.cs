@@ -664,6 +664,8 @@ namespace Spectrum128kEmulator.Tap
                 consumedBlockCount += 2;
             }
 
+            IReadOnlyList<CustomLoaderWaitLoop> customLoaderWaitLoops =
+                CaptureCustomLoaderWaitLoops(machine, blocks);
             int ignoredLoadCount = 0;
             if (autoStartFileName != null)
             {
@@ -709,7 +711,7 @@ namespace Spectrum128kEmulator.Tap
                 AdvanceBootstrapTapeTime(machine, consumedTStates);
             }
 
-            if (TryFindTapCustomLoaderResumePc(machine, blocks, out ushort resumePc))
+            if (TryResolvePatchedCustomLoaderWaitLoop(machine, customLoaderWaitLoops, out ushort resumePc))
                 machine.Cpu.Regs.PC = resumePc;
 
             if (remountPlaybackRemainder)
@@ -774,61 +776,84 @@ namespace Spectrum128kEmulator.Tap
             }
         }
 
-        private static bool TryFindTapCustomLoaderResumePc(
+        private static IReadOnlyList<CustomLoaderWaitLoop> CaptureCustomLoaderWaitLoops(
             Spectrum128Machine machine,
-            IReadOnlyList<TapeBlock> blocks,
-            out ushort resumePc)
+            IReadOnlyList<TapeBlock> blocks)
         {
-            resumePc = 0;
-            if (machine == null || blocks == null)
-                return false;
-
             if (FindFirstCustomHeaderBlockIndex(blocks) < 0)
-                return false;
+                return Array.Empty<CustomLoaderWaitLoop>();
 
-            ushort currentPc = machine.Cpu.Regs.PC;
-            int codeBlockStartIndex = -1;
-            TapHeaderInfo? codeHeader = null;
-
-            for (int i = 0; i + 1 < blocks.Count; i++)
+            var waitLoops = new List<CustomLoaderWaitLoop>();
+            for (int blockIndex = 0; blockIndex + 1 < blocks.Count; blockIndex++)
             {
-                if (!IsStandardHeaderBlock(blocks[i]) || blocks[i + 1].Flag != DataFlag)
+                if (!IsStandardHeaderBlock(blocks[blockIndex]) ||
+                    blocks[blockIndex + 1].Flag != DataFlag ||
+                    blocks[blockIndex + 1].Payload == null)
+                {
                     continue;
+                }
 
-                TapHeaderInfo header = ParseHeaderInfo(blocks[i]);
+                TapHeaderInfo header = ParseHeaderInfo(blocks[blockIndex]);
                 if (header.Type != CodeType)
                     continue;
 
-                ushort start = header.StartAddress;
-                ushort endExclusive = (ushort)(start + header.DataLength);
-                if (currentPc >= start && currentPc < endExclusive)
+                byte[] originalCode = blocks[blockIndex + 1].Payload!;
+                int searchLength = Math.Min(header.DataLength, originalCode.Length);
+                for (int offset = 0; offset + 1 < searchLength; offset++)
                 {
-                    codeBlockStartIndex = i;
-                    codeHeader = header;
-                    break;
+                    if (originalCode[offset] != 0x10 || originalCode[offset + 1] != 0xFE)
+                        continue;
+
+                    ushort address = (ushort)(header.StartAddress + offset);
+                    if (machine.PeekMemory(address) == 0x10 &&
+                        machine.PeekMemory((ushort)(address + 1)) == 0xFE)
+                    {
+                        waitLoops.Add(new CustomLoaderWaitLoop(
+                            address,
+                            header.StartAddress,
+                            header.DataLength));
+                    }
                 }
             }
 
-            if (codeBlockStartIndex < 0 || codeHeader == null)
-                return false;
-
-            if (codeBlockStartIndex + 1 >= blocks.Count || blocks[codeBlockStartIndex + 1].Payload == null)
-                return false;
-
-            byte[] codePayload = blocks[codeBlockStartIndex + 1].Payload!;
-            int searchEndExclusive = Math.Min(codeHeader.DataLength - 1, codePayload.Length - 1);
-            for (int offset = 0; offset < searchEndExclusive; offset++)
-            {
-                if (codePayload[offset] == 0x10 &&
-                    codePayload[offset + 1] == 0xFE)
-                {
-                    resumePc = (ushort)(codeHeader.StartAddress + offset);
-                    return true;
-                }
-            }
-
-            return false;
+            return waitLoops;
         }
+
+        private static bool TryResolvePatchedCustomLoaderWaitLoop(
+            Spectrum128Machine machine,
+            IReadOnlyList<CustomLoaderWaitLoop> waitLoops,
+            out ushort resumePc)
+        {
+            resumePc = 0;
+            ushort currentPc = machine.Cpu.Regs.PC;
+            ushort? patchedWaitLoop = null;
+            foreach (CustomLoaderWaitLoop waitLoop in waitLoops)
+            {
+                if (currentPc < waitLoop.CodeStart ||
+                    currentPc - waitLoop.CodeStart >= waitLoop.CodeLength ||
+                    (machine.PeekMemory(waitLoop.Address) == 0x10 &&
+                     machine.PeekMemory((ushort)(waitLoop.Address + 1)) == 0xFE))
+                {
+                    continue;
+                }
+
+                if (patchedWaitLoop.HasValue)
+                    return false;
+
+                patchedWaitLoop = waitLoop.Address;
+            }
+
+            if (!patchedWaitLoop.HasValue)
+                return false;
+
+            resumePc = patchedWaitLoop.Value;
+            return true;
+        }
+
+        private readonly record struct CustomLoaderWaitLoop(
+            ushort Address,
+            ushort CodeStart,
+            ushort CodeLength);
 
         internal static bool RequiresRomDrivenBootstrapForStandardTape(
             Spectrum128Machine machine,

@@ -37,7 +37,6 @@ namespace Spectrum128kEmulator
                    IsInRange(address, 0x0E51, 0x0E5C) ||
                    IsInRange(address, 0x15FD, 0x1600) ||
                    IsInRange(address, 0x10A8, 0x10B4) ||
-                   address == 0x5E87 ||
                    IsInRange(address, 0x1615, 0x16E4) ||
                    IsInRange(address, 0x3631, 0x3634);
         }

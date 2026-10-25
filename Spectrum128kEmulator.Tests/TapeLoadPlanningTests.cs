@@ -1513,7 +1513,44 @@ namespace Spectrum128kEmulator.Tests
         }
 
         [Fact]
-        public void LoadAllStandardBlocksAndAutoStart_Uses_Code_Payload_For_Custom_Resume_Search_After_Basic_Patches_Ram()
+        public void LoadAllStandardBlocksAndAutoStart_Does_Not_Treat_Unchanged_Wait_Loop_As_A_Handoff()
+        {
+            string tempFolder = CreateTempRoms();
+            string tapePath = Path.Combine(tempFolder, "unchanged-wait-loop.tap");
+
+            try
+            {
+                const ushort entryPoint = 0xFC00;
+                byte[] basicLoader = BuildBasicProgram(
+                    BuildBasicLine(10,
+                        Token(249), Ascii(" "), Token(192), Ascii("64512"), NumberMarker(entryPoint)));
+                byte[] codeLoader = { 0x10, 0xFE, 0xC9 };
+                byte[] customData = { 0xAA };
+                byte[] tap = BuildTap(
+                    BuildHeaderBlock(type: 0, fileName: "LOADER", dataLength: (ushort)basicLoader.Length, parameter1: 10, parameter2: (ushort)basicLoader.Length),
+                    BuildDataBlock(basicLoader),
+                    BuildHeaderBlock(type: 3, fileName: "CODE", dataLength: (ushort)codeLoader.Length, parameter1: entryPoint, parameter2: 0),
+                    BuildDataBlock(codeLoader),
+                    BuildHeaderBlock(type: 42, fileName: "CUSTOM", dataLength: (ushort)customData.Length, parameter1: 0x9000, parameter2: 0),
+                    BuildDataBlock(customData));
+
+                File.WriteAllBytes(tapePath, tap);
+
+                var machine = new Spectrum128Machine(tempFolder);
+                TapBootstrapResult result = TapLoader.LoadAllStandardBlocksAndAutoStart(machine, tapePath);
+
+                Assert.Equal(6, result.ConsumedBlockCount);
+                Assert.Equal(entryPoint, machine.Cpu.Regs.PC);
+                Assert.True(machine.HasMountedTape);
+            }
+            finally
+            {
+                Directory.Delete(tempFolder, true);
+            }
+        }
+
+        [Fact]
+        public void LoadAllStandardBlocksAndAutoStart_Resumes_At_Unique_BasicPatched_Loader_Wait_Loop()
         {
             string tempFolder = CreateTempRoms();
             string tapePath = Path.Combine(tempFolder, "custom-resume.tap");
