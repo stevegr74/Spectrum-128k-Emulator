@@ -17,6 +17,8 @@ namespace Spectrum128kEmulator.Z80
         public Func<ushort, byte> ReadPort { get; set; } = _ => 0xFF;
         public Func<ushort, int, byte>? ReadPortTimed { get; set; }
         public Action<ushort, byte> WritePort { get; set; } = (_, _) => { };
+        // IM 0 samples this byte during interrupt acknowledge; Spectrum hardware normally supplies 0xFF.
+        public Func<byte> ReadInterruptDataBus { get; set; } = () => 0xFF;
         public Action<string>? Trace { get; set; }
         public Func<Z80Cpu, bool>? BeforeInstruction { get; set; }
         // Diagnostic-only stop hook.  It is unset during normal emulation.
@@ -44,7 +46,7 @@ namespace Spectrum128kEmulator.Z80
         public ulong LastInterruptProgressTStates { get; private set; } = 0;
 
         private int eiDelay = 0;
-        private int interruptMode = 1;
+        private int interruptMode = 0;
         private byte qFlags = 0;
         private bool flagsWrittenThisInstruction;
         private readonly Action[] opcodeTable = new Action[256];
@@ -137,7 +139,7 @@ namespace Spectrum128kEmulator.Z80
             IFF2 = false;
 
             eiDelay = 0;
-            interruptMode = 1;
+            interruptMode = 0;
             qFlags = 0;
             flagsWrittenThisInstruction = false;
 
@@ -177,7 +179,7 @@ namespace Spectrum128kEmulator.Z80
             IFF2 = false;
 
             eiDelay = 0;
-            interruptMode = 1;
+            interruptMode = 0;
             qFlags = 0;
             flagsWrittenThisInstruction = false;
             LastInterruptProgressTStates = TStates;
@@ -267,18 +269,23 @@ namespace Spectrum128kEmulator.Z80
             IFF2 = false;
 
             IncrementRefreshRegister();
-            TStates += 7;
-            Push(Regs.PC);
 
             switch (interruptMode)
             {
                 case 0:
+                    AcceptInterruptMode0();
+                    break;
+
                 case 1:
+                    TStates += 7;
+                    Push(Regs.PC);
                     Regs.PC = 0x0038;
                     RecordInterruptEvent($"INT_VECTOR target={Regs.PC:X4}");
                     break;
 
                 case 2:
+                    TStates += 7;
+                    Push(Regs.PC);
                     ushort vector = (ushort)((Regs.I << 8) | 0xFF);
                     byte low = ReadMemory(vector);
                     TStates += 3;
@@ -289,7 +296,20 @@ namespace Spectrum128kEmulator.Z80
                     break;
             }
 
-            RecordInterruptEvent($"INT_VECTOR {Regs.PC:X4}");
+        }
+
+        private void AcceptInterruptMode0()
+        {
+            byte opcode = ReadInterruptDataBus();
+            flagsWrittenThisInstruction = false;
+            instructionFetchOffsetTStates = 6;
+
+            // The six-state interrupt acknowledge replaces the normal four-state M1 fetch.
+            TStates += 2;
+            RecordInterruptEvent($"INT_MODE0 opcode={opcode:X2}");
+            ExecuteOpcode(opcode);
+            CompleteInstruction();
+            RecordInterruptEvent($"INT_MODE0_COMPLETE pc={Regs.PC:X4}");
         }
 
         public void Step()
@@ -300,7 +320,12 @@ namespace Spectrum128kEmulator.Z80
 
             byte op = FetchOpcodeByte();
             RecordTrace(pcBefore, op);
+            ExecuteOpcode(op);
+            CompleteInstruction();
+        }
 
+        private void ExecuteOpcode(byte op)
+        {
             if (op == 0xCB)
             {
                 byte cbOp = FetchOpcodeByte();
@@ -345,7 +370,10 @@ namespace Spectrum128kEmulator.Z80
             {
                 opcodeTable[op]();
             }
+        }
 
+        private void CompleteInstruction()
+        {
             if (eiDelay > 0)
             {
                 eiDelay--;

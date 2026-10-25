@@ -135,8 +135,13 @@ namespace Spectrum128kEmulator.Z80
             edOpcodeTable[0x4D] = () => { IFF1 = IFF2; TStates += 8; Regs.PC = Pop(); }; // RETI
 
             edOpcodeTable[0x46] = () => { interruptMode = 0; TStates += 8; };
+            edOpcodeTable[0x4E] = () => { interruptMode = 0; TStates += 8; };
             edOpcodeTable[0x56] = () => { interruptMode = 1; TStates += 8; };
             edOpcodeTable[0x5E] = () => { interruptMode = 2; TStates += 8; };
+            edOpcodeTable[0x66] = () => { interruptMode = 0; TStates += 8; };
+            edOpcodeTable[0x6E] = () => { interruptMode = 0; TStates += 8; };
+            edOpcodeTable[0x76] = () => { interruptMode = 1; TStates += 8; };
+            edOpcodeTable[0x7E] = () => { interruptMode = 2; TStates += 8; };
 
             // =========================
             // Decimal rotate through memory
