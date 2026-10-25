@@ -262,7 +262,7 @@ Test coverage includes:
 - complete 48K/128K contention phases, boundaries, I/O cases, and contended-bank behavior
 - 48K/128K floating-bus fetches, including 128K shadow-screen bank selection
 - exact port event timestamps, block-I/O timing, and border latch/raster mapping
-- timed opcode, prefix, immediate, ordinary, indexed, block, stack, and interrupt-vector memory cycles
+- timed opcode, prefix, immediate, ordinary, indexed, block, stack, interrupt-vector, and IM 0 data-bus instruction cycles
 - AY register write and selected-register port-read behaviour
 - Audio sample generation, long-run 48K/128K sample-clock drift, and clipping diagnostics
 - Audio pipeline behaviour, including turbo suppression, clean frame-boundary resume, and Quick State transition restoration
@@ -350,7 +350,7 @@ compatibility; completed milestones remain regression baselines.
 | 1 | Complete | Active-low keyboard matrix, scan-aware Windows input, shared chord ownership, 128K menu navigation, and BASIC entry |
 | 2 | Complete | Attribute/FLASH rendering and renderer optimization |
 | 3 | Complete | 50Hz pacing, frame execution, and interrupt cadence |
-| 4 | Complete | ZEXDOC/ZEXALL CPU baseline and hardware-derived block-I/O flag regressions |
+| 4 | Complete | ZEXDOC/ZEXALL CPU baseline, hardware-derived block-I/O flags, Q-latch and interrupt semantics, and general IM 0 bus-instruction execution |
 | 5 | Complete | 48K/128K `.sna` plus `.z80` v1/v2/v3 support |
 | 6 | In progress | Structure-driven TAP/TZX bootstrap, ROM, protected, mounted, VERIFY, and sequencing paths |
 | 7 | Complete | Clock-driven beeper/AY synthesis, mixing, and clean turbo-to-real-time audio handoff |
