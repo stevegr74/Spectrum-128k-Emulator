@@ -110,6 +110,45 @@ namespace Spectrum128kEmulator.Tests
         }
 
         [Fact]
+        public void CreateExecutionPlan_UsesRomBootstrap_WhenMixedTapeBasicIsNotBootstrapSafe()
+        {
+            string tempFolder = CreateTempRoms();
+
+            try
+            {
+                byte[] protectedLoader = BuildBasicProgram(
+                    BuildBasicLine(0, Token(234), Ascii("PROTECTED LOADER")),
+                    BuildBasicLine(0,
+                        Token(241), Ascii("entry"), Equals(),
+                        Token(190), Ascii("23627"), NumberMarker(23627)),
+                    BuildBasicLine(10,
+                        Token(249), Ascii(" "), Token(192), Ascii("32768"), NumberMarker(32768)));
+                byte[] tape = BuildTap(
+                    BuildHeaderBlock(
+                        type: 0,
+                        fileName: "LOADER",
+                        dataLength: (ushort)protectedLoader.Length,
+                        parameter1: 0,
+                        parameter2: (ushort)protectedLoader.Length),
+                    BuildDataBlock(protectedLoader),
+                    BuildDataBlock(new byte[] { 0x10, 0x20, 0x30 }, flag: 0x98));
+
+                MethodInfo parseBlocks = typeof(TapLoader).GetMethod("ParseBlocks", BindingFlags.NonPublic | BindingFlags.Static)!;
+                var blocks = (IReadOnlyList<TapeBlock>)parseBlocks.Invoke(null, new object[] { tape })!;
+                var machine = new Spectrum128Machine(tempFolder);
+
+                TapeLoadPlan plan = TapLoader.CreateExecutionPlan(machine, blocks);
+
+                Assert.Equal(TapeLoadStrategy.RomBootstrapMounted, plan.Strategy);
+                Assert.Equal(TapeLoadPlanReason.UnsupportedMixedBootstrapControlFlow, plan.ReasonCode);
+            }
+            finally
+            {
+                Directory.Delete(tempFolder, true);
+            }
+        }
+
+        [Fact]
         public void CreateExecutionPlan_UsesRomBootstrap_ForInteractivePauseBeforeStandardCodeLoad()
         {
             string tempFolder = CreateTempRoms();

@@ -54,7 +54,7 @@ Current limitations and active work:
 
 ### Implementation Notes
 
-- Fast tape bootstrap is capability-gated. Unsupported initial or chained BASIC control flow, including protected handoff directly into raw pulses, falls back to a clean real-ROM autorun path with the remaining tape mounted.
+- Fast tape bootstrap is capability-gated. Unsupported initial or chained BASIC control flow, including protected handoff directly into raw pulses and mixed raw-stream autorun that cannot be represented safely, falls back to a clean real-ROM autorun path with the remaining tape mounted.
 - Address-based ROM tape services are enabled only for the fingerprinted bundled ROM pair; an unknown ROM pair uses real-time mounted pulse/EAR playback instead of assuming compatible internal addresses.
 - ROM-driven tape handoffs preserve consumed-block pauses, exact TZX pause signal transitions, and zero-duration stop markers.
 - TZX pulse and pause timings use their 3.5 MHz tape-time basis and are scaled to the selected machine clock; unstructured ROM loads return to their actual caller so banked multiload stages can continue safely.
@@ -433,7 +433,7 @@ compatibility; completed milestones remain regression baselines.
 - Split the large tape regression suite into transport, mounted-playback, and load-planning test files without reducing coverage
 - Kept pulse/EAR transport, fast/ROM/protected load strategy, and BASIC/machine-code continuation as separate cooperating responsibilities rather than one combined state machine
 - Reduced the three largest tape implementation files through behavior-preserving partial-class extractions for parsing/timing, ROM loading, BASIC expressions, and mounted continuation; `MountedLoadContinuationController` remains focused on resume state
-- Added stable load-plan reason codes for unsupported acceleration, unsafe bootstrap control flow, and unrepresentable continuation while retaining readable explanations and distinct transport reasons for pause, tape end, and ROM handoff
+- Added stable load-plan reason codes for unsupported acceleration, unsafe standard or mixed-stream bootstrap control flow, and unrepresentable continuation while retaining readable explanations and distinct transport reasons for pause, tape end, and ROM handoff
 - Removed the application-RAM continuation whitelist and replaced arbitrary custom-loader byte matching with a unique BASIC-patched wait-loop transition, guarded against unchanged lookalikes
 - Retained the full automated suite, ZEXDOC/ZEXALL, and the verified media matrix as regression gates throughout the structural work
 - Completed final interactive acceptance with the hardened tape paths and transport behavior confirmed working as expected

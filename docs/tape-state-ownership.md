@@ -89,6 +89,8 @@ focused checks for:
   restoration remain distinct transitions;
 - accelerated BASIC tokenization and execution preserve `INT`, division, and
   byte-extraction expressions used by protected loaders;
+- mixed raw-stream structure permits hybrid loading only when the leading BASIC
+  program independently passes the bootstrap executor's capability check;
 - application RAM is not classified as a ROM return path, and unchanged loader
   wait-loop lookalikes cannot redirect bootstrap execution;
 - unsupported ROM acceleration, unsafe bootstrap control flow, and
