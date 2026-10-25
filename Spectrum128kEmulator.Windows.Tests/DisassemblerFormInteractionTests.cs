@@ -24,6 +24,28 @@ namespace Spectrum128kEmulator.Tests
                     form.Show();
                     Application.DoEvents();
 
+                    Label summary = Descendants(form).OfType<Label>()
+                        .Single(label => label.Name == "MemoryMapSummary");
+                    Label screenBank = Descendants(form).OfType<Label>()
+                        .Single(label => label.Name == "MemoryMapScreenBank");
+                    Label compactMap = Descendants(form).OfType<Label>()
+                        .Single(label => label.Name == "CompactMemoryMap");
+                    Panel memoryMap = Descendants(form).OfType<Panel>()
+                        .Single(panel => panel.Name == "MemoryMapPanel");
+                    Label[] memoryBlocks = Descendants(form).OfType<Label>()
+                        .Where(label => label.Name.StartsWith("MemoryMapBlock", StringComparison.Ordinal))
+                        .OrderBy(label => label.Name)
+                        .ToArray();
+                    Assert.Equal(4, memoryBlocks.Length);
+                    Assert.True(memoryBlocks.All(block => block.Visible));
+                    Assert.InRange(memoryBlocks.Max(block => block.Width) - memoryBlocks.Min(block => block.Width), 0, 2);
+                    Assert.Contains("LISTING 8000H | PC 8000H | 128K", summary.Text);
+                    Assert.Equal(["0000 ROM 1", "4000 RAM 5", "8000 RAM 2", "C000 RAM 7"], memoryBlocks.Select(block => block.Text));
+                    Assert.Equal(Color.FromArgb(214, 237, 229), memoryBlocks[1].BackColor);
+                    Assert.Equal(Color.FromArgb(95, 225, 195), memoryBlocks[2].BackColor);
+                    Assert.Equal("DISPLAY RAM 5", screenBank.Text);
+                    Assert.False(compactMap.Visible);
+
                     NavigateTo(form, "8020");
                     ListView listing = Descendants(form).OfType<ListView>().Single();
                     ListBox references = Descendants(form).OfType<ListBox>()
@@ -58,6 +80,12 @@ namespace Spectrum128kEmulator.Tests
                     Application.DoEvents();
                     Assert.Equal("9000", listing.Items[0].Text);
                     Assert.Contains("IN  READ8   MAP:8020", references.Items[0]!.ToString());
+
+                    memoryMap.Width = 380;
+                    Application.DoEvents();
+                    Assert.True(compactMap.Visible);
+                    Assert.False(summary.Visible);
+                    Assert.Contains("CAPTURED PC 8000H", compactMap.Text);
 
                     form.Close();
                     Application.DoEvents();

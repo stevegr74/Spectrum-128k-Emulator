@@ -23,7 +23,12 @@ namespace Spectrum128kEmulator
         private readonly TextBox searchTextBox = new();
         private readonly ComboBox searchModeComboBox = new();
         private readonly ComboBox addressSpaceComboBox = new();
-        private readonly Label mappingLabel = new();
+        private readonly Panel mappingPanel = new();
+        private readonly Label mappingSummaryLabel = new();
+        private readonly TableLayoutPanel mappingBlocksPanel = new();
+        private readonly Label[] mappingBlockLabels = [new(), new(), new(), new()];
+        private readonly Label screenBankLabel = new();
+        private readonly Label compactMappingLabel = new();
         private readonly Label captureStateLabel = new();
         private readonly Label statusLabel = new();
         private readonly Label cpuStateLabel = new();
@@ -245,14 +250,8 @@ namespace Spectrum128kEmulator
             exportButton.Click += (_, _) => ExportListing();
             toolbar.Controls.Add(exportButton);
 
-            mappingLabel.AutoSize = false;
-            mappingLabel.Location = new Point(642, 8);
-            mappingLabel.Size = new Size(318, 56);
-            mappingLabel.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right;
-            mappingLabel.Font = new Font("Consolas", 8.2f, FontStyle.Regular);
-            mappingLabel.ForeColor = Color.FromArgb(50, 64, 68);
-            mappingLabel.TextAlign = ContentAlignment.TopLeft;
-            toolbar.Controls.Add(mappingLabel);
+            ConfigureMappingPanel(toolbar);
+            toolbar.Controls.Add(mappingPanel);
 
             toolbar.Controls.Add(CreateToolbarLabel("EXECUTION", 18, 65));
             runButton = CreateButton("Run", 18, 82, 54);
@@ -713,13 +712,7 @@ namespace Spectrum128kEmulator
             string viewRange = selectedAddressSpace.Kind == DisassemblyAddressSpaceKind.Mapped
                 ? "0000-FFFF"
                 : "OFFSET 0000-3FFF";
-            string[] mappingParts = snapshot.MappingText.Split(" | ");
-            string machineMapping = string.Join(" | ", mappingParts.Take(2));
-            string bankMapping = string.Join(" | ", mappingParts.Skip(2));
-            mappingLabel.Text =
-                $"VIEW {selectedAddressSpace.DisplayName} | {viewRange} | LISTING {listingAddress:X4}H\r\n" +
-                $"CAPTURED PC {snapshot.ProgramCounter:X4}H | {machineMapping}\r\n" +
-                $"    | {bankMapping}";
+            UpdateMappingPanel(viewRange);
             exportButton.Text = selectedAddressSpace.Kind == DisassemblyAddressSpaceKind.Mapped
                 ? "Export 64K"
                 : "Export 16K";
