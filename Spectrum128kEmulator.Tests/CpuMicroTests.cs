@@ -554,6 +554,207 @@ namespace Spectrum128kEmulator.Tests
         }
 
         [Fact]
+        public void InterruptMode0_DefaultSpectrumBus_Executes_Rst38()
+        {
+            var memory = new byte[65536];
+            var cpu = new Z80Cpu
+            {
+                ReadMemory = addr => memory[addr],
+                WriteMemory = (addr, value) => memory[addr] = value
+            };
+
+            cpu.Reset();
+            cpu.Regs.PC = 0x4567;
+            cpu.Regs.SP = 0x9000;
+            cpu.RestoreInterruptState(iff1: true, iff2: true, interruptMode: 0);
+            cpu.InterruptPending = true;
+
+            cpu.ExecuteCycles(13);
+
+            Assert.Equal((ushort)0x0038, cpu.Regs.PC);
+            Assert.Equal((ushort)0x8FFE, cpu.Regs.SP);
+            Assert.Equal((byte)0x67, memory[0x8FFE]);
+            Assert.Equal((byte)0x45, memory[0x8FFF]);
+            Assert.Equal(13UL, cpu.TStates);
+        }
+
+        [Fact]
+        public void Reset_Selects_InterruptMode0_With_Interrupts_Disabled()
+        {
+            var cpu = new Z80Cpu();
+
+            cpu.Reset();
+
+            Assert.Equal(0, cpu.InterruptMode);
+            Assert.False(cpu.IFF1);
+            Assert.False(cpu.IFF2);
+        }
+
+        [Theory]
+        [InlineData(0x46, 0)]
+        [InlineData(0x4E, 0)]
+        [InlineData(0x56, 1)]
+        [InlineData(0x5E, 2)]
+        [InlineData(0x66, 0)]
+        [InlineData(0x6E, 0)]
+        [InlineData(0x76, 1)]
+        [InlineData(0x7E, 2)]
+        public void InterruptMode_Instructions_Include_All_Z80_Encodings(byte opcode, int expectedMode)
+        {
+            var memory = new byte[65536];
+            var cpu = new Z80Cpu
+            {
+                ReadMemory = addr => memory[addr],
+                WriteMemory = (addr, value) => memory[addr] = value
+            };
+
+            memory[0] = 0xED;
+            memory[1] = opcode;
+            cpu.Reset();
+
+            cpu.Step();
+
+            Assert.Equal(expectedMode, cpu.InterruptMode);
+            Assert.Equal(8UL, cpu.TStates);
+        }
+
+        [Fact]
+        public void InterruptMode0_Executes_DataBus_Nop_Without_Pushing_ProgramCounter()
+        {
+            var memory = new byte[65536];
+            var cpu = new Z80Cpu
+            {
+                ReadMemory = addr => memory[addr],
+                WriteMemory = (addr, value) => memory[addr] = value,
+                ReadInterruptDataBus = () => 0x00
+            };
+
+            cpu.Reset();
+            cpu.Regs.PC = 0x4567;
+            cpu.Regs.SP = 0x9000;
+            cpu.RestoreInterruptState(iff1: true, iff2: true, interruptMode: 0);
+            cpu.InterruptPending = true;
+
+            cpu.ExecuteCycles(6);
+
+            Assert.Equal((ushort)0x4567, cpu.Regs.PC);
+            Assert.Equal((ushort)0x9000, cpu.Regs.SP);
+            Assert.Equal(6UL, cpu.TStates);
+        }
+
+        [Fact]
+        public void InterruptMode0_Executes_DataBus_Jump_With_Operands_From_Interrupted_ProgramCounter()
+        {
+            var memory = new byte[65536];
+            var operandReads = new List<(ushort Address, int Offset)>();
+            var cpu = new Z80Cpu
+            {
+                ReadMemory = addr => memory[addr],
+                ReadMemoryTimed = (addr, offset) =>
+                {
+                    operandReads.Add((addr, offset));
+                    return memory[addr];
+                },
+                WriteMemory = (addr, value) => memory[addr] = value,
+                ReadInterruptDataBus = () => 0xC3
+            };
+
+            memory[0x4567] = 0x34;
+            memory[0x4568] = 0x12;
+            cpu.Reset();
+            cpu.Regs.PC = 0x4567;
+            cpu.Regs.SP = 0x9000;
+            cpu.RestoreInterruptState(iff1: true, iff2: true, interruptMode: 0);
+            cpu.InterruptPending = true;
+
+            cpu.ExecuteCycles(12);
+
+            Assert.Equal((ushort)0x1234, cpu.Regs.PC);
+            Assert.Equal((ushort)0x9000, cpu.Regs.SP);
+            Assert.Equal(new[] { (Address: (ushort)0x4567, Offset: 6), (Address: (ushort)0x4568, Offset: 9) }, operandReads);
+            Assert.Equal(12UL, cpu.TStates);
+        }
+
+        [Fact]
+        public void ExecuteInstructionFetches_InterruptMode0_Uses_DataBus_Opcode()
+        {
+            var memory = new byte[65536];
+            int acknowledgeReads = 0;
+            var cpu = new Z80Cpu
+            {
+                ReadMemory = addr => memory[addr],
+                WriteMemory = (addr, value) => memory[addr] = value,
+                ReadInterruptDataBus = () =>
+                {
+                    acknowledgeReads++;
+                    return 0xC3;
+                }
+            };
+
+            memory[0x4567] = 0x34;
+            memory[0x4568] = 0x12;
+            memory[0x1234] = 0x00;
+            cpu.Reset();
+            cpu.Regs.PC = 0x4567;
+            cpu.RestoreInterruptState(iff1: true, iff2: true, interruptMode: 0);
+            cpu.InterruptPending = true;
+
+            cpu.ExecuteInstructionFetches(1);
+
+            Assert.Equal(1, acknowledgeReads);
+            Assert.Equal((ushort)0x1235, cpu.Regs.PC);
+            Assert.Equal(16UL, cpu.TStates);
+        }
+
+        [Fact]
+        public void InterruptMode0_DataBus_Prefix_Fetches_Following_Opcode_From_Memory()
+        {
+            var memory = new byte[65536];
+            var cpu = new Z80Cpu
+            {
+                ReadMemory = addr => memory[addr],
+                WriteMemory = (addr, value) => memory[addr] = value,
+                ReadInterruptDataBus = () => 0xED
+            };
+
+            memory[0x4567] = 0x44; // NEG
+            cpu.Reset();
+            cpu.Regs.A = 0x01;
+            cpu.Regs.PC = 0x4567;
+            cpu.Regs.R = 0;
+            cpu.RestoreInterruptState(iff1: true, iff2: true, interruptMode: 0);
+            cpu.InterruptPending = true;
+
+            cpu.ExecuteCycles(10);
+
+            Assert.Equal((byte)0xFF, cpu.Regs.A);
+            Assert.Equal((ushort)0x4568, cpu.Regs.PC);
+            Assert.Equal((byte)0x02, cpu.Regs.R);
+            Assert.Equal(10UL, cpu.TStates);
+        }
+
+        [Fact]
+        public void InterruptMode1_Does_Not_Read_InterruptDataBus()
+        {
+            var memory = new byte[65536];
+            var cpu = new Z80Cpu
+            {
+                ReadMemory = addr => memory[addr],
+                WriteMemory = (addr, value) => memory[addr] = value,
+                ReadInterruptDataBus = () => throw new InvalidOperationException("IM 1 must not execute a bus opcode.")
+            };
+
+            cpu.Reset();
+            cpu.RestoreInterruptState(iff1: true, iff2: true, interruptMode: 1);
+            cpu.InterruptPending = true;
+
+            cpu.ExecuteCycles(13);
+
+            Assert.Equal((ushort)0x0038, cpu.Regs.PC);
+            Assert.Equal(13UL, cpu.TStates);
+        }
+
+        [Fact]
         public void InterruptMode2_Acknowledge_IncludesBothVectorReadCycles()
         {
             var memory = new byte[65536];
