@@ -17,6 +17,14 @@ namespace Spectrum128kEmulator.Tap
                     $"ROM profile '{machine.RomProfile.Name}' is not compatible with address-based tape acceleration.");
             }
 
+            if (TapLoader.HasInconsistentStandardBasicHeaderDataPair(blocks))
+            {
+                return new TapeLoadPlan(
+                    TapeLoadStrategy.MountedRealtime,
+                    TapeLoadPlanReason.InconsistentStandardBasicPair,
+                    "Tape contains an internally inconsistent BASIC header/data pair and cannot be accelerated safely.");
+            }
+
             if (TapLoader.CanLoadAllStandardTapeBlocks(blocks))
             {
                 bool use128kMode = TapLoader.Use128kTapeLoadMode(machine);

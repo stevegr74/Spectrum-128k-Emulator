@@ -149,6 +149,93 @@ namespace Spectrum128kEmulator.Tests
         }
 
         [Fact]
+        public void CreateExecutionPlan_UsesMountedRealtime_ForInconsistentBasicHeaderDataPair()
+        {
+            string tempFolder = CreateTempRoms();
+
+            try
+            {
+                byte[] payload = new byte[637];
+                byte[] tape = BuildTap(
+                    BuildHeaderBlock(
+                        type: 0,
+                        fileName: "LOADER",
+                        dataLength: (ushort)payload.Length,
+                        parameter1: 10,
+                        parameter2: 42020),
+                    BuildDataBlock(payload));
+                MethodInfo parseBlocks = typeof(TapLoader).GetMethod("ParseBlocks", BindingFlags.NonPublic | BindingFlags.Static)!;
+                var blocks = (IReadOnlyList<TapeBlock>)parseBlocks.Invoke(null, new object[] { tape })!;
+                var machine = new Spectrum128Machine(tempFolder);
+
+                TapeLoadPlan plan = TapLoader.CreateExecutionPlan(machine, blocks);
+
+                Assert.Equal(TapeLoadStrategy.MountedRealtime, plan.Strategy);
+                Assert.Equal(TapeLoadPlanReason.InconsistentStandardBasicPair, plan.ReasonCode);
+            }
+            finally
+            {
+                Directory.Delete(tempFolder, true);
+            }
+        }
+
+        [Fact]
+        public void TryExecuteLoadedMountedBasicProgram_RejectsMalformedExpressionBeforeExecution()
+        {
+            string tempFolder = CreateTempRoms();
+
+            try
+            {
+                byte[] malformedProgram = BuildBasicProgram(
+                    BuildBasicLine(10,
+                        Token(235), Ascii("i"), Equals(), Ascii("("),
+                        Ascii("1"), NumberMarker(1), Token(204),
+                        Ascii("2"), NumberMarker(2)));
+                TapeBlock headerBlock = TapeBlock.CreateData(
+                    BuildHeaderBlock(
+                        type: 0,
+                        fileName: "MALFORMED",
+                        dataLength: (ushort)malformedProgram.Length,
+                        parameter1: 10,
+                        parameter2: (ushort)malformedProgram.Length),
+                    2168,
+                    8063,
+                    667,
+                    735,
+                    855,
+                    1710,
+                    8,
+                    1000);
+                MethodInfo parseHeaderInfo = typeof(TapLoader).GetMethod("ParseHeaderInfo", BindingFlags.NonPublic | BindingFlags.Static)!;
+                object header = parseHeaderInfo.Invoke(null, new object[] { headerBlock })!;
+                MethodInfo loadBasicProgram = typeof(TapLoader)
+                    .GetMethods(BindingFlags.NonPublic | BindingFlags.Static)
+                    .Single(method => method.Name == "LoadBasicProgram" && method.GetParameters().Length == 3);
+                MethodInfo tryExecute = typeof(TapLoader).GetMethod(
+                    "TryExecuteLoadedMountedBasicProgram",
+                    BindingFlags.NonPublic | BindingFlags.Static)!;
+                var machine = new Spectrum128Machine(tempFolder);
+                loadBasicProgram.Invoke(null, new object[] { machine, header, malformedProgram });
+
+                bool executed = (bool)tryExecute.Invoke(
+                    null,
+                    new object[]
+                    {
+                        machine,
+                        (ushort)malformedProgram.Length,
+                        (ushort)malformedProgram.Length,
+                        (ushort)10
+                    })!;
+
+                Assert.False(executed);
+            }
+            finally
+            {
+                Directory.Delete(tempFolder, true);
+            }
+        }
+
+        [Fact]
         public void CreateExecutionPlan_UsesRomBootstrap_ForInteractivePauseBeforeStandardCodeLoad()
         {
             string tempFolder = CreateTempRoms();

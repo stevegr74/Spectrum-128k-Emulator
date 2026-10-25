@@ -19,7 +19,7 @@ that every level, control path, or hardware edge case has been tested.
 | 🟢 | Cabal | `48k.tzx`, `128k.tzx` | Both editions reach the player-selection menu through real-ROM bootstrap; 48K stops at its first multiload marker, while 128K completes and ends the tape cleanly |
 | 🟢 | Captain America | `.tzx` | Protected loader completes; game runs |
 | 🟢 | Cauldron (original release) | `.tzx` | ROM-driven loading reaches the tape prompt and advances to the complete title screen |
-| 🟢 | Cauldron II (Erbe and original releases) | `.tzx` | Both releases reach the control-selection menu and remain stable |
+| 🟢 | Cauldron II (Erbe, original, and Silverbird/Cyberlode releases) | `.tzx` | All three releases reach the control-selection menu and remain stable; malformed accelerated expressions in the Cyberlode loader fall back before execution |
 | 🟢 | Cliff Hanger | `.tzx` | Loading reaches the control-selection menu and remains stable |
 | 🟢 | Cobra (Hit Squad and Ocean original releases) | `.tzx` | Both releases complete loading and reach the stable opening credit sequence |
 | 🟢 | Donkey Kong (Erbe) | `.tzx` | Custom loader completes without corrupting the loading screen; game runs |
@@ -27,15 +27,17 @@ that every level, control path, or hardware edge case has been tested.
 | 🟢 | Fairlight: A Prelude | `.tap` | Loading reaches the illustrated title screen and remains stable |
 | 🟢 | Feud (Bulldog original release) | `.tzx` | Loading reaches the control-selection menu and remains stable |
 | 🟢 | Head Over Heels | `.tap` | Loading reaches the complete illustrated title screen and remains stable |
+| 🟢 | Glider Rider (Bug-Byte) | `.tzx` | In 48K mode, protected loading reaches the complete title screen and remains stable |
 | 🟢 | Ikari Warriors | `.tzx` | Both the original and Encore releases load and run; transport stops after loading |
 | 🟢 | Impossible Mission | `.tap`, `.tzx` | The TAP and primary/Bugfix TZX releases complete protected loading and reach the title or control menu; the Ricochet release is excluded below |
 | 🟢 | Impossible Mission II | `.tzx` | US Gold original and both Kixx sides complete protected loading and reach stable game/control screens |
 | 🟢 | Impossamole (Gremlin original, side 1) | `.tzx` | Side 1 reaches the control menu; continuation with side 2 remains unverified below |
 | 🟢 | Indiana Jones and the Last Crusade | `128k.tap` | Initial load auto-stops at the picture; side-two resume loads into gameplay and preserves the next multiload boundary |
-| 🟢 | Indiana Jones and the Temple of Doom (Kixx) | `.tzx` | Loading reaches the stop-tape prompt and advances to the complete quest-start screen |
+| 🟢 | Indiana Jones and the Temple of Doom (Kixx and US Gold original) | `.tzx` | Both releases reach the stop-tape prompt and advance to the complete quest-start screen; the US Gold release requires 48K mode |
 | 🟢 | Kick Off 2 | `.tzx` | Loading reaches its complete title/menu prompt and remains stable |
 | 🟢 | Kung-Fu Master (Americana) | `.tzx` | Loading reaches the illustrated title screen and remains stable |
 | 🟢 | Magician | `.tap` | Loading reaches the illustrated adventure opening and remains stable |
+| 🟢 | Pac-Land | `.tzx` | In 48K mode, ROM-driven loading reaches the game/high-score screen and remains stable |
 | 🟢 | Paperboy (Elite original) | `.tzx` | Loading reaches the high-score/start screen and remains stable |
 | 🟢 | Paperboy 2 (Mindscape) | `.tzx` | Loading reaches the character-selection menu and remains stable |
 | 🟢 | Rambo (Hit Squad) | `.tzx` | Long protected loader completes; title and game screens run |
@@ -48,7 +50,7 @@ that every level, control path, or hardware edge case has been tested.
 | 🟢 | Scuba Dive (Durell) | `.tzx` | Nonstandard leading tape structure mounts and loads correctly |
 | 🟢 | Space Harrier (Elite original and Encore) | `.tzx` | Both releases reach the start/control menu and remain stable |
 | 🟢 | Star Wars (Hit Squad) | `.tzx` | Loading reaches the complete X-Wing control menu and remains stable |
-| 🟢 | Star Wars (Domark original, side 1) | `.tzx` | The explicit stop/key/resume sequence reaches the complete title screen; side 2 remains unverified below |
+| 🟢 | Star Wars (Domark original, sides 1 and 2) | `.tzx` | The explicit stop/key/resume sequence reaches the complete title screen from both sides; side 2 requires 48K mode |
 | 🟢 | Starglider (48K original) | `.tzx` | Loading reaches the in-game control menu and automatically stops at the handoff boundary |
 | 🟢 | Starglider 2 (48K original) | `.tzx` | Loading reaches the complete title screen and ends cleanly |
 | 🟢 | Starquake (Bubblebus original and Ricochet) | `.tzx` | Both releases reach the control menu and remain stable |
@@ -132,25 +134,22 @@ were made as part of this audit.
 | Status | File / release | Result |
 | :---: | --- | --- |
 | 🔴 | `starquake.sna` | Rejected because its 49,230-byte size is not a supported 48K or 128K SNA layout; both Starquake TZX releases work |
-| 🔴 | Cauldron and Cauldron II (Silverbird, Cyberlode 1.1) `.tzx` | Both abort during bootstrap expression parsing with `Missing closing parenthesis` |
+| 🔴 | Cauldron (Silverbird, Cyberlode 1.1) `.tzx` | Malformed bootstrap expressions now fall back safely without an exception, but execution ends on an incomplete black/red frame; the original release works |
 | 🟠 | Chase HQ Portuguese sides 1 and 2 `.tzx` | Side 1 reaches a stop marker with a black frame; side 2 alone also stops without a meaningful screen |
 | 🔴 | Frankie (original Speedlock 1) `.tzx` | Tape ends on a solid cyan screen; the Frankie SNA works |
-| 🔴 | Glider Rider (Bug-Byte and Quicksilva original) `.tzx` | Both tapes end on a black screen; the Glider Rider SNA works |
+| 🔴 | Glider Rider (Quicksilva original) `.tzx` | Ends on a cyan/black frame in both machine modes; the Bug-Byte TZX works in 48K mode and the SNA works |
 | 🔴 | Impossible Mission (Ricochet) `.tzx` | Tape ends at the BASIC error `N Statement lost, 0:2` |
 | 🟠 | Impossamole side 2 `.tzx` | Standalone side reaches a stop marker with a black frame; side 1 reaches its menu, but the cross-side continuation was not proven |
 | 🟠 | Indiana Jones and the Last Crusade Kixx/US Gold TZX side sets | Side 1 reaches its loading/title handoff, but mounting and completing side 2 was not proven; the 128K TAP path is verified |
-| 🔴 | Indiana Jones and the Temple of Doom (US Gold original) `.tzx` | Reaches the stop/key prompt, but the prompted key leaves an incomplete/blank game frame; the Kixx release works |
 | 🔴 | Kung-Fu Master `.tzx` | Unlabelled release ends on a blank grey frame; the Americana release works |
 | 🔴 | Kwah! (Melbourne House original) `.tzx` | Tape ends on a black frame |
-| 🔴 | Pac-Land `.tzx` | Tape ends at the Sinclair copyright screen; the Pac-Land SNA works |
 | 🔴 | Paperboy (Encore) `.tzx` | Tape ends on a black frame; the Elite original TZX and Paperboy SNA work |
 | 🔴 | Red Hawk parts 1 and 2 `.tap` | Both parts end at the Sinclair copyright/BASIC screen; the Red Hawk SNA works |
 | 🟠 | Starglider (Rainbird original release 1) 128K `.tzx` | Loads to the Starglider picture and auto-stops near tape end, but does not advance beyond that screen |
 | 🔴 | Starglider (Rainbird original release 2) 128K `.tzx` | Incorrectly reports that it will only run on a 128K Spectrum despite running in 128K mode |
 | 🔴 | Starglider 2 128K `.tzx` | Reaches an internal tape-loader menu, but selecting the loader does not reach the game; the 48K tape works |
-| 🔴 | Star Wars (Domark original) side 2 `.tzx` | Explicit key and tape resume produce an incomplete title frame; side 1 and the Hit Squad release reach complete title/menu screens |
 | 🔴 | The Way of the Exploding Fist original/Ricochet `.tzx` | Both tapes end without reaching a meaningful title/game screen; the SNA works |
-| 🔴 | Uridium and Uridium Plus (Hewson original) `.tzx` | Both are rejected because the BASIC header declares 42,020 bytes while the data block contains 637 bytes; their snapshots work |
+| 🔴 | Uridium and Uridium Plus (Hewson original) `.tzx` | Inconsistent BASIC header/data pairs now select safe real-time mounting instead of throwing, but both tapes end on black frames; their snapshots work |
 | 🔴 | Wanted! Monty Mole (Gremlin original) `.tzx` | Tape ends at the Sinclair copyright screen; the SNA works |
 | 🟠 | WEC Le Mans side 2 `.tzx` | Standalone side reaches a stop marker with a black frame; side 1 reaches its menu, but the cross-side continuation was not proven |
 
@@ -162,9 +161,16 @@ snapshot/replay images. Every snapshot/replay received a 2,000-frame execution
 soak, and every tape received a 35,000-frame strategy-aware soak in its labelled
 machine mode where specified. All final frames and transport states were
 inspected; explicit on-screen key/tape instructions received targeted follow-up
-runs. In total, 154 files completed the harness without an exception. Completion
-alone was not treated as verification: blank screens, BASIC errors, incomplete
-multipart paths, and ambiguous loader states remain in the unverified table.
+runs. In total, all 95 tapes and 63 of 64 snapshot/replay files completed the
+harness without an exception; the sole rejection was the unsupported-size
+`starquake.sna` documented above. Completion alone was not treated as
+verification: blank screens, BASIC errors, incomplete multipart paths, and
+ambiguous loader states remain in the unverified table.
+
+A follow-up model-sensitivity pass reran every unlabelled red/orange tape in 48K
+mode. It confirmed that Glider Rider (Bug-Byte), Pac-Land, Temple of Doom (US
+Gold), and Star Wars (Domark) side 2 are valid 48K paths rather than loader
+defects. Those requirements are recorded explicitly above.
 
 The interaction-dependent checks also confirmed that Target Renegade follows
 the distinct 48K multiload and 128K full-load paths, New Zealand Story resumes

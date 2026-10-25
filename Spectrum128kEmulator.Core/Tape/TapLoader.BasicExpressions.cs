@@ -32,6 +32,8 @@ namespace Spectrum128kEmulator.Tap
             public int Parse()
             {
                 int value = ParseAdditive();
+                if (index <= endIndex)
+                    throw new InvalidOperationException($"Unexpected token '{tokens[index]}' in BASIC tape-bootstrap expression.");
                 return value;
             }
 
