@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using Spectrum128kEmulator.Audio;
 using Spectrum128kEmulator.Tap;
 using Spectrum128kEmulator;
 using Spectrum128kEmulator.ManualHarness;
@@ -19,6 +20,7 @@ if (args.Length > 0)
     int floatingBusDisplayStartAdjust = 0;
     int floatingBusSampleAdjust = 0;
     bool enableDebugCapture = false;
+    bool analyzeAudio = false;
     bool quiet = false;
     List<ushort> watchedMemoryWriteAddresses = new();
     List<(ushort Address, int Length)> memoryDumpRequests = new();
@@ -83,6 +85,10 @@ if (args.Length > 0)
         else if (arg.Equals("debugcapture=1", StringComparison.OrdinalIgnoreCase))
         {
             enableDebugCapture = true;
+        }
+        else if (arg.Equals("audioanalysis=1", StringComparison.OrdinalIgnoreCase))
+        {
+            analyzeAudio = true;
         }
         else if (arg.Equals("quiet=1", StringComparison.OrdinalIgnoreCase))
         {
@@ -194,11 +200,17 @@ if (args.Length > 0)
     string extension = Path.GetExtension(snapshotPath);
     if (extension.Equals(".sna", StringComparison.OrdinalIgnoreCase))
     {
-        SnapshotLoader.Load(machine, snapshotPath);
+        if (forcedMachineModel.HasValue)
+            SnapshotLoader.Load(machine, snapshotPath, forcedMachineModel.Value);
+        else
+            SnapshotLoader.Load(machine, snapshotPath);
     }
     else if (extension.Equals(".z80", StringComparison.OrdinalIgnoreCase))
     {
-        Z80SnapshotLoader.Load(machine, snapshotPath);
+        if (forcedMachineModel.HasValue)
+            Z80SnapshotLoader.Load(machine, snapshotPath, forcedMachineModel.Value);
+        else
+            Z80SnapshotLoader.Load(machine, snapshotPath);
     }
     else if (extension.Equals(".tap", StringComparison.OrdinalIgnoreCase))
     {
@@ -325,6 +337,15 @@ if (args.Length > 0)
 
     Console.WriteLine($"Execution mode: {executionMode}");
 
+    MixedSampleGenerator? audioAnalyzer = analyzeAudio ? new MixedSampleGenerator(44100) : null;
+    long analyzedAudioFrames = 0;
+    long analyzedAudioSamples = 0;
+    long nonZeroAudioSamples = 0;
+    long clippedAudioSamples = 0;
+    double audioSquareSum = 0;
+    int peakAudioSample = 0;
+    int maximumAudioDelta = 0;
+    short? previousAudioSample = null;
     int iteration = 0;
     int lastReportedFrame = -1;
     bool? lastPendingMountedLoadContinuation = null;
@@ -386,6 +407,35 @@ if (args.Length > 0)
 
         ExecuteHarnessStep(machine, executionMode);
 
+        if (audioAnalyzer != null)
+        {
+            while (machine.TryDequeueCompletedAudioFrame(out AudioFrame audioFrame))
+            {
+                short[] samples = audioAnalyzer.GenerateFrameSamples(audioFrame);
+                analyzedAudioFrames++;
+                analyzedAudioSamples += samples.Length;
+                foreach (short sample in samples)
+                {
+                    int magnitude = Math.Abs((int)sample);
+                    if (sample != 0)
+                        nonZeroAudioSamples++;
+                    if (sample is short.MinValue or short.MaxValue)
+                        clippedAudioSamples++;
+                    if (magnitude > peakAudioSample)
+                        peakAudioSample = magnitude;
+                    if (previousAudioSample.HasValue)
+                    {
+                        int delta = Math.Abs(sample - previousAudioSample.Value);
+                        if (delta > maximumAudioDelta)
+                            maximumAudioDelta = delta;
+                    }
+
+                    audioSquareSum += (double)sample * sample;
+                    previousAudioSample = sample;
+                }
+            }
+        }
+
         if (machine.Cpu.ExecutionStopped)
         {
             string breakpointDump = machine.BuildDebugDump(
@@ -430,6 +480,16 @@ if (args.Length > 0)
     foreach ((ushort address, int length) in memoryDumpRequests)
         finalDump += BuildMemoryDump(machine, address, length);
     WriteHarnessArtifacts(machine, finalDump, "end");
+    if (audioAnalyzer != null)
+    {
+        double rms = analyzedAudioSamples == 0
+            ? 0
+            : Math.Sqrt(audioSquareSum / analyzedAudioSamples);
+        Console.WriteLine(
+            $"AUDIO frames={analyzedAudioFrames} samples={analyzedAudioSamples} " +
+            $"nonzero={nonZeroAudioSamples} peak={peakAudioSample} rms={rms:F2} " +
+            $"clipped={clippedAudioSamples} maxDelta={maximumAudioDelta}");
+    }
     Console.WriteLine("No auto debug dump was triggered.");
     return;
 }
