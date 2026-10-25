@@ -53,7 +53,8 @@ frames without an emulator exception or automatic BASIC-error dump. The precedin
 manual acceptance pass reached each documented checkpoint, visually inspected the
 resulting frame, and continued execution for at least 1,000 additional frames
 where the checkpoint allowed it. No delayed BASIC errors, blank screens, or
-post-load crashes were observed.
+post-load crashes were observed. Final interactive Milestone 20 acceptance also
+confirmed the hardened tape behavior remained correct.
 
 The interaction-dependent checks also confirmed that Target Renegade follows
 the distinct 48K multiload and 128K full-load paths, New Zealand Story resumes
