@@ -46,10 +46,53 @@ namespace Spectrum128kEmulator.Tests
                     Assert.Equal("DISPLAY RAM 5", screenBank.Text);
                     Assert.False(compactMap.Visible);
 
-                    NavigateTo(form, "8020");
+                    foreach (string controlName in new[] { "CpuValueAF2", "CpuCurrentInstruction", "CpuValueHALT", "CpuValueStack3" })
+                    {
+                        Label value = Descendants(form).OfType<Label>().Single(label => label.Name == controlName);
+                        Assert.True(value.Visible, $"{controlName} should be visible.");
+                        Assert.True(value.Height > 0, $"{controlName} should have a non-zero height.");
+                        Assert.False(string.IsNullOrWhiteSpace(value.Text), $"{controlName} should contain text.");
+                        Assert.True(
+                            value.Bounds.Bottom <= value.Parent!.ClientRectangle.Bottom,
+                            $"{controlName} bounds {value.Bounds} exceed parent {value.Parent.ClientRectangle}.");
+                    }
+                    Label CpuLabel(string name) => Descendants(form).OfType<Label>().Single(label => label.Name == name);
+                    Assert.True(CpuLabel("CpuValueAF2").Top > CpuLabel("CpuValueAF").Top);
+                    Assert.True(CpuLabel("CpuCurrentInstruction").Top > CpuLabel("CpuValueIX").Top);
+                    Assert.True(CpuLabel("CpuValueHALT").Top > CpuLabel("CpuValueI").Top);
+                    Assert.True(CpuLabel("CpuValueStack3").Top > CpuLabel("CpuValueStack1").Top);
+                    Assert.IsType<LinkLabel>(CpuLabel("CpuValueBC"));
+
                     ListView listing = Descendants(form).OfType<ListView>().Single();
                     ListBox references = Descendants(form).OfType<ListBox>()
                         .Single(list => list.Name == "CrossReferenceList");
+                    snapshot = CreateSnapshotWithCpu(pc: 0x8020, bc: 0x8111, tStates: 200);
+                    typeof(DisassemblerForm)
+                        .GetMethod("RefreshSnapshot", BindingFlags.Instance | BindingFlags.NonPublic)!
+                        .Invoke(form, null);
+                    Application.DoEvents();
+                    Assert.Equal("BC 8111", CpuLabel("CpuValueBC").Text);
+                    Assert.Equal(Color.FromArgb(255, 230, 145), CpuLabel("CpuValueBC").BackColor);
+                    Assert.Equal(Color.FromArgb(232, 230, 219), CpuLabel("CpuValueDE").BackColor);
+                    Assert.Contains("@PC LD A,(9000H)", CpuLabel("CpuCurrentInstruction").Text);
+
+                    typeof(DisassemblerForm)
+                        .GetMethod("NavigateFromCpuState", BindingFlags.Instance | BindingFlags.NonPublic)!
+                        .Invoke(form, ["BC"]);
+                    Application.DoEvents();
+                    TabControl tabs = Descendants(form).OfType<TabControl>().Single();
+                    ListBox memory = Descendants(form).OfType<ListBox>()
+                        .Single(list => list.Name == "MemoryInspectorList");
+                    Assert.Equal("Memory", tabs.SelectedTab!.Text);
+                    Assert.Contains("8110", memory.SelectedItem!.ToString());
+
+                    typeof(DisassemblerForm)
+                        .GetMethod("NavigateFromCpuState", BindingFlags.Instance | BindingFlags.NonPublic)!
+                        .Invoke(form, ["Stack0"]);
+                    Application.DoEvents();
+                    Assert.Equal("8020", listing.Items[0].Text);
+
+                    NavigateTo(form, "8020");
                     Assert.Equal("LD A,(9000H)", listing.Items[0].SubItems[4].Text);
                     Assert.Equal("R 9000", listing.Items[0].SubItems[5].Text);
                     Assert.Contains("OUT READ8   MAP:9000", references.Items[0]!.ToString());
@@ -59,9 +102,6 @@ namespace Spectrum128kEmulator.Tests
                         .Invoke(form, null);
                     Application.DoEvents();
 
-                    TabControl tabs = Descendants(form).OfType<TabControl>().Single();
-                    ListBox memory = Descendants(form).OfType<ListBox>()
-                        .Single(list => list.Name == "MemoryInspectorList");
                     ComboBox sources = Descendants(form).OfType<ComboBox>()
                         .Single(combo => combo.Name == "MemorySourceComboBox");
                     Assert.Equal("Memory", tabs.SelectedTab!.Text);
@@ -85,7 +125,7 @@ namespace Spectrum128kEmulator.Tests
                     Application.DoEvents();
                     Assert.True(compactMap.Visible);
                     Assert.False(summary.Visible);
-                    Assert.Contains("CAPTURED PC 8000H", compactMap.Text);
+                    Assert.Contains("CAPTURED PC 8020H", compactMap.Text);
 
                     form.Close();
                     Application.DoEvents();
@@ -306,7 +346,10 @@ namespace Spectrum128kEmulator.Tests
                 analysisContext: analysisContext);
         }
 
-        private static DisassemblySnapshot CreateSnapshotWithCpu()
+        private static DisassemblySnapshot CreateSnapshotWithCpu(
+            ushort pc = 0x8000,
+            ushort bc = 0x8100,
+            ulong tStates = 100)
         {
             var memory = new byte[65536];
             memory[0x8000] = 0xC9;
@@ -318,7 +361,7 @@ namespace Spectrum128kEmulator.Tests
             memory[0xA000] = 0x41;
             var cpu = new DisassemblyCpuState(
                 AF: 0x1200,
-                BC: 0x8100,
+                BC: bc,
                 DE: 0x8200,
                 HL: 0x8300,
                 AlternateAF: 0,
@@ -328,7 +371,7 @@ namespace Spectrum128kEmulator.Tests
                 IX: 0x8400,
                 IY: 0x8500,
                 SP: 0xA000,
-                PC: 0x8000,
+                PC: pc,
                 I: 0,
                 R: 0,
                 IFF1: true,
@@ -336,11 +379,11 @@ namespace Spectrum128kEmulator.Tests
                 InterruptMode: 1,
                 IsHalted: false,
                 InterruptPending: false,
-                TStates: 100,
+                TStates: tStates,
                 StackWords: [0x8020]);
             return new DisassemblySnapshot(
                 memory,
-                0x8000,
+                pc,
                 SpectrumMachineModel.Spectrum128K,
                 currentRomBank: 1,
                 pagedRamBank: 7,

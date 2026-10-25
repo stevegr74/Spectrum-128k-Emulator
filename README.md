@@ -191,6 +191,9 @@ discarded on exit.
 
 The debugger captures the mapped logical 64K, both ROM banks, all eight RAM
 banks, registers, flags, interrupt state, stack context, model, and paging state.
+Its grouped CPU panel highlights values changed since the previous stopped
+capture; register addresses open in Memory, while the PC and stack values
+navigate the disassembly listing.
 Its memory-view selector keeps mapped addresses distinct from bank-qualified
 physical offsets; search, history, copy, and export follow the selected view.
 Bank-qualified labels persist between sessions, can be imported or exported as

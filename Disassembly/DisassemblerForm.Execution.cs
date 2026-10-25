@@ -18,6 +18,7 @@ namespace Spectrum128kEmulator
         internal void ApplyExecutionStop(DebuggerStop stop)
         {
             executionRunning = false;
+            previousCpuState = snapshot.CpuState;
             snapshot = captureSnapshot();
             RefreshMemorySources();
             SetSelectedAddressSpace(DisassemblyAddressSpace.Mapped);
@@ -180,31 +181,6 @@ namespace Spectrum128kEmulator
             toggleBreakpointButton.Enabled = !executionRunning && mappedView;
             breakpointList.Enabled = !executionRunning;
         }
-
-        private void UpdateCpuState()
-        {
-            DisassemblyCpuState? cpu = snapshot.CpuState;
-            if (cpu == null)
-            {
-                cpuStateLabel.Text = "CPU state was not included in this capture.";
-                return;
-            }
-
-            string flags = FormatFlags((byte)cpu.AF);
-            string stack = string.Join(' ', cpu.StackWords.Select((value, index) => $"SP+{index * 2:X2}:{value:X4}"));
-            cpuStateLabel.Text =
-                $"AF {cpu.AF:X4} [{flags}]  BC {cpu.BC:X4}  DE {cpu.DE:X4}  HL {cpu.HL:X4}  IX {cpu.IX:X4}  IY {cpu.IY:X4}  SP {cpu.SP:X4}  PC {cpu.PC:X4}\r\n" +
-                $"AF' {cpu.AlternateAF:X4}  BC' {cpu.AlternateBC:X4}  DE' {cpu.AlternateDE:X4}  HL' {cpu.AlternateHL:X4}  I {cpu.I:X2}  R {cpu.R:X2}  IM {cpu.InterruptMode}  IFF {Bool(cpu.IFF1)}/{Bool(cpu.IFF2)}  HALT {Bool(cpu.IsHalted)}  INT {Bool(cpu.InterruptPending)}\r\n" +
-                $"T {cpu.TStates}  {stack}";
-        }
-
-        private static string FormatFlags(byte flags)
-        {
-            const string names = "SZ5H3PNC";
-            return new string(names.Select((name, bit) => (flags & (0x80 >> bit)) != 0 ? name : '-').ToArray());
-        }
-
-        private static int Bool(bool value) => value ? 1 : 0;
 
         private static string FormatStopStatus(DebuggerStop stop) => stop.Reason switch
         {

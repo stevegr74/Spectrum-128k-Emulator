@@ -95,6 +95,7 @@ namespace Spectrum128kEmulator
                 ("Ctrl+C", "Copy selected rows with capture metadata"),
                 ("Ctrl+Shift+C", "Copy every displayed row with capture metadata"),
                 ("Memory view", "Select mapped 64K, ROM banks, or RAM banks for the disassembly listing"),
+                ("CPU state links", "Inspect register addresses in Memory; use PC or stack values to navigate the listing"),
                 ("Memory tab", "Inspect hexadecimal and ASCII bytes from registers, stack values, listing addresses, or direct targets"),
                 ("Ctrl+L / Right-click", "Edit labels, mark code/data/unknown, manage symbols, or inspect an address or target in memory"),
                 ("Ctrl+E", "Export a complete 64K mapped or 16K physical-bank listing")

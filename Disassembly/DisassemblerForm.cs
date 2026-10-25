@@ -31,7 +31,10 @@ namespace Spectrum128kEmulator
         private readonly Label compactMappingLabel = new();
         private readonly Label captureStateLabel = new();
         private readonly Label statusLabel = new();
-        private readonly Label cpuStateLabel = new();
+        private readonly TableLayoutPanel cpuStatePanel = new();
+        private readonly Dictionary<string, Label> cpuValueLabels = new(StringComparer.Ordinal);
+        private readonly Label[] cpuFlagLabels = Enumerable.Range(0, 8).Select(_ => new Label()).ToArray();
+        private readonly Label currentInstructionLabel = new();
         private readonly ListView instructionList = new();
         private readonly ListBox crossReferenceList = new();
         private readonly TabControl inspectorTabs = new();
@@ -54,6 +57,7 @@ namespace Spectrum128kEmulator
         private readonly Font currentInstructionFont = new("Consolas", 10.0f, FontStyle.Bold);
         private readonly System.Windows.Forms.Timer captureAgeTimer = new() { Interval = 1000 };
         private DisassemblySnapshot snapshot;
+        private DisassemblyCpuState? previousCpuState;
         private DisassemblyAddressSpace selectedAddressSpace;
         private ushort listingAddress;
         private string? lastSearchQuery;
@@ -334,13 +338,6 @@ namespace Spectrum128kEmulator
             instructionList.SelectedIndexChanged += (_, _) => RefreshCrossReferenceList();
             instructionList.ContextMenuStrip = CreateListingContextMenu();
 
-            cpuStateLabel.Dock = DockStyle.Top;
-            cpuStateLabel.Height = 66;
-            cpuStateLabel.Padding = new Padding(8, 5, 8, 4);
-            cpuStateLabel.Font = new Font("Consolas", 9.0f, FontStyle.Regular);
-            cpuStateLabel.BackColor = Color.FromArgb(232, 230, 219);
-            cpuStateLabel.ForeColor = Ink;
-
             Panel inspectorPanel = CreateInspectorPanel();
 
             statusLabel.Dock = DockStyle.Bottom;
@@ -351,7 +348,7 @@ namespace Spectrum128kEmulator
 
             content.Controls.Add(instructionList);
             content.Controls.Add(inspectorPanel);
-            content.Controls.Add(cpuStateLabel);
+            content.Controls.Add(CreateCpuStatePanel());
             content.Controls.Add(statusLabel);
             return content;
         }
@@ -428,6 +425,7 @@ namespace Spectrum128kEmulator
                 return;
 
             ushort selectedAddress = SelectedInstruction()?.Address ?? listingAddress;
+            previousCpuState = snapshot.CpuState;
             snapshot = captureSnapshot();
             RefreshMemorySources();
             if (!snapshot.AvailableAddressSpaces.Contains(selectedAddressSpace))
