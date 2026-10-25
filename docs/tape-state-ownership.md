@@ -11,7 +11,7 @@ invariants unless a compatibility fix explicitly changes one.
 | `Spectrum128Machine` | Machine-level coordination and aggregate Quick State capture/restore | Tape parsing, pulse decoding, mounted-media identity, or loader-strategy selection |
 | `TapeTransportController` | Mounted-media identity, public transport state, mount/eject/manual-control transitions, completion, and transport Quick State | Pulse generation, automatic handoff policy, or loader continuation |
 | `TapeActivityTracker` | EAR/keyboard read counters, loader-activity and handoff observations, automatic stop/resume safety policy, and their Quick State | Pulse generation, public transport state, or continuation policy |
-| `MountedTape` | Block position, exact pulse/EAR cursor, pause-boundary and stop-marker state, ROM-trap stream position, header/data sequencing, and transport Quick State | Machine-wide reset policy or BASIC/machine-code continuation |
+| `MountedTape` | Block position, exact pulse/EAR cursor, pause and stop-marker state, ROM-trap stream position, header/data sequencing, and transport Quick State | Machine-wide reset policy or BASIC/machine-code continuation |
 | `MountedLoadContinuationController` | Pending BASIC/USR continuation, workspace restoration, resume gates, and continuation Quick State | Physical tape position or the visible transport state |
 | `TapeLoadPlanner` | Capability-gated selection of full fake load, safe-prefix loading, ROM bootstrap, hybrid bootstrap, or real-time mounting, with a diagnostic reason | Parsing, plan execution, transport state, or continuation state |
 | `TapLoader` and `TzxLoader` | File parsing, plan execution, bootstrap execution, and construction of the remaining mounted tape | Long-lived transport ownership after loading hands control to the machine |
@@ -26,20 +26,18 @@ retain mutable tape objects for direct cross-thread control.
 1. `NoTape` means no tape is mounted.
 2. `Playing` means a tape is mounted and its playback cursor is not paused.
 3. `Stopped` retains the mounted tape and its exact cursor. The stop may be
-   manual, automatic, caused by a tape stop marker, or caused by a protected
-   48K stage boundary.
+   manual, automatic, or caused by a tape stop marker.
 4. `Ended` means the machine observed completion and released the mounted tape.
 5. A stop marker pauses before the following block and remains distinguishable
    from an automatic loader handoff.
 6. A manual stop resets automatic-handoff tracking and must not be automatically
    resumed.
 7. Automatic resume is restricted to an automatic handoff followed by a
-   recognised ROM tape-read state; it must not override a stop marker or a
-   protected-stage boundary.
+   recognised ROM tape-read state; it must not override a stop marker.
+   Keyboard-wait evidence may span frames with no port reads, but any
+   EAR-sensitive read cancels the pending automatic stop.
 8. Mounting media replaces the previous tape, configures it for the current
-   model clock and handoff policy, resets its cursor, and resets machine-level
-   activity tracking. Protected-stage boundaries apply only in 48K mode;
-   128K playback remains continuous.
+   model clock, resets its cursor, and resets machine-level activity tracking.
 9. Physical tape ownership and loader continuation are separate. Loader policy
    decides when a continuation is created or cleared; a full machine reset
    clears both.
@@ -56,7 +54,6 @@ retain mutable tape objects for direct cross-thread control.
 | Manual stop | Cursor preserved, automatic tracking reset, `Stopped` |
 | Manual resume | Cursor preserved and resumed, `Playing` unless already complete |
 | Stop marker | Cursor held before the next block, `Stopped` |
-| Protected 48K stage boundary | Cursor held before later playable blocks, `Stopped` |
 | Recognised loader handoff | Cursor preserved, automatic stop may enter `Stopped` |
 | Recognised ROM tape read after automatic handoff | Playback may resume automatically |
 | Playback completion | Tape released, `Ended` |

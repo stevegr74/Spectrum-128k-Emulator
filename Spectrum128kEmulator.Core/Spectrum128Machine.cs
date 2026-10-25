@@ -730,10 +730,7 @@ namespace Spectrum128kEmulator
 
         public void MountTape(MountedTape tape)
         {
-            tapeTransport.Mount(
-                tape,
-                CurrentCpuClockHz,
-                stopAtProtectedStageHandoffs: MachineModel == SpectrumMachineModel.Spectrum48K);
+            tapeTransport.Mount(tape, CurrentCpuClockHz);
             ResetMountedTapeActivityTracking();
         }
 
@@ -1124,8 +1121,9 @@ namespace Spectrum128kEmulator
                 nextOpcode = PeekMemory(pc);
             }
 
-            return nextOpcode == 0xE6 &&
-                   (PeekMemory((ushort)(pc + 1)) & 0x40) == 0;
+            byte immediate = PeekMemory((ushort)(pc + 1));
+            return (nextOpcode == 0xE6 && (immediate & 0x40) == 0) ||
+                   (nextOpcode == 0xF6 && (immediate & 0x40) != 0);
         }
 
         private void UpdateAutomaticTapeStopAtFrameBoundary()

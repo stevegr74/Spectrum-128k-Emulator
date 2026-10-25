@@ -76,10 +76,62 @@ namespace Spectrum128kEmulator.Tests
             Assert.True(tracker.LoaderActivityObserved);
         }
 
+        [Fact]
+        public void AutomaticHandoff_KeyboardEvidenceMaySpanIdleFrames()
+        {
+            var tracker = new TapeActivityTracker();
+            MountedTape tape = CreateDrivingTape();
+            tracker.ObserveLoaderActivity();
+
+            Assert.False(RecordKeyboardWaitFrame(tracker, tape));
+            Assert.False(RecordIdleFrame(tracker, tape));
+            Assert.False(RecordKeyboardWaitFrame(tracker, tape));
+            Assert.False(RecordIdleFrame(tracker, tape));
+            Assert.True(RecordKeyboardWaitFrame(tracker, tape));
+
+            Assert.True(tape.IsPlaybackPaused);
+        }
+
+        [Fact]
+        public void AutomaticHandoff_EarReadCancelsAccumulatedKeyboardEvidence()
+        {
+            var tracker = new TapeActivityTracker();
+            MountedTape tape = CreateDrivingTape();
+            tracker.ObserveLoaderActivity();
+
+            Assert.False(RecordKeyboardWaitFrame(tracker, tape));
+            Assert.False(RecordKeyboardWaitFrame(tracker, tape));
+            tracker.RecordPortRead(keyboardOnly: false);
+            Assert.False(RecordActiveFrame(tracker, tape));
+            Assert.False(RecordKeyboardWaitFrame(tracker, tape));
+            Assert.False(RecordKeyboardWaitFrame(tracker, tape));
+            Assert.True(RecordKeyboardWaitFrame(tracker, tape));
+        }
+
         private static bool TryStop(TapeActivityTracker tracker, MountedTape tape) =>
             tracker.TryAutomaticallyStop(
                 tape,
                 cpuIsHalted: true,
+                programCounter: 0x8000,
+                hasPendingContinuation: false,
+                currentTStates: 100,
+                activityReadsPerFrame: 64,
+                requiredHandoffFrames: 3);
+
+        private static bool RecordKeyboardWaitFrame(TapeActivityTracker tracker, MountedTape tape)
+        {
+            for (int read = 0; read < 65; read++)
+                tracker.RecordPortRead(keyboardOnly: true);
+            return RecordActiveFrame(tracker, tape);
+        }
+
+        private static bool RecordIdleFrame(TapeActivityTracker tracker, MountedTape tape) =>
+            RecordActiveFrame(tracker, tape);
+
+        private static bool RecordActiveFrame(TapeActivityTracker tracker, MountedTape tape) =>
+            tracker.TryAutomaticallyStop(
+                tape,
+                cpuIsHalted: false,
                 programCounter: 0x8000,
                 hasPendingContinuation: false,
                 currentTStates: 100,

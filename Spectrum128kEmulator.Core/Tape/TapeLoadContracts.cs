@@ -87,7 +87,6 @@ namespace Spectrum128kEmulator.Tap
         AutomaticHandoffStop,
         AutomaticRomResume,
         StopMarker,
-        ProtectedStageHandoff,
         Ended,
         Ejected
     }

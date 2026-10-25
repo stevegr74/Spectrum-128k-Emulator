@@ -42,8 +42,7 @@ namespace Spectrum128kEmulator.Tap
             if (tape == null ||
                 !AutoPausedAtHandoff ||
                 !tape.IsPlaybackPaused ||
-                tape.IsPausedByStopMarker ||
-                tape.IsPausedByProtectedStageHandoff)
+                tape.IsPausedByStopMarker)
             {
                 AutomaticResumeReads = 0;
                 return false;
@@ -110,7 +109,11 @@ namespace Spectrum128kEmulator.Tap
                 !hasPendingContinuation;
             if (!loaderHasRelinquishedTape)
             {
-                HandoffFrames = 0;
+                // Game loops often interleave keyboard polling with several frames of
+                // music or animation. Preserve positive keyboard-wait evidence across
+                // frames with no tape reads, but cancel it as soon as EAR is sampled.
+                if (earSensitiveReadsThisFrame != 0)
+                    HandoffFrames = 0;
                 return false;
             }
 
