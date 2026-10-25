@@ -13,7 +13,7 @@ namespace Spectrum128kEmulator
         {
             cpuStatePanel.Name = "CpuStatePanel";
             cpuStatePanel.Dock = DockStyle.Top;
-            cpuStatePanel.Height = 88;
+            cpuStatePanel.Height = 72;
             cpuStatePanel.Margin = Padding.Empty;
             cpuStatePanel.Padding = Padding.Empty;
             cpuStatePanel.BackColor = Color.FromArgb(205, 205, 195);
@@ -52,7 +52,7 @@ namespace Spectrum128kEmulator
             };
             body.Dock = DockStyle.None;
             body.Location = new Point(8, 18);
-            body.Size = new Size(184, 79);
+            body.Size = new Size(184, 54);
             body.Anchor = AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right;
             panel.Controls.Add(body);
             panel.Controls.Add(heading);
@@ -158,7 +158,7 @@ namespace Spectrum128kEmulator
             for (int column = 0; column < columns; column++)
                 grid.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100f / columns));
             for (int row = 0; row < rows; row++)
-                grid.RowStyles.Add(new RowStyle(SizeType.Percent, 100f / rows));
+                grid.RowStyles.Add(new RowStyle(SizeType.Absolute, 18f));
             return grid;
         }
 
