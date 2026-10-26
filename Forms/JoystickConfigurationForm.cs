@@ -30,9 +30,9 @@ namespace Spectrum128kEmulator
         {
             Dock = DockStyle.Fill,
             TextAlign = ContentAlignment.MiddleCenter,
-            Font = new Font("Segoe UI Semibold", 9F),
-            ForeColor = Color.FromArgb(55, 70, 73),
-            BackColor = Color.FromArgb(231, 235, 232),
+            Font = EmulatorUiStyle.UiFont(9F, FontStyle.Bold),
+            ForeColor = EmulatorUiStyle.Muted,
+            BackColor = EmulatorUiStyle.Panel,
             Text = "Waiting for controller input..."
         };
         private readonly IHostJoystickSource? source;
@@ -57,8 +57,7 @@ namespace Spectrum128kEmulator
             MinimizeBox = false;
             ShowInTaskbar = false;
             ClientSize = new Size(520, 485);
-            Font = new Font("Segoe UI", 9F);
-            BackColor = Color.FromArgb(246, 246, 242);
+            EmulatorUiStyle.ApplyForm(this);
 
             PopulateInterfaceSelector(emulatedInterface, joystickInterface);
             PopulateSelector(horizontalAxis, "Axis", device?.AxisCount ?? -1, mapping.HorizontalAxis, allowUnassigned: false);
@@ -87,8 +86,8 @@ namespace Spectrum128kEmulator
             {
                 Text = "JOYSTICK CONFIGURATION",
                 AutoSize = true,
-                Font = new Font("Segoe UI Semibold", 13F),
-                ForeColor = Color.FromArgb(30, 45, 49),
+                Font = EmulatorUiStyle.UiFont(13F, FontStyle.Bold),
+                ForeColor = EmulatorUiStyle.Ink,
                 Margin = new Padding(0, 0, 0, 3)
             }, 0, 0);
             root.Controls.Add(new Label
@@ -97,7 +96,7 @@ namespace Spectrum128kEmulator
                     ? "No controller is currently detected. These choices will be retained for the next device."
                     : $"{device.DisplayName}  |  {device.AxisCount} axes  |  {device.SwitchCount} hats  |  {device.ButtonCount} buttons",
                 AutoSize = true,
-                ForeColor = Color.FromArgb(75, 85, 85),
+                ForeColor = EmulatorUiStyle.Muted,
                 MaximumSize = new Size(475, 0),
                 Margin = new Padding(0, 0, 0, 12)
             }, 0, 1);
@@ -109,6 +108,7 @@ namespace Spectrum128kEmulator
                 Padding = new Padding(12, 8, 12, 10),
                 Margin = new Padding(0, 0, 0, 10)
             };
+            EmulatorUiStyle.StyleGroup(mappingGroup);
             var mappingLayout = new TableLayoutPanel
             {
                 Dock = DockStyle.Fill,
@@ -144,6 +144,7 @@ namespace Spectrum128kEmulator
                 Padding = new Padding(8),
                 Margin = new Padding(0, 0, 0, 10)
             };
+            EmulatorUiStyle.StyleGroup(previewGroup);
             previewGroup.Controls.Add(livePreview);
             root.Controls.Add(previewGroup, 0, 3);
 
@@ -152,7 +153,7 @@ namespace Spectrum128kEmulator
                 Text = "Choose the interface expected by the game, then move the controller and press Fire to verify the mapping. Opposing directions cancel.",
                 AutoSize = true,
                 MaximumSize = new Size(475, 0),
-                ForeColor = Color.FromArgb(75, 85, 85),
+                ForeColor = EmulatorUiStyle.Muted,
                 Margin = new Padding(0, 0, 0, 10)
             }, 0, 4);
 
@@ -178,6 +179,8 @@ namespace Spectrum128kEmulator
                 AutoSize = true,
                 Padding = new Padding(8, 2, 8, 2)
             };
+            EmulatorUiStyle.StyleButton(ok, primary: true);
+            EmulatorUiStyle.StyleButton(cancel);
             buttons.Controls.Add(ok);
             buttons.Controls.Add(cancel);
             root.Controls.Add(buttons, 0, 5);
@@ -230,16 +233,16 @@ namespace Spectrum128kEmulator
             if (source == null || !source.TryRead(preferredDeviceId, out HostJoystickReading reading))
             {
                 livePreview.Text = "NO CONTROLLER INPUT";
-                livePreview.ForeColor = Color.FromArgb(95, 95, 90);
-                livePreview.BackColor = Color.FromArgb(231, 235, 232);
+                livePreview.ForeColor = EmulatorUiStyle.Muted;
+                livePreview.BackColor = EmulatorUiStyle.Panel;
                 return;
             }
 
             SpectrumJoystickState state = HostJoystickMapper.Map(reading, SelectedMapping);
             livePreview.Text = $"{FormatInterface(SelectedInterface)}  |  {DescribeState(state)}";
             bool active = state != SpectrumJoystickState.None;
-            livePreview.ForeColor = active ? Color.FromArgb(9, 88, 76) : Color.FromArgb(55, 70, 73);
-            livePreview.BackColor = active ? Color.FromArgb(205, 241, 231) : Color.FromArgb(231, 235, 232);
+            livePreview.ForeColor = active ? EmulatorUiStyle.Accent : EmulatorUiStyle.Muted;
+            livePreview.BackColor = active ? EmulatorUiStyle.AccentSoft : EmulatorUiStyle.Panel;
         }
 
         private static string DescribeState(SpectrumJoystickState state)

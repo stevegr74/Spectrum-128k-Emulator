@@ -34,6 +34,8 @@ This project focuses on correctness, clean architecture, and incremental develop
 
 ![Paused Z80 debugger showing the paging map, grouped CPU state, memory inspector, and execution controls](docs/images/debugger-bank-aware.png)
 
+For operation and controls, see the [User Guide](USER_GUIDE.md). UI changes should follow the [Design Language](DESIGN_LANGUAGE.md).
+
 ---
 
 ## Current Status
@@ -68,6 +70,7 @@ Current limitations and active work:
 - Mounted-loader continuation state, BASIC workspace preservation, resume gating, and Quick State capture are isolated from the machine in a dedicated controller.
 - Tape strategy and continuation decisions do not inspect media names or game hashes; preloaded custom-loader handoff requires a unique wait loop that the executed BASIC bootstrap demonstrably patched in live RAM.
 - The background emulation loop owns mutable machine state; the UI consumes copied snapshots and uses nested pause leases for safe inspection.
+- Help, joystick configuration, the debugger, and the Poke Manager share one DPI-aware Windows visual system; interface chrome uses Segoe UI while machine addresses, registers, instructions, and byte values remain monospace.
 - The Poke Manager pauses emulation before inspecting or changing RAM; exact media checksums are trusted matches, filename aliases are discovery hints only, and restoration is refused if the running program has since changed an applied byte.
 - Windows key messages are captured before control/menu preprocessing, then applied by the emulation loop through a scan-aware matrix bridge; shared Spectrum chords retain independent host-key ownership and use emulated T-states rather than UI scheduler ticks.
 - USB controllers are discovered only by the Windows adapter; immutable readings become a five-bit platform-neutral joystick state that the core exposes through Kempston or independent Sinclair keyboard-matrix inputs, with RZX input retaining precedence and live host state excluded from Quick State.
@@ -143,7 +146,7 @@ Spectrum128kEmulator/
 |-- Audio/                                 Windows audio pipeline and output adapters
 |-- Disassembly/                           debugger UI, bank captures, symbolic analysis, memory inspection, and export
 |-- Host/                                  background loop, pause ownership, and UI snapshots
-|-- Forms/                                 main window partials, Poke Manager, and shortcut-reference dialog
+|-- Forms/                                 main window partials, shared UI styling, Poke Manager, and shortcut-reference dialog
 |-- Input/                                 Windows keyboard and USB-controller adapters
 |-- Pokes/                                 editable validated game/poke library and format guide
 |-- Video/                                 display modes, pixel-art scaling, and presentation adapter
@@ -151,6 +154,8 @@ Spectrum128kEmulator/
 |-- Program.cs                             Windows application entry point
 |-- Spectrum128kEmulator.csproj            net10.0 Windows frontend project
 |-- VERIFIED_GAMES.md                      manual media compatibility record
+|-- USER_GUIDE.md                          current emulator operation and troubleshooting
+|-- DESIGN_LANGUAGE.md                     Windows visual and interaction standards
 |
 |-- Spectrum128kEmulator.Tests/            net8.0 Core unit and regression tests
 |-- Spectrum128kEmulator.Windows.Tests/    Windows presentation and host tests

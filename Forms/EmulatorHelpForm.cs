@@ -1,68 +1,15 @@
-using System.Drawing;
-using System.Windows.Forms;
-
 namespace Spectrum128kEmulator
 {
     public sealed class EmulatorHelpForm : Form
     {
-        private const int ContentWidth = 590;
+        private readonly ListBox sectionList = new();
+        private readonly GroupBox detailsGroup = new();
+        private readonly Panel detailsPanel = new();
 
-        public EmulatorHelpForm()
-        {
-            Text = "Spectrum 128K Emulator Help";
-            ClientSize = new Size(640, 600);
-            FormBorderStyle = FormBorderStyle.FixedDialog;
-            MaximizeBox = false;
-            MinimizeBox = false;
-            ShowInTaskbar = false;
-            StartPosition = FormStartPosition.CenterParent;
-            KeyPreview = true;
-            BackColor = Color.FromArgb(238, 238, 238);
-
-            var header = new Panel
-            {
-                Dock = DockStyle.Top,
-                Height = 74,
-                BackColor = Color.FromArgb(25, 25, 25),
-                Padding = new Padding(18, 10, 18, 8)
-            };
-            header.Controls.Add(new Label
-            {
-                AutoSize = true,
-                Text = "Controls and Shortcuts",
-                Font = new Font(FontFamily.GenericSansSerif, 16.0f, FontStyle.Bold),
-                ForeColor = Color.White,
-                Location = new Point(18, 10)
-            });
-            header.Controls.Add(new Label
-            {
-                AutoSize = true,
-                Text = "Press F1 or Escape to close this window.",
-                Font = new Font(FontFamily.GenericSansSerif, 9.0f),
-                ForeColor = Color.Gainsboro,
-                Location = new Point(20, 43)
-            });
-
-            var closeButton = new Button
-            {
-                Dock = DockStyle.Bottom,
-                Text = "Close",
-                Height = 36,
-                Margin = new Padding(10)
-            };
-            closeButton.Click += (_, _) => Close();
-
-            var content = new FlowLayoutPanel
-            {
-                Dock = DockStyle.Fill,
-                AutoScroll = true,
-                FlowDirection = FlowDirection.TopDown,
-                WrapContents = false,
-                Padding = new Padding(16, 14, 16, 10),
-                BackColor = BackColor
-            };
-            content.Controls.Add(CreateShortcutSection("Display", new[]
-            {
+        private static readonly HelpSection[] Sections =
+        [
+            new("Display and state",
+            [
                 ("F1", "Show or close this help window"),
                 ("F2", "Show or hide the FPS and display-mode overlay"),
                 ("F3", "Reset and switch between 128K and 48K machine modes"),
@@ -71,17 +18,17 @@ namespace Spectrum128kEmulator
                 ("F6", "Open or close the paused debugger and disassembler"),
                 ("F7", "Save the current machine state to the temporary Quick State slot"),
                 ("F8", "Restore the temporary Quick State; unavailable until one is saved"),
-                ("Right-click", "Open the quick menu, including USB joystick interface/device selection and the Poke Manager")
-            }));
-            content.Controls.Add(CreateShortcutSection("Loading and Diagnostics", new[]
-            {
+                ("Right-click", "Open the quick menu for joystick selection and the Poke Manager")
+            ]),
+            new("Loading and diagnostics",
+            [
                 ("F9", "Load a 48K or 128K .sna snapshot"),
                 ("F10", "Load a .z80 snapshot or play an .rzx recording"),
                 ("F11", "Mount a .tap or .tzx tape image"),
                 ("F12", "Write a machine diagnostic dump")
-            }));
-            content.Controls.Add(CreateShortcutSection("Disassembler Window", new[]
-            {
+            ]),
+            new("Debugger window",
+            [
                 ("Arrow keys", "Move through listing rows; Enter follows a direct branch target"),
                 ("Alt+Left / Right", "Move backward or forward through address history"),
                 ("Ctrl+G / Ctrl+P", "Focus address entry or return to the captured PC"),
@@ -94,99 +41,199 @@ namespace Spectrum128kEmulator
                 ("Ctrl+R", "Refresh the immutable capture while remaining paused"),
                 ("Ctrl+C", "Copy selected rows with capture metadata"),
                 ("Ctrl+Shift+C", "Copy every displayed row with capture metadata"),
-                ("Memory view", "Select mapped 64K, ROM banks, or RAM banks for the disassembly listing"),
+                ("Memory view", "Select mapped 64K, ROM banks, or RAM banks for the listing"),
                 ("CPU state links", "Inspect register addresses in Memory; use PC or stack values to navigate the listing"),
-                ("Memory tab", "Inspect hexadecimal and ASCII bytes from registers, stack values, listing addresses, or direct targets"),
-                ("Ctrl+L / Right-click", "Edit labels, mark code/data/unknown, manage symbols, or inspect an address or target in memory"),
+                ("Memory tab", "Inspect hex/ASCII bytes from registers, stack, listing, or targets"),
+                ("Ctrl+L / Right-click", "Edit labels, mark code/data/unknown, manage symbols, or inspect memory"),
                 ("Ctrl+E", "Export a complete 64K mapped or 16K physical-bank listing")
-            }));
-            content.Controls.Add(CreateShortcutSection("Spectrum Keyboard", new[]
-            {
+            ]),
+            new("Spectrum keyboard",
+            [
                 ("Letters / numbers", "Map to their Spectrum keys"),
                 ("Enter / Space", "Map directly to the Spectrum keyboard"),
                 ("Shift", "Maps to Spectrum CAPS SHIFT"),
                 ("Ctrl / Alt", "Map to Spectrum SYMBOL SHIFT"),
                 ("PC punctuation", "Maps common BASIC punctuation to Spectrum SYMBOL SHIFT chords"),
                 ("Arrow keys", "Provide cursor-style Spectrum input chords")
-            }));
+            ]),
+            new("Joystick",
+            [
+                ("Off", "Disconnect host joystick input from the emulated machine"),
+                ("Automatic", "Use the first available host controller"),
+                ("Kempston", "Expose active-high directions and Fire through port 1FH"),
+                ("Cursor", "Map directions and Fire to keys 5, 8, 6, 7, and 0"),
+                ("Interface II", "Map Player 1 to keys 6-0 or Player 2 to keys 1-5"),
+                ("Configure", "Choose the Spectrum interface, axes, hat, Fire button, and dead zone")
+            ])
+        ];
 
-            Controls.Add(content);
-            Controls.Add(closeButton);
-            Controls.Add(header);
+        public EmulatorHelpForm()
+        {
+            Text = "Spectrum 128K Emulator Help";
+            ClientSize = new Size(930, 600);
+            FormBorderStyle = FormBorderStyle.FixedDialog;
+            MaximizeBox = false;
+            MinimizeBox = false;
+            ShowInTaskbar = false;
+            StartPosition = FormStartPosition.CenterParent;
+            KeyPreview = true;
+            EmulatorUiStyle.ApplyForm(this);
+
+            var root = new TableLayoutPanel
+            {
+                Dock = DockStyle.Fill,
+                Padding = new Padding(18, 14, 18, 14),
+                ColumnCount = 1,
+                RowCount = 3
+            };
+            root.RowStyles.Add(new RowStyle(SizeType.Absolute, 62));
+            root.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
+            root.RowStyles.Add(new RowStyle(SizeType.Absolute, 44));
+            root.Controls.Add(CreateHeader(), 0, 0);
+            root.Controls.Add(CreateBody(), 0, 1);
+            root.Controls.Add(CreateFooter(), 0, 2);
+            Controls.Add(root);
+
+            sectionList.SelectedIndexChanged += (_, _) => ShowSelectedSection();
+            sectionList.SelectedIndex = 0;
             KeyDown += EmulatorHelpForm_KeyDown;
         }
 
-        private static Control CreateShortcutSection(string title, (string Key, string Description)[] rows)
+        private static Control CreateHeader()
         {
-            var panel = new Panel
-            {
-                Width = ContentWidth,
-                Height = 42 + (rows.Length * 25),
-                BorderStyle = BorderStyle.FixedSingle,
-                BackColor = Color.White,
-                Margin = new Padding(0, 0, 0, 12)
-            };
-            var table = new TableLayoutPanel
+            var panel = new Panel { Dock = DockStyle.Fill };
+            Label title = EmulatorUiStyle.CreateTitle("CONTROLS AND SHORTCUTS");
+            title.Location = new Point(0, 0);
+            Label subtitle = EmulatorUiStyle.CreateSubtitle("Press F1 or Escape to close this window.");
+            subtitle.Location = new Point(1, 29);
+            Label reference = EmulatorUiStyle.CreateSubtitle("QUICK REFERENCE", accent: true);
+            reference.AutoSize = false;
+            reference.Dock = DockStyle.Right;
+            reference.Width = 140;
+            reference.Padding = new Padding(0, 4, 0, 0);
+            reference.TextAlign = ContentAlignment.TopRight;
+            panel.Controls.Add(title);
+            panel.Controls.Add(subtitle);
+            panel.Controls.Add(reference);
+            return panel;
+        }
+
+        private Control CreateBody()
+        {
+            var body = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 2, RowCount = 1 };
+            body.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 190));
+            body.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+
+            var sectionsGroup = new GroupBox { Text = "Sections", Dock = DockStyle.Fill, Padding = new Padding(10) };
+            EmulatorUiStyle.StyleGroup(sectionsGroup);
+            sectionList.Dock = DockStyle.Fill;
+            sectionList.BorderStyle = BorderStyle.None;
+            sectionList.BackColor = EmulatorUiStyle.Paper;
+            sectionList.ForeColor = EmulatorUiStyle.Ink;
+            sectionList.Font = EmulatorUiStyle.UiFont(9F);
+            sectionList.DrawMode = DrawMode.OwnerDrawFixed;
+            sectionList.ItemHeight = 34;
+            sectionList.Items.AddRange(Sections.Cast<object>().ToArray());
+            sectionList.DrawItem += DrawSectionItem;
+            sectionsGroup.Controls.Add(sectionList);
+
+            detailsGroup.Dock = DockStyle.Fill;
+            detailsGroup.Margin = new Padding(12, 0, 0, 0);
+            detailsGroup.Padding = new Padding(12, 8, 12, 12);
+            EmulatorUiStyle.StyleGroup(detailsGroup);
+            detailsPanel.Dock = DockStyle.Fill;
+            detailsPanel.AutoScroll = true;
+            detailsGroup.Controls.Add(detailsPanel);
+
+            body.Controls.Add(sectionsGroup, 0, 0);
+            body.Controls.Add(detailsGroup, 1, 0);
+            return body;
+        }
+
+        private Control CreateFooter()
+        {
+            var panel = new FlowLayoutPanel
             {
                 Dock = DockStyle.Fill,
-                ColumnCount = 2,
-                RowCount = rows.Length + 1,
-                Padding = new Padding(12, 0, 12, 0),
-                Margin = Padding.Empty
+                FlowDirection = FlowDirection.RightToLeft,
+                WrapContents = false,
+                Padding = new Padding(0, 9, 0, 0)
             };
-            table.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 130));
-            table.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
-            table.RowStyles.Add(new RowStyle(SizeType.Absolute, 40));
-            for (int index = 0; index < rows.Length; index++)
-                table.RowStyles.Add(new RowStyle(SizeType.Absolute, 25));
-            var titleLabel = new Label
+            var close = new Button { Text = "Close", Width = 90, Height = 30 };
+            EmulatorUiStyle.StyleButton(close, primary: true);
+            close.Click += (_, _) => Close();
+            panel.Controls.Add(close);
+            return panel;
+        }
+
+        private void ShowSelectedSection()
+        {
+            if (sectionList.SelectedItem is not HelpSection section)
+                return;
+
+            detailsGroup.Text = section.Title;
+            detailsPanel.Controls.Clear();
+            var table = new TableLayoutPanel
             {
                 AutoSize = true,
-                Anchor = AnchorStyles.Left,
-                Text = title,
-                Font = new Font(FontFamily.GenericSansSerif, 10.0f, FontStyle.Bold),
-                ForeColor = Color.FromArgb(0, 70, 125),
-                Margin = Padding.Empty
+                AutoSizeMode = AutoSizeMode.GrowAndShrink,
+                Dock = DockStyle.Top,
+                ColumnCount = 2,
+                RowCount = section.Rows.Length,
+                Margin = Padding.Empty,
+                Padding = Padding.Empty
             };
-            table.Controls.Add(titleLabel, 0, 0);
-            table.SetColumnSpan(titleLabel, 2);
-
-            for (int index = 0; index < rows.Length; index++)
+            table.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 160));
+            table.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+            for (int row = 0; row < section.Rows.Length; row++)
             {
-                int row = index + 1;
+                table.RowStyles.Add(new RowStyle(SizeType.Absolute, 29));
                 table.Controls.Add(new Label
                 {
-                    AutoSize = true,
-                    Text = rows[index].Key,
-                    Font = new Font(FontFamily.GenericMonospace, 9.0f, FontStyle.Bold),
-                    ForeColor = Color.FromArgb(70, 70, 70),
-                    Margin = Padding.Empty,
-                    Anchor = AnchorStyles.Left
+                    Text = section.Rows[row].Key,
+                    Dock = DockStyle.Fill,
+                    Font = EmulatorUiStyle.MonoFont(9F, FontStyle.Bold),
+                    ForeColor = EmulatorUiStyle.Accent,
+                    TextAlign = ContentAlignment.MiddleLeft,
+                    Padding = new Padding(6, 0, 0, 0)
                 }, 0, row);
                 table.Controls.Add(new Label
                 {
-                    AutoSize = true,
-                    MaximumSize = new Size(410, 0),
-                    Text = rows[index].Description,
-                    Font = new Font(FontFamily.GenericSansSerif, 9.0f),
-                    ForeColor = Color.FromArgb(45, 45, 45),
-                    Margin = Padding.Empty,
-                    Anchor = AnchorStyles.Left
+                    Text = section.Rows[row].Description,
+                    Dock = DockStyle.Fill,
+                    Font = EmulatorUiStyle.UiFont(9F),
+                    ForeColor = EmulatorUiStyle.Ink,
+                    TextAlign = ContentAlignment.MiddleLeft,
+                    Padding = new Padding(6, 0, 0, 0)
                 }, 1, row);
             }
+            detailsPanel.Controls.Add(table);
+        }
 
-            panel.Controls.Add(table);
-            return panel;
+        private void DrawSectionItem(object? sender, DrawItemEventArgs e)
+        {
+            if (e.Index < 0)
+                return;
+            bool selected = (e.State & DrawItemState.Selected) != 0;
+            using var background = new SolidBrush(selected ? EmulatorUiStyle.AccentSoft : EmulatorUiStyle.Paper);
+            using var foreground = new SolidBrush(selected ? EmulatorUiStyle.Accent : EmulatorUiStyle.Ink);
+            e.Graphics.FillRectangle(background, e.Bounds);
+            e.Graphics.DrawString(sectionList.Items[e.Index].ToString(), sectionList.Font, foreground, e.Bounds.X + 8, e.Bounds.Y + 8);
+            e.DrawFocusRectangle();
         }
 
         private void EmulatorHelpForm_KeyDown(object? sender, KeyEventArgs e)
         {
-            if (e.KeyCode is Keys.F1 or Keys.Escape)
-            {
-                e.Handled = true;
-                e.SuppressKeyPress = true;
-                Close();
-            }
+            if (e.KeyCode is not (Keys.F1 or Keys.Escape))
+                return;
+            e.Handled = true;
+            e.SuppressKeyPress = true;
+            Close();
+        }
+
+        private sealed record HelpSection(string Title, (string Key, string Description)[] Rows)
+        {
+            public override string ToString() => Title;
         }
     }
 }

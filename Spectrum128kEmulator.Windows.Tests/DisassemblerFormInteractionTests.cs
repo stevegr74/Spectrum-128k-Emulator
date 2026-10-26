@@ -73,7 +73,7 @@ namespace Spectrum128kEmulator.Tests
                     Application.DoEvents();
                     Assert.Equal("BC 8111", CpuLabel("CpuValueBC").Text);
                     Assert.Equal(Color.FromArgb(255, 230, 145), CpuLabel("CpuValueBC").BackColor);
-                    Assert.Equal(Color.FromArgb(232, 230, 219), CpuLabel("CpuValueDE").BackColor);
+                    Assert.Equal(Color.FromArgb(239, 239, 233), CpuLabel("CpuValueDE").BackColor);
                     Assert.Contains("@PC LD A,(9000H)", CpuLabel("CpuCurrentInstruction").Text);
 
                     typeof(DisassemblerForm)

@@ -15,7 +15,7 @@ namespace Spectrum128kEmulator
             };
 
             inspectorTabs.Dock = DockStyle.Fill;
-            inspectorTabs.Font = new Font(FontFamily.GenericSansSerif, 8.0f);
+            inspectorTabs.Font = EmulatorUiStyle.UiFont(8F);
             var referencesPage = new TabPage("References") { BackColor = Paper };
             referencesPage.Controls.Add(CreateCrossReferencePanel());
             var memoryPage = new TabPage("Memory") { BackColor = Paper };
@@ -46,14 +46,16 @@ namespace Spectrum128kEmulator
                 Text = "CROSS-REFERENCES",
                 Dock = DockStyle.Top,
                 Height = 24,
-                Font = new Font(FontFamily.GenericSansSerif, 7.5f, FontStyle.Bold),
-                ForeColor = Ink,
+                Font = EmulatorUiStyle.UiFont(8F, FontStyle.Bold),
+                ForeColor = EmulatorUiStyle.Muted,
                 TextAlign = ContentAlignment.MiddleLeft
             });
 
             crossReferenceList.Name = "CrossReferenceList";
             crossReferenceList.Dock = DockStyle.Fill;
-            crossReferenceList.Font = new Font("Consolas", 8.5f);
+            crossReferenceList.Font = EmulatorUiStyle.MonoFont(8.5f);
+            crossReferenceList.BackColor = EmulatorUiStyle.Field;
+            crossReferenceList.ForeColor = Ink;
             crossReferenceList.IntegralHeight = false;
             crossReferenceList.DoubleClick += (_, _) => NavigateToSelectedCrossReference();
             var menu = new ContextMenuStrip();

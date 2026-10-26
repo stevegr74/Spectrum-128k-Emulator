@@ -166,7 +166,12 @@ namespace Spectrum128kEmulator.Tests
 
                     Rectangle client = form.RectangleToScreen(form.ClientRectangle);
                     foreach (Control control in Descendants(form).Where(control => control.Visible && control.Width > 0 && control.Height > 0))
-                        Assert.True(client.IntersectsWith(control.RectangleToScreen(control.ClientRectangle)));
+                    {
+                        Rectangle bounds = control.RectangleToScreen(control.ClientRectangle);
+                        Assert.True(
+                            client.IntersectsWith(bounds),
+                            $"{control.GetType().Name} '{control.Name}' with text '{control.Text}' is outside the client area: {bounds}.");
+                    }
                     form.Close();
                     Application.DoEvents();
                 }

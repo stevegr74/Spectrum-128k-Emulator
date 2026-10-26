@@ -13,7 +13,7 @@ namespace Spectrum128kEmulator
             MinimizeBox = false;
             ShowInTaskbar = false;
             StartPosition = FormStartPosition.CenterParent;
-            BackColor = Color.FromArgb(242, 239, 228);
+            EmulatorUiStyle.ApplyForm(this);
 
             Controls.Add(new Label
             {
@@ -34,6 +34,7 @@ namespace Spectrum128kEmulator
                 Location = new Point(218, 86),
                 Size = new Size(74, 29)
             };
+            EmulatorUiStyle.StyleButton(okButton, primary: true);
             var cancelButton = new Button
             {
                 Text = "Cancel",
@@ -41,6 +42,7 @@ namespace Spectrum128kEmulator
                 Location = new Point(300, 86),
                 Size = new Size(74, 29)
             };
+            EmulatorUiStyle.StyleButton(cancelButton);
             Controls.Add(okButton);
             Controls.Add(cancelButton);
             AcceptButton = okButton;

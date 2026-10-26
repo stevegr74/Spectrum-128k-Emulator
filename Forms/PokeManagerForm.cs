@@ -4,13 +4,13 @@ namespace Spectrum128kEmulator
 {
     public sealed class PokeManagerForm : Form
     {
-        private static readonly Color Ink = Color.FromArgb(29, 41, 46);
-        private static readonly Color Paper = Color.FromArgb(239, 238, 228);
-        private static readonly Color Accent = Color.FromArgb(23, 151, 126);
-        private static readonly Color Warning = Color.FromArgb(190, 112, 26);
-        private static readonly Color MatchPaper = Color.FromArgb(222, 240, 232);
+        private static readonly Color Ink = EmulatorUiStyle.Ink;
+        private static readonly Color Paper = EmulatorUiStyle.Paper;
+        private static readonly Color Accent = EmulatorUiStyle.Accent;
+        private static readonly Color Warning = EmulatorUiStyle.Warning;
+        private static readonly Color MatchPaper = EmulatorUiStyle.AccentSoft;
         private static readonly Color SuggestionPaper = Color.FromArgb(248, 235, 215);
-        private static readonly Color BrowsePaper = Color.FromArgb(224, 224, 214);
+        private static readonly Color BrowsePaper = EmulatorUiStyle.Panel;
 
         private readonly Func<IReadOnlyList<PokeWrite>, IReadOnlyList<PokeWritePreview>> previewWrites;
         private readonly Func<IReadOnlyList<PokeWrite>, PokeApplication> applyWrites;
@@ -65,9 +65,7 @@ namespace Spectrum128kEmulator
             ClientSize = new Size(940, 650);
             MinimumSize = new Size(820, 580);
             StartPosition = FormStartPosition.CenterParent;
-            BackColor = Paper;
-            ForeColor = Ink;
-            Font = new Font(FontFamily.GenericSansSerif, 9.0f);
+            EmulatorUiStyle.ApplyForm(this);
             KeyPreview = true;
 
             Controls.Add(CreateTabs());
@@ -96,15 +94,10 @@ namespace Spectrum128kEmulator
 
         private Control CreateHeader(PokeMediaIdentity? media, SpectrumMachineModel model)
         {
-            var panel = new Panel { Dock = DockStyle.Top, Height = 92, BackColor = Ink };
-            panel.Controls.Add(new Label
-            {
-                Text = "POKE MANAGER",
-                AutoSize = true,
-                Location = new Point(22, 15),
-                ForeColor = Color.White,
-                Font = new Font(FontFamily.GenericMonospace, 19.0f, FontStyle.Bold)
-            });
+            var panel = new Panel { Dock = DockStyle.Top, Height = 78, BackColor = Paper };
+            Label title = EmulatorUiStyle.CreateTitle("POKE MANAGER");
+            title.Location = new Point(22, 13);
+            panel.Controls.Add(title);
             string mediaText = media == null
                 ? "No media loaded"
                 : $"{media.FileName}  |  SHA-256 {media.Sha256[..12]}...";
@@ -112,16 +105,29 @@ namespace Spectrum128kEmulator
             {
                 Text = $"PAUSED  |  {(model == SpectrumMachineModel.Spectrum48K ? "48K" : "128K")}  |  {mediaText}",
                 AutoSize = true,
-                Location = new Point(24, 56),
-                ForeColor = Color.FromArgb(92, 220, 190),
-                Font = new Font(FontFamily.GenericMonospace, 9.5f, FontStyle.Bold)
+                Location = new Point(24, 43),
+                ForeColor = Accent,
+                Font = EmulatorUiStyle.UiFont(9F, FontStyle.Bold)
             });
+            var safe = EmulatorUiStyle.CreateSubtitle("SAFE INSPECTION", accent: true);
+            safe.AutoSize = false;
+            safe.Dock = DockStyle.Right;
+            safe.Width = 132;
+            safe.Padding = new Padding(0, 17, 18, 0);
+            safe.TextAlign = ContentAlignment.TopRight;
+            panel.Controls.Add(safe);
             return panel;
         }
 
         private Control CreateTabs()
         {
-            var tabs = new TabControl { Name = "PokeTabs", Dock = DockStyle.Fill, Padding = new Point(18, 5) };
+            var tabs = new TabControl
+            {
+                Name = "PokeTabs",
+                Dock = DockStyle.Fill,
+                Padding = new Point(18, 5),
+                Font = EmulatorUiStyle.UiFont(9F)
+            };
             tabs.TabPages.Add(CreateLibraryTab());
             tabs.TabPages.Add(CreateOneOffTab());
             return tabs;
@@ -138,7 +144,7 @@ namespace Spectrum128kEmulator
             layout.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
             layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 46));
 
-            var gameLabel = new Label { Text = "GAME", Dock = DockStyle.Top, Height = 18, Font = BoldFont() };
+            var gameLabel = new Label { Text = "GAME", Dock = DockStyle.Top, Height = 18, Font = EmulatorUiStyle.UiFont(8F, FontStyle.Bold), ForeColor = EmulatorUiStyle.Muted };
             var gamePanel = new Panel { Dock = DockStyle.Fill };
             gameSelector.Dock = DockStyle.Bottom;
             gamePanel.Controls.Add(gameSelector);
@@ -154,21 +160,27 @@ namespace Spectrum128kEmulator
             layout.SetColumnSpan(matchLabel, 2);
 
             pokeList.Dock = DockStyle.Fill;
-            layout.Controls.Add(pokeList, 0, 2);
-            var previewPanel = new Panel { Dock = DockStyle.Fill, Padding = new Padding(12, 0, 0, 0) };
+            var availableGroup = new GroupBox { Text = "Available pokes", Dock = DockStyle.Fill, Padding = new Padding(10) };
+            EmulatorUiStyle.StyleGroup(availableGroup);
+            availableGroup.Controls.Add(pokeList);
+            layout.Controls.Add(availableGroup, 0, 2);
+            var previewGroup = new GroupBox { Text = "Preview", Dock = DockStyle.Fill, Padding = new Padding(10), Margin = new Padding(12, 0, 0, 0) };
+            EmulatorUiStyle.StyleGroup(previewGroup);
+            var previewPanel = new Panel { Dock = DockStyle.Fill };
             descriptionLabel.Dock = DockStyle.Top;
             descriptionLabel.Height = 54;
             descriptionLabel.Padding = new Padding(0, 0, 0, 6);
             libraryPreview.Dock = DockStyle.Fill;
             previewPanel.Controls.Add(libraryPreview);
             previewPanel.Controls.Add(descriptionLabel);
-            layout.Controls.Add(previewPanel, 1, 2);
+            previewGroup.Controls.Add(previewPanel);
+            layout.Controls.Add(previewGroup, 1, 2);
 
             var buttons = new FlowLayoutPanel { Dock = DockStyle.Fill, FlowDirection = FlowDirection.RightToLeft, WrapContents = false };
             applyLibraryButton.Width = 145;
-            applyLibraryButton.BackColor = Accent;
-            applyLibraryButton.ForeColor = Color.White;
             restoreLibraryButton.Width = 125;
+            EmulatorUiStyle.StyleButton(applyLibraryButton, primary: true);
+            EmulatorUiStyle.StyleButton(restoreLibraryButton);
             buttons.Controls.Add(applyLibraryButton);
             buttons.Controls.Add(restoreLibraryButton);
             layout.Controls.Add(buttons, 0, 3);
@@ -194,14 +206,13 @@ namespace Spectrum128kEmulator
             top.Controls.Add(Field(addressLabel, addressText, 115));
             top.Controls.Add(Field("VALUE", valueText, 95));
             var add = new Button { Name = "AddPendingPoke", Text = "Add Write", Width = 105, Height = 30, Margin = new Padding(12, 20, 0, 0) };
+            EmulatorUiStyle.StyleButton(add);
             add.Click += (_, _) => AddPendingWrite();
             top.Controls.Add(add);
 
             pendingList.Dock = DockStyle.Fill;
             var buttons = new FlowLayoutPanel { Dock = DockStyle.Bottom, Height = 46, FlowDirection = FlowDirection.RightToLeft, WrapContents = false };
             applyPendingButton.Width = 145;
-            applyPendingButton.BackColor = Accent;
-            applyPendingButton.ForeColor = Color.White;
             var clear = new Button { Name = "ClearPendingPokes", Text = "Clear", Width = 90, Height = 34 };
             clear.Click += (_, _) =>
             {
@@ -209,6 +220,9 @@ namespace Spectrum128kEmulator
                 RefreshPendingList();
             };
             var remove = new Button { Name = "RemovePendingPoke", Text = "Remove", Width = 90, Height = 34 };
+            EmulatorUiStyle.StyleButton(applyPendingButton, primary: true);
+            EmulatorUiStyle.StyleButton(clear);
+            EmulatorUiStyle.StyleButton(remove);
             remove.Click += (_, _) => RemovePendingWrite();
             buttons.Controls.Add(applyPendingButton);
             buttons.Controls.Add(clear);
@@ -226,6 +240,7 @@ namespace Spectrum128kEmulator
             statusLabel.Dock = DockStyle.Fill;
             statusLabel.Text = "Choose library pokes or queue a one-off write. All changes are previewed before application.";
             var close = new Button { Text = "Close", Dock = DockStyle.Right, Width = 100 };
+            EmulatorUiStyle.StyleButton(close);
             close.Click += (_, _) => Close();
             panel.Controls.Add(statusLabel);
             panel.Controls.Add(close);
@@ -443,7 +458,7 @@ namespace Spectrum128kEmulator
                     row.SubItems.Add($"{item.CurrentValue:X2}H");
                     row.SubItems.Add($"{item.Write.Value:X2}H");
                     if (item.ChangesValue)
-                        row.BackColor = Color.FromArgb(224, 243, 236);
+                        row.BackColor = EmulatorUiStyle.Selection;
                     list.Items.Add(row);
                 }
             }
@@ -478,8 +493,11 @@ namespace Spectrum128kEmulator
                 Name = name,
                 View = View.Details,
                 FullRowSelect = true,
-                GridLines = true,
-                HideSelection = false
+                GridLines = false,
+                HideSelection = false,
+                BackColor = EmulatorUiStyle.Field,
+                ForeColor = EmulatorUiStyle.Ink,
+                Font = EmulatorUiStyle.MonoFont(9F)
             };
             list.Columns.Add("Target", 210);
             list.Columns.Add("Current", 85);
@@ -495,6 +513,7 @@ namespace Spectrum128kEmulator
             var panel = new Panel { Width = width, Height = 58, Margin = new Padding(0, 0, 10, 0) };
             label.Location = new Point(0, 0);
             label.Font = BoldFont();
+            label.ForeColor = EmulatorUiStyle.Muted;
             control.Location = new Point(0, 21);
             control.Width = width - 8;
             panel.Controls.Add(control);
@@ -502,7 +521,7 @@ namespace Spectrum128kEmulator
             return panel;
         }
 
-        private static Font BoldFont() => new(FontFamily.GenericSansSerif, 8.5f, FontStyle.Bold);
+        private static Font BoldFont() => EmulatorUiStyle.UiFont(8.5f, FontStyle.Bold);
 
         private sealed record GameChoice(PokeGameMatch Match)
         {
