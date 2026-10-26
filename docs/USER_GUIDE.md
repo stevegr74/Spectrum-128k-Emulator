@@ -5,9 +5,9 @@
 **Windows edition**  
 **Covers:** 48K and 128K operation, snapshots, tape images, Quick State, controllers, pokes, and debugging
 
-![Spectrum 128K Emulator at the 128K ROM menu](docs/images/emulator-128k-basic.png)
+![Spectrum 128K Emulator at the 128K ROM menu](images/emulator-128k-basic.png)
 
-This manual describes the emulator as it operates today. It begins with normal loading and play, then introduces the controller, Poke Manager, and debugger tools. Development status and architecture remain in [`README.md`](README.md); tested software and reached checkpoints are recorded in [`VERIFIED_GAMES.md`](VERIFIED_GAMES.md).
+This manual describes the emulator as it operates today. It begins with normal loading and play, then introduces the controller, Poke Manager, and debugger tools. Development status and architecture remain in [`README.md`](../README.md); tested software and reached checkpoints are recorded in [`VERIFIED_GAMES.md`](VERIFIED_GAMES.md).
 
 > **Documentation note:** Screens and controls shown here are captured from the current Windows build. Planned features are identified explicitly and are not presented as available commands.
 
@@ -61,7 +61,7 @@ The main window keeps permanent controls out of the Spectrum picture. Every comm
 
 Press `F1` to open the quick-reference window. Emulation pauses while it is open. Choose a category on the left, then use `F1`, `Escape`, or **Close** to return.
 
-![Built-in Help window](docs/images/help-controls.png)
+![Built-in Help window](images/help-controls.png)
 
 *Figure 2.1. Help groups display, loading, debugger, keyboard, and joystick controls.*
 
@@ -83,7 +83,7 @@ Press `F1` to open the quick-reference window. Emulation pauses while it is open
 
 The context menu presents function-key actions in order, followed by joystick options and the Poke Manager. Unavailable commands, such as restoring before a Quick State exists, are disabled.
 
-![Complete right-click context menu](docs/images/context-menu.png)
+![Complete right-click context menu](images/context-menu.png)
 
 *Figure 2.2. The complete menu mirrors the function-key order and keeps unavailable actions visible but disabled.*
 
@@ -233,7 +233,7 @@ If a preferred device disappears, input temporarily falls back to the first usab
 
 Choose **Joystick > Configure...** and select the interface expected by the game:
 
-![Joystick Configuration window](docs/images/joystick-configuration.png)
+![Joystick Configuration window](images/joystick-configuration.png)
 
 *Figure 8.1. Dropdowns select the emulated interface and physical controls; the live preview verifies the result before **Save mapping** is used.*
 
@@ -262,7 +262,7 @@ The default mapping is axes 1/2 as displayed by the UI, hat 1 where available, b
 
 Right-click the display and choose **Poke Manager...**. Emulation pauses while the manager is open.
 
-![Poke Manager Library tab](docs/images/poke-manager.png)
+![Poke Manager Library tab](images/poke-manager.png)
 
 *Figure 9.1. The Library tab combines matching, selection, preview, guarded application, and restoration in one paused workflow.*
 
@@ -302,7 +302,7 @@ The initial library provides one-time writes. Continuously frozen values and con
 
 Press `F6` to open the debugger. The emulator pauses safely at an instruction boundary and presents an immutable capture.
 
-![Bank-aware debugger and disassembler](docs/images/debugger-bank-aware.png)
+![Bank-aware debugger and disassembler](images/debugger-bank-aware.png)
 
 *Figure 10.1. The debugger combines execution controls, paging, grouped CPU state, disassembly, references, memory inspection, and breakpoints.*
 

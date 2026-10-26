@@ -34,7 +34,7 @@ This project focuses on correctness, clean architecture, and incremental develop
 
 ![Paused Z80 debugger showing the paging map, grouped CPU state, memory inspector, and execution controls](docs/images/debugger-bank-aware.png)
 
-For operation and controls, see the [User Guide](USER_GUIDE.md). UI changes should follow the [Design Language](DESIGN_LANGUAGE.md).
+For operation and controls, see the [User Guide](docs/USER_GUIDE.md). UI changes should follow the [Design Language](docs/DESIGN_LANGUAGE.md).
 
 ---
 
@@ -47,7 +47,7 @@ pass in the headless compliance runner, although they are not proof that every
 undocumented hardware interaction is complete.
 
 Manually tested titles, formats, and reached checkpoints are tracked in
-[Verified Games And Media](VERIFIED_GAMES.md).
+[Verified Games And Media](docs/VERIFIED_GAMES.md).
 
 Current limitations and active work:
 
@@ -150,12 +150,14 @@ Spectrum128kEmulator/
 |-- Input/                                 Windows keyboard and USB-controller adapters
 |-- Pokes/                                 editable validated game/poke library and format guide
 |-- Video/                                 display modes, pixel-art scaling, and presentation adapter
-|-- docs/images/                           README screenshots of the emulator and debugger
 |-- Program.cs                             Windows application entry point
 |-- Spectrum128kEmulator.csproj            net10.0 Windows frontend project
-|-- VERIFIED_GAMES.md                      manual media compatibility record
-|-- USER_GUIDE.md                          current emulator operation and troubleshooting
-|-- DESIGN_LANGUAGE.md                     Windows visual and interaction standards
+|-- docs/                                  user, design, compatibility, and engineering documentation
+|   |-- USER_GUIDE.md                      current emulator operation and troubleshooting
+|   |-- DESIGN_LANGUAGE.md                 Windows visual and interaction standards
+|   |-- VERIFIED_GAMES.md                  manual media compatibility record
+|   |-- TAPE_STATE_OWNERSHIP.md            tape subsystem ownership and invariants
+|   `-- images/                            README and documentation screenshots
 |
 |-- Spectrum128kEmulator.Tests/            net8.0 Core unit and regression tests
 |-- Spectrum128kEmulator.Windows.Tests/    Windows presentation and host tests
@@ -468,7 +470,7 @@ compatibility; completed milestones remain regression baselines.
 - Completed an independent hexadecimal/ASCII memory inspector with mapped and physical-bank views plus navigation from registers, stack entries, listing addresses, and direct control/data targets
 
 ### Milestone 20 - Tape Architecture Hardening Complete
-- Documented current tape-state ownership and invariants across transport, load-strategy selection, continuation handling, threading, and Quick State restoration in [Tape State Ownership](docs/tape-state-ownership.md)
+- Documented current tape-state ownership and invariants across transport, load-strategy selection, continuation handling, threading, and Quick State restoration in [Tape State Ownership](docs/TAPE_STATE_OWNERSHIP.md)
 - Added focused machine-level lifecycle coverage for no-tape behavior, media replacement, eject, model reset, and stopped/ended Quick State restoration
 - Isolated tape read, loader-activity, handoff, and automatic-resume counters plus their Quick State in a dedicated activity tracker without changing transition policy
 - Centralized mounted-media identity, transport state, lifecycle transitions, and exact transport Quick State restoration in a dedicated controller

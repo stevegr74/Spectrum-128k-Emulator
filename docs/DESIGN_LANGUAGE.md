@@ -2,7 +2,7 @@
 
 **Status:** Active frontend standard  
 **Applies to:** Windows forms, dialogs, menus, debugger tools, and future desktop UI  
-**Implementation source:** [`Forms/EmulatorUiStyle.cs`](Forms/EmulatorUiStyle.cs)
+**Implementation source:** [`Forms/EmulatorUiStyle.cs`](../Forms/EmulatorUiStyle.cs)
 
 This document is the visual and interaction specification for the Windows frontend. It combines reusable design tokens with examples captured from the current application. New UI should feel like another part of the same tool, not a separately designed utility.
 
@@ -17,7 +17,7 @@ This document is the visual and interaction specification for the Windows fronte
 5. **Safe inspection.** Paused and immutable state must be explicit, especially in debugging and memory tools.
 6. **Native behaviour.** Standard Windows focus, keyboard navigation, dropdown arrows, disabled states, and scrollbars are retained.
 
-![Help window demonstrating the shared visual language](docs/images/help-controls.png)
+![Help window demonstrating the shared visual language](images/help-controls.png)
 
 *Figure 1. The Help window is the reference for hierarchy, category navigation, section grouping, typography, and a single primary close action.*
 
@@ -25,7 +25,7 @@ This document is the visual and interaction specification for the Windows fronte
 
 ## 2. Colour System
 
-![Design palette swatches](docs/images/design-palette.svg)
+![Design palette swatches](images/design-palette.svg)
 
 | Token | Hex | Intended use |
 | --- | --- | --- |
@@ -103,7 +103,7 @@ Use `Paper` throughout rather than a contrasting masthead. Create hierarchy with
 
 ### 5.1 Primary and secondary buttons
 
-![Joystick configuration showing primary and secondary buttons](docs/images/joystick-configuration.png)
+![Joystick configuration showing primary and secondary buttons](images/joystick-configuration.png)
 
 *Figure 2. **Save mapping** is the primary action. **Cancel** is a neutral secondary action. The same figure shows dropdowns, a slider, group boxes, descriptive copy, and a live-state panel.*
 
@@ -127,7 +127,7 @@ All styled buttons use `EmulatorUiStyle.StyleButton`. Do not locally recreate th
 
 ### 5.2 Menus
 
-![Complete emulator context menu](docs/images/context-menu.png)
+![Complete emulator context menu](images/context-menu.png)
 
 *Figure 3. The context menu follows function-key order, uses separators to group related tasks, shows disabled commands in place, and places non-function-key tools last.*
 
@@ -147,7 +147,7 @@ All styled buttons use `EmulatorUiStyle.StyleButton`. Do not locally recreate th
 
 ### 5.4 Tabs, lists, and previews
 
-![Poke Manager showing tabs, selector, lists, preview, and guarded actions](docs/images/poke-manager.png)
+![Poke Manager showing tabs, selector, lists, preview, and guarded actions](images/poke-manager.png)
 
 *Figure 4. The Poke Manager combines native tabs, a labelled dropdown, task-specific lists, a preview-before-apply workflow, disabled guarded actions, and persistent status text.*
 
@@ -165,7 +165,7 @@ All styled buttons use `EmulatorUiStyle.StyleButton`. Do not locally recreate th
 
 ### 5.6 Dense technical workspaces
 
-![Debugger demonstrating the dense technical layout](docs/images/debugger-bank-aware.png)
+![Debugger demonstrating the dense technical layout](images/debugger-bank-aware.png)
 
 *Figure 5. The debugger preserves the same colours and type hierarchy while using a compact layout for navigation, execution, paging, CPU state, disassembly, references, and breakpoints.*
 
