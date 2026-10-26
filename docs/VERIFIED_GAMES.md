@@ -98,7 +98,7 @@ that every level, control path, or hardware edge case has been tested.
 | 🟢 | Rainbow Islands | `.z80` | Snapshot reaches the complete title screen and remains stable |
 | 🟢 | Rambo | `rambo.sna` | Snapshot reaches the high-score/title screen and remains stable |
 | 🟢 | Red Hawk | `redhawk.sna` | Snapshot reaches active gameplay and remains stable |
-| 🟢 | Target Renegade (Hit Squad filenames) | `.sna`, `.z80` | Both 128K snapshots reach the title/high-score screen and remain stable; the converted SNA also passes exact representable-state round-trip validation |
+| 🟢 | Target Renegade (Hit Squad filenames) | `.sna`, `.z80` | Both 128K snapshots reach the title/high-score screen and remain stable; the converted SNA also passes exact representable-state round-trip validation; menu-level checks confirm Sinclair 1 responds to keys 1-5 and Sinclair 2 to keys 6-0 |
 | 🟢 | Robocop | `Robocop_1988_Ocean_a_128K.z80` | 128K snapshot loads and executes |
 | 🟢 | Robocop 3 | `.z80` | Snapshot reaches active gameplay and remains stable |
 | 🟢 | Rockford | `.sna` | Snapshot reaches the control menu and remains stable |

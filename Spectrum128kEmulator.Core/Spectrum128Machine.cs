@@ -38,8 +38,10 @@ namespace Spectrum128kEmulator
             0xFF, 0xFF, 0xFF, 0xFF
         };
         private readonly ulong[] keyboardRowScanCounts = new ulong[8];
-        private SpectrumJoystickInterface joystickInterface;
-        private SpectrumJoystickState joystickState;
+        private readonly SpectrumJoystickState[] joystickStates =
+            new SpectrumJoystickState[Enum.GetValues<SpectrumJoystickInterface>().Length];
+        private readonly bool[] activeJoystickInterfaces =
+            new bool[Enum.GetValues<SpectrumJoystickInterface>().Length];
         private readonly TapeActivityTracker tapeActivity = new TapeActivityTracker();
         private readonly TapeTransportController tapeTransport = new TapeTransportController();
         
@@ -642,20 +644,26 @@ namespace Spectrum128kEmulator
                 keyboardMatrix[row] = (byte)(keyboardMatrix[row] | (1 << bit));
         }
 
-        public SpectrumJoystickInterface JoystickInterface => joystickInterface;
-
-        public SpectrumJoystickState JoystickState => joystickState;
-
         public void SetJoystickState(SpectrumJoystickInterface joystickInterface, SpectrumJoystickState state)
         {
-            this.joystickInterface = joystickInterface;
-            joystickState = state & SpectrumJoystickState.All;
+            if (joystickInterface == SpectrumJoystickInterface.None)
+                return;
+            activeJoystickInterfaces[(int)joystickInterface] = true;
+            joystickStates[(int)joystickInterface] = state & SpectrumJoystickState.All;
         }
+
+        public SpectrumJoystickState GetJoystickState(SpectrumJoystickInterface joystickInterface) =>
+            joystickInterface == SpectrumJoystickInterface.None
+                ? SpectrumJoystickState.None
+                : joystickStates[(int)joystickInterface];
+
+        public bool IsJoystickInterfaceActive(SpectrumJoystickInterface joystickInterface) =>
+            joystickInterface != SpectrumJoystickInterface.None && activeJoystickInterfaces[(int)joystickInterface];
 
         public void ClearJoystick()
         {
-            joystickInterface = SpectrumJoystickInterface.None;
-            joystickState = SpectrumJoystickState.None;
+            Array.Clear(joystickStates);
+            Array.Clear(activeJoystickInterfaces);
         }
 
         public byte[] GetKeyboardMatrixCopy() => (byte[])keyboardMatrix.Clone();
@@ -1052,8 +1060,8 @@ namespace Spectrum128kEmulator
             byte value;
             if ((port & 0x0001) == 0)
                 value = ReadKeyboardEarPort(port, cpu.TStates);
-            else if (joystickInterface == SpectrumJoystickInterface.Kempston && IsKempstonJoystickPort(port))
-                value = (byte)joystickState;
+            else if (IsJoystickInterfaceActive(SpectrumJoystickInterface.Kempston) && IsKempstonJoystickPort(port))
+                value = (byte)GetJoystickState(SpectrumJoystickInterface.Kempston);
             else if (IsAyRegisterReadPort(port))
                 value = ay.ReadRegister(ay.CurrentRegister);
             else
@@ -1088,9 +1096,9 @@ namespace Spectrum128kEmulator
             }
 
             byte value;
-            if (joystickInterface == SpectrumJoystickInterface.Kempston && IsKempstonJoystickPort(port))
+            if (IsJoystickInterfaceActive(SpectrumJoystickInterface.Kempston) && IsKempstonJoystickPort(port))
             {
-                value = (byte)joystickState;
+                value = (byte)GetJoystickState(SpectrumJoystickInterface.Kempston);
             }
             else if (IsAyRegisterReadPort(port))
             {
@@ -1150,49 +1158,48 @@ namespace Spectrum128kEmulator
 
         private byte ReadJoystickKeyboardRow(int row)
         {
-            if (joystickInterface == SpectrumJoystickInterface.Cursor)
+            byte value = 0xFF;
+            SpectrumJoystickState cursorState = GetJoystickState(SpectrumJoystickInterface.Cursor);
+            if (row == 3)
+                ClearJoystickKey(ref value, cursorState, SpectrumJoystickState.Left, 4);  // 5
+            else if (row == 4)
             {
-                byte value = 0xFF;
-                if (row == 3)
-                    ClearJoystickKey(ref value, SpectrumJoystickState.Left, 4);  // 5
-                else if (row == 4)
-                {
-                    ClearJoystickKey(ref value, SpectrumJoystickState.Down, 4);  // 6
-                    ClearJoystickKey(ref value, SpectrumJoystickState.Up, 3);    // 7
-                    ClearJoystickKey(ref value, SpectrumJoystickState.Right, 2); // 8
-                    ClearJoystickKey(ref value, SpectrumJoystickState.Fire, 0);  // 0
-                }
-                return value;
+                ClearJoystickKey(ref value, cursorState, SpectrumJoystickState.Down, 4);  // 6
+                ClearJoystickKey(ref value, cursorState, SpectrumJoystickState.Up, 3);    // 7
+                ClearJoystickKey(ref value, cursorState, SpectrumJoystickState.Right, 2); // 8
+                ClearJoystickKey(ref value, cursorState, SpectrumJoystickState.Fire, 0);  // 0
             }
 
-            if (joystickInterface == SpectrumJoystickInterface.Sinclair1 && row == 4)
+            SpectrumJoystickState sinclairKeys6To0 = GetJoystickState(SpectrumJoystickInterface.SinclairKeys6To0);
+            if (row == 4)
             {
-                byte value = 0xFF;
-                ClearJoystickKey(ref value, SpectrumJoystickState.Left, 4);  // 6
-                ClearJoystickKey(ref value, SpectrumJoystickState.Right, 3); // 7
-                ClearJoystickKey(ref value, SpectrumJoystickState.Down, 2);  // 8
-                ClearJoystickKey(ref value, SpectrumJoystickState.Up, 1);    // 9
-                ClearJoystickKey(ref value, SpectrumJoystickState.Fire, 0);  // 0
-                return value;
+                ClearJoystickKey(ref value, sinclairKeys6To0, SpectrumJoystickState.Left, 4);  // 6
+                ClearJoystickKey(ref value, sinclairKeys6To0, SpectrumJoystickState.Right, 3); // 7
+                ClearJoystickKey(ref value, sinclairKeys6To0, SpectrumJoystickState.Down, 2);  // 8
+                ClearJoystickKey(ref value, sinclairKeys6To0, SpectrumJoystickState.Up, 1);    // 9
+                ClearJoystickKey(ref value, sinclairKeys6To0, SpectrumJoystickState.Fire, 0);  // 0
             }
 
-            if (joystickInterface == SpectrumJoystickInterface.Sinclair2 && row == 3)
+            SpectrumJoystickState sinclairKeys1To5 = GetJoystickState(SpectrumJoystickInterface.SinclairKeys1To5);
+            if (row == 3)
             {
-                byte value = 0xFF;
-                ClearJoystickKey(ref value, SpectrumJoystickState.Left, 0);  // 1
-                ClearJoystickKey(ref value, SpectrumJoystickState.Right, 1); // 2
-                ClearJoystickKey(ref value, SpectrumJoystickState.Down, 2);  // 3
-                ClearJoystickKey(ref value, SpectrumJoystickState.Up, 3);    // 4
-                ClearJoystickKey(ref value, SpectrumJoystickState.Fire, 4);  // 5
-                return value;
+                ClearJoystickKey(ref value, sinclairKeys1To5, SpectrumJoystickState.Left, 0);  // 1
+                ClearJoystickKey(ref value, sinclairKeys1To5, SpectrumJoystickState.Right, 1); // 2
+                ClearJoystickKey(ref value, sinclairKeys1To5, SpectrumJoystickState.Down, 2);  // 3
+                ClearJoystickKey(ref value, sinclairKeys1To5, SpectrumJoystickState.Up, 3);    // 4
+                ClearJoystickKey(ref value, sinclairKeys1To5, SpectrumJoystickState.Fire, 4);  // 5
             }
 
-            return 0xFF;
+            return value;
         }
 
-        private void ClearJoystickKey(ref byte value, SpectrumJoystickState control, int bit)
+        private static void ClearJoystickKey(
+            ref byte value,
+            SpectrumJoystickState state,
+            SpectrumJoystickState control,
+            int bit)
         {
-            if ((joystickState & control) != 0)
+            if ((state & control) != 0)
                 value = (byte)(value & ~(1 << bit));
         }
 

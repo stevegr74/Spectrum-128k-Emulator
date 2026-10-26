@@ -31,12 +31,13 @@ namespace Spectrum128kEmulator.Tests
             var machine = new Spectrum128Machine(roms.Path);
 
             machine.SetJoystickState(SpectrumJoystickInterface.Kempston, (SpectrumJoystickState)0xFF);
-            Assert.Equal(SpectrumJoystickState.All, machine.JoystickState);
+            Assert.Equal(SpectrumJoystickState.All, machine.GetJoystickState(SpectrumJoystickInterface.Kempston));
+            Assert.True(machine.IsJoystickInterfaceActive(SpectrumJoystickInterface.Kempston));
             Assert.Equal(0x1F, machine.DebugReadPort(0x001F));
 
             machine.ClearJoystick();
-            Assert.Equal(SpectrumJoystickState.None, machine.JoystickState);
-            Assert.Equal(SpectrumJoystickInterface.None, machine.JoystickInterface);
+            Assert.Equal(SpectrumJoystickState.None, machine.GetJoystickState(SpectrumJoystickInterface.Kempston));
+            Assert.False(machine.IsJoystickInterfaceActive(SpectrumJoystickInterface.Kempston));
         }
 
         [Fact]
@@ -67,12 +68,12 @@ namespace Spectrum128kEmulator.Tests
         }
 
         [Fact]
-        public void Sinclair1_MapsDirectionsAndFireToKeysSixThroughZero()
+        public void SinclairKeysSixThroughZero_MapToInterfaceTwoSocketOne()
         {
             using var roms = TestRomFolder.Create();
             var machine = new Spectrum128Machine(roms.Path);
             machine.SetJoystickState(
-                SpectrumJoystickInterface.Sinclair1,
+                SpectrumJoystickInterface.SinclairKeys6To0,
                 SpectrumJoystickState.Left | SpectrumJoystickState.Up | SpectrumJoystickState.Fire);
 
             Assert.Equal(0x0C, machine.DebugReadPort(0xEFFE) & 0x1F);
@@ -97,12 +98,12 @@ namespace Spectrum128kEmulator.Tests
         }
 
         [Fact]
-        public void Sinclair2_MapsDirectionsAndFireToKeysOneThroughFive()
+        public void SinclairKeysOneThroughFive_MapToInterfaceTwoSocketTwo()
         {
             using var roms = TestRomFolder.Create();
             var machine = new Spectrum128Machine(roms.Path);
             machine.SetJoystickState(
-                SpectrumJoystickInterface.Sinclair2,
+                SpectrumJoystickInterface.SinclairKeys1To5,
                 SpectrumJoystickState.Right | SpectrumJoystickState.Down | SpectrumJoystickState.Fire);
 
             Assert.Equal(0x09, machine.DebugReadPort(0xF7FE) & 0x1F);
@@ -115,19 +116,46 @@ namespace Spectrum128kEmulator.Tests
             using var roms = TestRomFolder.Create();
             var machine = new Spectrum128Machine(roms.Path);
             machine.SetKey(row: 4, bit: 3, pressed: true); // 7
-            machine.SetJoystickState(SpectrumJoystickInterface.Sinclair1, SpectrumJoystickState.Left); // 6
+            machine.SetJoystickState(SpectrumJoystickInterface.SinclairKeys6To0, SpectrumJoystickState.Left); // 6
 
             Assert.Equal(0x07, machine.DebugReadPort(0xEFFE) & 0x1F);
 
-            machine.SetJoystickState(SpectrumJoystickInterface.Sinclair1, SpectrumJoystickState.None);
+            machine.SetJoystickState(SpectrumJoystickInterface.SinclairKeys6To0, SpectrumJoystickState.None);
             Assert.Equal(0x17, machine.DebugReadPort(0xEFFE) & 0x1F);
+        }
+
+        [Fact]
+        public void BothSinclairJoysticks_AreReadableSimultaneously()
+        {
+            using var roms = TestRomFolder.Create();
+            var machine = new Spectrum128Machine(roms.Path);
+            machine.SetJoystickState(
+                SpectrumJoystickInterface.SinclairKeys1To5,
+                SpectrumJoystickState.Left | SpectrumJoystickState.Fire);
+            machine.SetJoystickState(
+                SpectrumJoystickInterface.SinclairKeys6To0,
+                SpectrumJoystickState.Right | SpectrumJoystickState.Up);
+
+            Assert.Equal(0x0E, machine.DebugReadPort(0xF7FE) & 0x1F); // 1 and 5
+            Assert.Equal(0x15, machine.DebugReadPort(0xEFFE) & 0x1F); // 7 and 9
+        }
+
+        [Fact]
+        public void CursorAndSinclairInputs_CombineOnSharedKeyboardRows()
+        {
+            using var roms = TestRomFolder.Create();
+            var machine = new Spectrum128Machine(roms.Path);
+            machine.SetJoystickState(SpectrumJoystickInterface.Cursor, SpectrumJoystickState.Left);
+            machine.SetJoystickState(SpectrumJoystickInterface.SinclairKeys1To5, SpectrumJoystickState.Fire);
+
+            Assert.Equal(0x0F, machine.DebugReadPort(0xF7FE) & 0x1F); // 5 from both mappings
         }
 
         [Theory]
         [InlineData(SpectrumJoystickInterface.None)]
         [InlineData(SpectrumJoystickInterface.Cursor)]
-        [InlineData(SpectrumJoystickInterface.Sinclair1)]
-        [InlineData(SpectrumJoystickInterface.Sinclair2)]
+        [InlineData(SpectrumJoystickInterface.SinclairKeys6To0)]
+        [InlineData(SpectrumJoystickInterface.SinclairKeys1To5)]
         public void NonKempstonInterfaces_DoNotClaimKempstonPort(SpectrumJoystickInterface joystickInterface)
         {
             using var roms = TestRomFolder.Create();

@@ -20,7 +20,8 @@ namespace Spectrum128kEmulator
         string DisplayName,
         int AxisCount,
         int ButtonCount,
-        int SwitchCount);
+        int SwitchCount,
+        string? LegacyId = null);
 
     public sealed class HostJoystickReading
     {
@@ -55,7 +56,7 @@ namespace Spectrum128kEmulator
         int FireButton = 0,
         double DeadZone = 0.25);
 
-    public sealed record HostJoystickSettings(
+    public sealed record HostJoystickChannelSettings(
         bool Enabled = true,
         string? PreferredDeviceId = null,
         HostJoystickMapping? Mapping = null,
@@ -64,9 +65,42 @@ namespace Spectrum128kEmulator
         [System.Text.Json.Serialization.JsonIgnore]
         public HostJoystickMapping EffectiveMapping => Mapping ?? new HostJoystickMapping();
 
+        [System.Text.Json.Serialization.JsonIgnore]
+        public SpectrumJoystickInterface EffectiveInterface => Interface ?? SpectrumJoystickInterface.Kempston;
+    }
+
+    public sealed record HostJoystickSettings(
+        bool Enabled = true,
+        string? PreferredDeviceId = null,
+        HostJoystickMapping? Mapping = null,
+        SpectrumJoystickInterface? Interface = null,
+        HostJoystickChannelSettings? Controller2 = null)
+    {
+        [System.Text.Json.Serialization.JsonIgnore]
+        public HostJoystickMapping EffectiveMapping => Mapping ?? new HostJoystickMapping();
+
         // A null interface migrates settings written before interface selection existed.
         [System.Text.Json.Serialization.JsonIgnore]
         public SpectrumJoystickInterface EffectiveInterface => Interface ?? SpectrumJoystickInterface.Kempston;
+
+        [System.Text.Json.Serialization.JsonIgnore]
+        public HostJoystickChannelSettings Controller1Settings =>
+            new(Enabled, PreferredDeviceId, Mapping, Interface);
+
+        [System.Text.Json.Serialization.JsonIgnore]
+        public HostJoystickChannelSettings Controller2Settings =>
+            Controller2 ?? new HostJoystickChannelSettings(
+                Enabled: false,
+                Interface: SpectrumJoystickInterface.SinclairKeys6To0);
+
+        public HostJoystickSettings WithController1(HostJoystickChannelSettings settings) =>
+            this with
+            {
+                Enabled = settings.Enabled,
+                PreferredDeviceId = settings.PreferredDeviceId,
+                Mapping = settings.Mapping,
+                Interface = settings.Interface
+            };
     }
 
     public static class HostJoystickMapper
@@ -120,10 +154,13 @@ namespace Spectrum128kEmulator
         public HostJoystickInputController(IHostJoystickSource source) =>
             this.source = source ?? throw new ArgumentNullException(nameof(source));
 
-        public SpectrumJoystickState Poll(HostJoystickSettings settings)
+        public SpectrumJoystickState Poll(
+            HostJoystickChannelSettings settings,
+            string? resolvedDeviceId = null)
         {
             ArgumentNullException.ThrowIfNull(settings);
-            if (!settings.Enabled || !source.TryRead(settings.PreferredDeviceId, out HostJoystickReading reading))
+            string? deviceId = resolvedDeviceId ?? settings.PreferredDeviceId;
+            if (!settings.Enabled || !source.TryRead(deviceId, out HostJoystickReading reading))
                 return SpectrumJoystickState.None;
 
             return HostJoystickMapper.Map(reading, settings.EffectiveMapping);

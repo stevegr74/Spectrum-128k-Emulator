@@ -219,30 +219,45 @@ Live host details such as a controller connection are not stored as emulated mac
 
 # Chapter 8 - USB Joysticks
 
-Right-click the display and open **Joystick**.
+Right-click the display and open **Joystick**. Controller 1 and Controller 2
+have separate status and selection submenus. Choose **Configure both
+controllers...** for the full mapping window.
 
 ## Device Selection
 
-- **Off:** disconnect controller input from the emulated machine.
-- **Automatic:** use the first available controller.
-- **Named device:** prefer that specific connected controller.
+- **Off:** disconnect that controller channel from the emulated machine.
+- **Automatic:** use the first available USB controller not claimed by the other channel.
+- **Named device:** use only that specific connected controller.
 
-If a preferred device disappears, input temporarily falls back to the first usable controller. If none is available, the emulated state becomes neutral so no direction or Fire remains stuck.
+Automatic channels claim different devices. A named device is not silently
+replaced if it disappears, and unavailable input becomes neutral so no direction
+or Fire remains stuck.
 
 ## Spectrum Interface
 
-Choose **Joystick > Configure...** and select the interface expected by the game:
+Choose **Joystick > Configure both controllers...** and select the interface
+expected by the game for each enabled channel:
 
 ![Joystick Configuration window](images/joystick-configuration.png)
 
-*Figure 8.1. Dropdowns select the emulated interface and physical controls; the live preview verifies the result before **Save mapping** is used.*
+*Figure 8.1. Two independent mappings support original dual-joystick software; each live preview verifies the selected interface and controls before **Save mappings** is used.*
 
 - **Kempston:** active-high directions and Fire through port `1FH`.
 - **Cursor:** directions and Fire through Spectrum keys `5`, `8`, `6`, `7`, and `0`.
-- **Interface II Player 1:** keys `6-0`.
-- **Interface II Player 2:** keys `1-5`.
+- **Sinclair 1:** keys `1-5` (physical Interface II socket 2).
+- **Sinclair 2:** keys `6-0` (physical Interface II socket 1).
 
-The game must be configured for the same interface. For example, choosing Interface II in the emulator will not operate a game menu configured for Kempston.
+The socket numbers on the original Interface II hardware run opposite to the
+Sinclair 1/2 labels commonly presented by games. The configuration dialog shows
+both names so that the selected option matches the game menu without hiding the
+historical wiring.
+
+For two-player Interface II software, enable both channels and assign one to
+Sinclair 1 and the other to Sinclair 2. Two enabled channels cannot claim the
+same USB device or Spectrum interface; the dialog explains the conflict rather
+than saving an ambiguous setup.
+
+The game must be configured for the same interface. For example, choosing Sinclair in the emulator will not operate a game menu configured for Kempston.
 
 ## Mapping
 
@@ -254,7 +269,10 @@ The configuration dialog lets you choose:
 - Fire button.
 - Axis dead zone.
 
-Move the controller and press Fire while the dialog is open. The live preview shows the interface, direction, and Fire state. **Save mapping** stores the settings for the current Windows user.
+Move each controller and press Fire while the dialog is open. Its live preview
+shows the interface, direction, and Fire state. **Save mappings** stores both
+channels for the current Windows user. Existing single-controller settings are
+retained as Controller 1 and Controller 2 starts disabled.
 
 The default mapping is axes 1/2 as displayed by the UI, hat 1 where available, button 1, and a 25% dead zone. Device hardware may expose different counts or ordering, so use the preview rather than relying on labels alone.
 

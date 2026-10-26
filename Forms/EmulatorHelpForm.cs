@@ -58,12 +58,13 @@ namespace Spectrum128kEmulator
             ]),
             new("Joystick",
             [
-                ("Off", "Disconnect host joystick input from the emulated machine"),
-                ("Automatic", "Use the first available host controller"),
+                ("Controller 1 / 2", "Configure and monitor two independent host controllers"),
+                ("Off", "Disconnect that controller channel from the emulated machine"),
+                ("Automatic", "Use the first host controller not claimed by the other channel"),
                 ("Kempston", "Expose active-high directions and Fire through port 1FH"),
                 ("Cursor", "Map directions and Fire to keys 5, 8, 6, 7, and 0"),
-                ("Interface II", "Map Player 1 to keys 6-0 or Player 2 to keys 1-5"),
-                ("Configure", "Choose the Spectrum interface, axes, hat, Fire button, and dead zone")
+                ("Sinclair", "Sinclair 1 uses keys 1-5 (socket 2); Sinclair 2 uses keys 6-0 (socket 1)"),
+                ("Configure", "Map both controllers; duplicate devices and interfaces are rejected")
             ])
         ];
 

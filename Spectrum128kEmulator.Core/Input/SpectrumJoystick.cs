@@ -7,8 +7,8 @@ namespace Spectrum128kEmulator.Input
         None,
         Kempston,
         Cursor,
-        Sinclair1,
-        Sinclair2
+        SinclairKeys6To0 = 3,
+        SinclairKeys1To5 = 4
     }
 
     [Flags]

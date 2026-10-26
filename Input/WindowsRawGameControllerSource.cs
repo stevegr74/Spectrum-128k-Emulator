@@ -4,11 +4,7 @@ namespace Spectrum128kEmulator
 {
     public sealed class WindowsRawGameControllerSource : IHostJoystickSource
     {
-        private RawGameController? activeController;
-        private string? activePreferredDeviceId;
-        private bool[] buttons = Array.Empty<bool>();
-        private GameControllerSwitchPosition[] switches = Array.Empty<GameControllerSwitchPosition>();
-        private double[] axes = Array.Empty<double>();
+        private readonly Dictionary<string, ControllerBuffers> buffersByDeviceId = new(StringComparer.Ordinal);
 
         public IReadOnlyList<HostJoystickDevice> GetDevices()
         {
@@ -30,62 +26,33 @@ namespace Spectrum128kEmulator
             reading = null!;
             try
             {
-                RawGameController? controller = GetActiveController(preferredDeviceId);
+                RawGameController? controller = ResolveController(preferredDeviceId);
                 if (controller == null)
                     return false;
 
-                controller.GetCurrentReading(buttons, switches, axes);
+                string deviceId = GetControllerId(controller);
+                if (!buffersByDeviceId.TryGetValue(deviceId, out ControllerBuffers? buffers) ||
+                    !ReferenceEquals(buffers.Controller, controller))
+                {
+                    buffers = new ControllerBuffers(controller);
+                    buffersByDeviceId[deviceId] = buffers;
+                }
+
+                controller.GetCurrentReading(buffers.Buttons, buffers.Switches, buffers.Axes);
                 reading = new HostJoystickReading(
-                    GetControllerId(controller),
-                    buttons,
-                    switches.Select(MapSwitch).ToArray(),
-                    axes);
+                    deviceId,
+                    buffers.Buttons,
+                    buffers.Switches.Select(MapSwitch).ToArray(),
+                    buffers.Axes);
                 return true;
             }
             catch
             {
-                ClearActiveController();
                 return false;
             }
         }
 
-        public void Dispose()
-        {
-            ClearActiveController();
-        }
-
-        private RawGameController? GetActiveController(string? preferredDeviceId)
-        {
-            if (activeController != null &&
-                string.Equals(activePreferredDeviceId, preferredDeviceId, StringComparison.Ordinal) &&
-                (preferredDeviceId == null || GetControllerId(activeController) == preferredDeviceId))
-            {
-                return activeController;
-            }
-
-            RawGameController? controller = ResolveController(preferredDeviceId);
-            if (controller == null)
-            {
-                ClearActiveController();
-                return null;
-            }
-
-            activeController = controller;
-            activePreferredDeviceId = preferredDeviceId;
-            buttons = new bool[controller.ButtonCount];
-            switches = new GameControllerSwitchPosition[controller.SwitchCount];
-            axes = new double[controller.AxisCount];
-            return controller;
-        }
-
-        private void ClearActiveController()
-        {
-            activeController = null;
-            activePreferredDeviceId = null;
-            buttons = Array.Empty<bool>();
-            switches = Array.Empty<GameControllerSwitchPosition>();
-            axes = Array.Empty<double>();
-        }
+        public void Dispose() => buffersByDeviceId.Clear();
 
         private static RawGameController? ResolveController(string? preferredDeviceId)
         {
@@ -95,8 +62,8 @@ namespace Spectrum128kEmulator
             if (string.IsNullOrWhiteSpace(preferredDeviceId))
                 return controllers[0];
             return controllers.FirstOrDefault(controller =>
-                       string.Equals(GetControllerId(controller), preferredDeviceId, StringComparison.Ordinal)) ??
-                   controllers[0];
+                string.Equals(GetControllerId(controller), preferredDeviceId, StringComparison.Ordinal) ||
+                string.Equals(GetLegacyControllerId(controller), preferredDeviceId, StringComparison.Ordinal));
         }
 
         private static HostJoystickDevice ToDevice(RawGameController controller) =>
@@ -105,9 +72,13 @@ namespace Spectrum128kEmulator
                 string.IsNullOrWhiteSpace(controller.DisplayName) ? "USB game controller" : controller.DisplayName,
                 controller.AxisCount,
                 controller.ButtonCount,
-                controller.SwitchCount);
+                controller.SwitchCount,
+                GetLegacyControllerId(controller));
 
         private static string GetControllerId(RawGameController controller) =>
+            controller.NonRoamableId;
+
+        private static string GetLegacyControllerId(RawGameController controller) =>
             $"{controller.HardwareVendorId:X4}:{controller.HardwareProductId:X4}:{controller.DisplayName}";
 
         private static HostJoystickHatPosition MapSwitch(GameControllerSwitchPosition position) => position switch
@@ -122,6 +93,22 @@ namespace Spectrum128kEmulator
             GameControllerSwitchPosition.UpLeft => HostJoystickHatPosition.UpLeft,
             _ => HostJoystickHatPosition.Centered
         };
+
+        private sealed class ControllerBuffers
+        {
+            public ControllerBuffers(RawGameController controller)
+            {
+                Controller = controller;
+                Buttons = new bool[controller.ButtonCount];
+                Switches = new GameControllerSwitchPosition[controller.SwitchCount];
+                Axes = new double[controller.AxisCount];
+            }
+
+            public RawGameController Controller { get; }
+            public bool[] Buttons { get; }
+            public GameControllerSwitchPosition[] Switches { get; }
+            public double[] Axes { get; }
+        }
     }
 
     public sealed class NullHostJoystickSource : IHostJoystickSource

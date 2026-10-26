@@ -86,6 +86,8 @@ namespace Spectrum128kEmulator
         private HostJoystickSettings joystickSettings;
         private bool pendingJoystickReset;
         private long nextJoystickPollTicks;
+        private long nextJoystickDeviceRefreshTicks;
+        private IReadOnlyList<HostJoystickDevice> polledJoystickDevices = Array.Empty<HostJoystickDevice>();
         private SpectrumKeyboardMessageFilter? keyboardMessageFilter;
         private readonly EmulationLoopController emulationLoop = new();
         private readonly DebuggerExecutionController debuggerExecutionController = new();
