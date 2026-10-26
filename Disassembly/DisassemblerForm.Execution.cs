@@ -53,13 +53,15 @@ namespace Spectrum128kEmulator
                 Text = "BREAKPOINTS",
                 Dock = DockStyle.Top,
                 Height = 24,
-                Font = new Font(FontFamily.GenericSansSerif, 7.5f, FontStyle.Bold),
-                ForeColor = Ink,
+                Font = EmulatorUiStyle.UiFont(8F, FontStyle.Bold),
+                ForeColor = EmulatorUiStyle.Muted,
                 TextAlign = ContentAlignment.MiddleLeft
             };
             breakpointList.Dock = DockStyle.Fill;
             breakpointList.CheckOnClick = true;
             breakpointList.Font = listingFont;
+            breakpointList.BackColor = EmulatorUiStyle.Field;
+            breakpointList.ForeColor = Ink;
             breakpointList.ItemCheck += BreakpointList_ItemCheck;
             breakpointList.DoubleClick += (_, _) => NavigateToSelectedBreakpoint();
 
@@ -67,11 +69,9 @@ namespace Spectrum128kEmulator
             {
                 Text = "Remove",
                 Dock = DockStyle.Bottom,
-                Height = 28,
-                FlatStyle = FlatStyle.Flat,
-                BackColor = Color.White,
-                ForeColor = Ink
+                Height = 28
             };
+            EmulatorUiStyle.StyleButton(removeButton);
             removeButton.Click += (_, _) => RemoveSelectedBreakpoint();
 
             panel.Controls.Add(breakpointList);
@@ -180,6 +180,8 @@ namespace Spectrum128kEmulator
             runToCursorButton.Enabled = !executionRunning && mappedView;
             toggleBreakpointButton.Enabled = !executionRunning && mappedView;
             breakpointList.Enabled = !executionRunning;
+            EmulatorUiStyle.StyleButton(runButton, primary: !executionRunning);
+            EmulatorUiStyle.StyleButton(pauseButton, primary: executionRunning);
         }
 
         private static string FormatStopStatus(DebuggerStop stop) => stop.Reason switch

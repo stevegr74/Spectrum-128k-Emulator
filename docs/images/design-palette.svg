@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="980" height="300" viewBox="0 0 980 300" role="img" aria-labelledby="title desc">
+  <title id="title">Spectrum 128K Emulator interface colour palette</title>
+  <desc id="desc">Eleven labelled colour swatches used by the Windows frontend.</desc>
+  <rect width="980" height="300" fill="#F6F6F2"/>
+  <g font-family="Segoe UI, sans-serif" font-size="16" fill="#1E2D31">
+    <g transform="translate(24 24)"><rect width="132" height="68" rx="4" fill="#F6F6F2" stroke="#C9CFCA"/><text x="0" y="92">Paper  #F6F6F2</text></g>
+    <g transform="translate(184 24)"><rect width="132" height="68" rx="4" fill="#EFEFE9" stroke="#C9CFCA"/><text x="0" y="92">Panel  #EFEFE9</text></g>
+    <g transform="translate(344 24)"><rect width="132" height="68" rx="4" fill="#FFFFFF" stroke="#C9CFCA"/><text x="0" y="92">Field  #FFFFFF</text></g>
+    <g transform="translate(504 24)"><rect width="132" height="68" rx="4" fill="#1E2D31" stroke="#C9CFCA"/><text x="0" y="92">Ink  #1E2D31</text></g>
+    <g transform="translate(664 24)"><rect width="132" height="68" rx="4" fill="#4B5555" stroke="#C9CFCA"/><text x="0" y="92">Muted  #4B5555</text></g>
+    <g transform="translate(824 24)"><rect width="132" height="68" rx="4" fill="#C9CFCA" stroke="#9DA59F"/><text x="0" y="92">Border  #C9CFCA</text></g>
+    <g transform="translate(24 168)"><rect width="132" height="68" rx="4" fill="#087965" stroke="#065B4C"/><text x="0" y="92">Accent  #087965</text></g>
+    <g transform="translate(184 168)"><rect width="132" height="68" rx="4" fill="#D5EEE7" stroke="#C9CFCA"/><text x="0" y="92">AccentSoft  #D5EEE7</text></g>
+    <g transform="translate(392 168)"><rect width="132" height="68" rx="4" fill="#DFF1EB" stroke="#C9CFCA"/><text x="0" y="92">Selection  #DFF1EB</text></g>
+    <g transform="translate(600 168)"><rect width="132" height="68" rx="4" fill="#FFE691" stroke="#C9CFCA"/><text x="0" y="92">Changed  #FFE691</text></g>
+    <g transform="translate(808 168)"><rect width="132" height="68" rx="4" fill="#A45D10" stroke="#7E470C"/><text x="0" y="92">Warning  #A45D10</text></g>
+  </g>
+</svg>

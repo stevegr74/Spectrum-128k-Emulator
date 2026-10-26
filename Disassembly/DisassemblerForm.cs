@@ -6,8 +6,8 @@ namespace Spectrum128kEmulator
     public sealed partial class DisassemblerForm : Form
     {
         private const int InstructionCount = 96;
-        private static readonly Color Ink = Color.FromArgb(30, 39, 46);
-        private static readonly Color Paper = Color.FromArgb(242, 239, 228);
+        private static readonly Color Ink = EmulatorUiStyle.Ink;
+        private static readonly Color Paper = EmulatorUiStyle.Paper;
 
         private readonly Func<DisassemblySnapshot> captureSnapshot;
         private readonly DebuggerExecutionController executionController;
@@ -139,7 +139,7 @@ namespace Spectrum128kEmulator
             StartPosition = FormStartPosition.CenterParent;
             ShowInTaskbar = false;
             KeyPreview = true;
-            BackColor = Paper;
+            EmulatorUiStyle.ApplyForm(this);
 
             Controls.Add(CreateContent());
             Controls.Add(CreateToolbar());
@@ -166,37 +166,37 @@ namespace Spectrum128kEmulator
             var header = new Panel
             {
                 Dock = DockStyle.Top,
-                Height = 82,
-                BackColor = Ink,
+                Height = 72,
+                BackColor = Paper,
                 Padding = new Padding(20, 9, 20, 7)
             };
             header.Controls.Add(new Label
             {
                 AutoSize = true,
-                Text = "Z80 DISASSEMBLER",
-                Font = new Font("Consolas", 17.0f, FontStyle.Bold),
-                ForeColor = Color.White,
+                Text = "Z80 DEBUGGER AND DISASSEMBLER",
+                Font = EmulatorUiStyle.UiFont(13F, FontStyle.Bold),
+                ForeColor = Ink,
                 Location = new Point(18, 8)
             });
 
             captureStateLabel.AutoSize = true;
-            captureStateLabel.Font = new Font("Consolas", 9.0f, FontStyle.Bold);
-            captureStateLabel.ForeColor = Color.FromArgb(95, 225, 195);
-            captureStateLabel.Location = new Point(20, 42);
+            captureStateLabel.Font = EmulatorUiStyle.UiFont(8.5f, FontStyle.Bold);
+            captureStateLabel.ForeColor = EmulatorUiStyle.Accent;
+            captureStateLabel.Location = new Point(20, 37);
             header.Controls.Add(captureStateLabel);
 
             var memoryViewPanel = new Panel
             {
                 Dock = DockStyle.Right,
                 Width = 205,
-                BackColor = Ink
+                BackColor = Paper
             };
             var addressSpaceLabel = new Label
             {
                 AutoSize = true,
                 Text = "MEMORY VIEW",
-                Font = new Font(FontFamily.GenericSansSerif, 7.5f, FontStyle.Bold),
-                ForeColor = Color.FromArgb(190, 205, 207),
+                Font = EmulatorUiStyle.UiFont(8F, FontStyle.Bold),
+                ForeColor = EmulatorUiStyle.Muted,
                 Location = new Point(0, 0)
             };
             memoryViewPanel.Controls.Add(addressSpaceLabel);
@@ -218,7 +218,7 @@ namespace Spectrum128kEmulator
             {
                 Dock = DockStyle.Top,
                 Height = 168,
-                BackColor = Color.FromArgb(222, 226, 220),
+                BackColor = Paper,
                 Padding = new Padding(18, 8, 18, 8)
             };
 
@@ -259,6 +259,7 @@ namespace Spectrum128kEmulator
 
             toolbar.Controls.Add(CreateToolbarLabel("EXECUTION", 18, 65));
             runButton = CreateButton("Run", 18, 82, 54);
+            EmulatorUiStyle.StyleButton(runButton, primary: true);
             runButton.Click += (_, _) => BeginExecution(DebuggerExecutionCommand.Run);
             toolbar.Controls.Add(runButton);
             pauseButton = CreateButton("Pause", 78, 82, 60);
@@ -302,8 +303,8 @@ namespace Spectrum128kEmulator
             {
                 AutoSize = true,
                 Text = "F5 run/pause | F9 breakpoint | F10 over | F11 into | Shift+F11 out",
-                Font = new Font(FontFamily.GenericSansSerif, 8.0f),
-                ForeColor = Color.FromArgb(65, 75, 75),
+                Font = EmulatorUiStyle.UiFont(8F),
+                ForeColor = EmulatorUiStyle.Muted,
                 Location = new Point(510, 137)
             });
 
@@ -326,7 +327,7 @@ namespace Spectrum128kEmulator
             instructionList.MultiSelect = true;
             instructionList.GridLines = false;
             instructionList.Font = listingFont;
-            instructionList.BackColor = Color.FromArgb(251, 250, 245);
+            instructionList.BackColor = EmulatorUiStyle.Field;
             instructionList.ForeColor = Ink;
             instructionList.Columns.Add("Address", 108, HorizontalAlignment.Left);
             instructionList.Columns.Add("Type", 52, HorizontalAlignment.Left);
@@ -342,8 +343,8 @@ namespace Spectrum128kEmulator
 
             statusLabel.Dock = DockStyle.Bottom;
             statusLabel.Height = 29;
-            statusLabel.Font = new Font(FontFamily.GenericSansSerif, 8.5f);
-            statusLabel.ForeColor = Color.FromArgb(75, 75, 70);
+            statusLabel.Font = EmulatorUiStyle.UiFont(8.5f);
+            statusLabel.ForeColor = EmulatorUiStyle.Muted;
             statusLabel.TextAlign = ContentAlignment.MiddleLeft;
 
             content.Controls.Add(instructionList);
@@ -399,24 +400,22 @@ namespace Spectrum128kEmulator
             {
                 AutoSize = true,
                 Text = text,
-                Font = new Font(FontFamily.GenericSansSerif, 7.5f, FontStyle.Bold),
-                ForeColor = Ink,
+                Font = EmulatorUiStyle.UiFont(8F, FontStyle.Bold),
+                ForeColor = EmulatorUiStyle.Muted,
                 Location = new Point(x, y)
             };
         }
 
         private static Button CreateButton(string text, int x, int y, int width)
         {
-            return new Button
+            var button = new Button
             {
                 Text = text,
                 Location = new Point(x, y),
-                Size = new Size(width, 27),
-                FlatStyle = FlatStyle.Flat,
-                BackColor = Color.White,
-                ForeColor = Ink,
-                UseVisualStyleBackColor = false
+                Size = new Size(width, 27)
             };
+            EmulatorUiStyle.StyleButton(button);
+            return button;
         }
 
         private void RefreshSnapshot()

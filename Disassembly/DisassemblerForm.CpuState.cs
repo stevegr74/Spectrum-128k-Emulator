@@ -4,10 +4,10 @@ namespace Spectrum128kEmulator
 {
     public sealed partial class DisassemblerForm
     {
-        private static readonly Color CpuStateBackground = Color.FromArgb(232, 230, 219);
-        private static readonly Color CpuStateChanged = Color.FromArgb(255, 230, 145);
-        private static readonly Color CpuFlagActive = Color.FromArgb(95, 225, 195);
-        private static readonly Color CpuFlagInactive = Color.FromArgb(216, 216, 207);
+        private static readonly Color CpuStateBackground = EmulatorUiStyle.Panel;
+        private static readonly Color CpuStateChanged = EmulatorUiStyle.Changed;
+        private static readonly Color CpuFlagActive = EmulatorUiStyle.AccentSoft;
+        private static readonly Color CpuFlagInactive = Color.FromArgb(225, 227, 222);
 
         private Control CreateCpuStatePanel()
         {
@@ -16,7 +16,7 @@ namespace Spectrum128kEmulator
             cpuStatePanel.Height = 72;
             cpuStatePanel.Margin = Padding.Empty;
             cpuStatePanel.Padding = Padding.Empty;
-            cpuStatePanel.BackColor = Color.FromArgb(205, 205, 195);
+            cpuStatePanel.BackColor = EmulatorUiStyle.Border;
             cpuStatePanel.ColumnCount = 4;
             cpuStatePanel.RowCount = 1;
             cpuStatePanel.GrowStyle = TableLayoutPanelGrowStyle.FixedSize;
@@ -46,8 +46,8 @@ namespace Spectrum128kEmulator
                 Size = new Size(184, 15),
                 Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right,
                 Text = title,
-                Font = new Font(FontFamily.GenericSansSerif, 7.0f, FontStyle.Bold),
-                ForeColor = Color.FromArgb(75, 82, 79),
+                Font = EmulatorUiStyle.UiFont(8F, FontStyle.Bold),
+                ForeColor = EmulatorUiStyle.Muted,
                 TextAlign = ContentAlignment.MiddleLeft
             };
             body.Dock = DockStyle.None;
@@ -83,8 +83,8 @@ namespace Spectrum128kEmulator
             currentInstructionLabel.Name = "CpuCurrentInstruction";
             currentInstructionLabel.Dock = DockStyle.Fill;
             currentInstructionLabel.Margin = Padding.Empty;
-            currentInstructionLabel.Font = new Font("Consolas", 7.5f, FontStyle.Bold);
-            currentInstructionLabel.ForeColor = Color.FromArgb(20, 105, 92);
+            currentInstructionLabel.Font = EmulatorUiStyle.MonoFont(7.5f, FontStyle.Bold);
+            currentInstructionLabel.ForeColor = EmulatorUiStyle.Accent;
             currentInstructionLabel.TextAlign = ContentAlignment.MiddleLeft;
             currentInstructionLabel.AutoEllipsis = true;
             currentInstructionLabel.Cursor = Cursors.Hand;
@@ -108,7 +108,7 @@ namespace Spectrum128kEmulator
                 flag.Name = $"CpuFlag{flagNames[index]}";
                 flag.Dock = DockStyle.Fill;
                 flag.Margin = new Padding(1, 0, 1, 1);
-                flag.Font = new Font("Consolas", 7.2f, FontStyle.Bold);
+                flag.Font = EmulatorUiStyle.MonoFont(7.2f, FontStyle.Bold);
                 flag.Text = flagNames[index].ToString();
                 flag.TextAlign = ContentAlignment.MiddleCenter;
                 flags.Controls.Add(flag, index, 0);
@@ -170,9 +170,9 @@ namespace Spectrum128kEmulator
                 var link = new LinkLabel
                 {
                     LinkBehavior = LinkBehavior.NeverUnderline,
-                    LinkColor = Color.FromArgb(20, 105, 92),
-                    ActiveLinkColor = Color.FromArgb(10, 75, 65),
-                    VisitedLinkColor = Color.FromArgb(20, 105, 92),
+                    LinkColor = EmulatorUiStyle.Accent,
+                    ActiveLinkColor = Color.FromArgb(5, 90, 75),
+                    VisitedLinkColor = EmulatorUiStyle.Accent,
                     Cursor = Cursors.Hand
                 };
                 link.LinkClicked += (_, _) => NavigateFromCpuState(key);
@@ -185,7 +185,7 @@ namespace Spectrum128kEmulator
             label.Tag = caption;
             label.Dock = DockStyle.Fill;
             label.Margin = Padding.Empty;
-            label.Font = new Font("Consolas", 7.5f, FontStyle.Regular);
+            label.Font = EmulatorUiStyle.MonoFont(7.5f);
             label.ForeColor = Ink;
             label.TextAlign = ContentAlignment.MiddleLeft;
             label.AutoEllipsis = true;
@@ -261,7 +261,7 @@ namespace Spectrum128kEmulator
                 bool changed = previousFlags.HasValue && ((flags ^ previousFlags.Value) & mask) != 0;
                 Label flag = cpuFlagLabels[index];
                 flag.BackColor = changed ? CpuStateChanged : active ? CpuFlagActive : CpuFlagInactive;
-                flag.ForeColor = active ? Ink : Color.FromArgb(115, 118, 112);
+                flag.ForeColor = active ? Ink : EmulatorUiStyle.Muted;
             }
         }
 
