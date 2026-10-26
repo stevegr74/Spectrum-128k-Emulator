@@ -15,6 +15,7 @@ This project focuses on correctness, clean architecture, and incremental develop
 - 48K/128K `.sna`, `.z80` v1/v2/v3, and `.rzx` loading/replay
 - `.tap` and `.tzx` parsing, fast bootstrap, ROM-driven loading, protected/mounted playback, VERIFY, and multi-block sequencing
 - Manual/resumable tape transport with 48K stop-marker support and persistent status feedback
+- USB joystick input with selectable Kempston, Cursor, and Sinclair Interface II Player 1/2 mappings plus automatic or explicit controller selection and configurable raw-axis, hat, fire-button, and dead-zone mapping
 - Platform-neutral headless core with Windows presentation/audio adapters
 - Paused `F6` debugger with immutable mapped/physical-bank captures, a visual paging map, grouped CPU/stack context, execution controls, breakpoints, bank-qualified labels, control/data cross-references, hexadecimal memory inspection, persistent code/data markings, search, navigation, copy, and export
 - In-memory `F7`/`F8` Quick State save and restore
@@ -52,6 +53,7 @@ Current limitations and active work:
 - beam-aware 48K and original 128K/+2 video is implemented and validated; broader timing-sensitive software coverage remains ongoing
 - clock-driven audio and the turbo-to-real-time handoff are hardened; broader subjective title-by-title audio comparison remains ongoing
 - broader protected/custom TZX compatibility remains ongoing
+- Milestone 22 USB joystick support has passed physical Kempston acceptance and now includes selectable Cursor and Sinclair Interface II keyboard-matrix mappings awaiting physical acceptance
 
 ### Implementation Notes
 
@@ -68,6 +70,7 @@ Current limitations and active work:
 - The background emulation loop owns mutable machine state; the UI consumes copied snapshots and uses nested pause leases for safe inspection.
 - The Poke Manager pauses emulation before inspecting or changing RAM; exact media checksums are trusted matches, filename aliases are discovery hints only, and restoration is refused if the running program has since changed an applied byte.
 - Windows key messages are captured before control/menu preprocessing, then applied by the emulation loop through a scan-aware matrix bridge; shared Spectrum chords retain independent host-key ownership and use emulated T-states rather than UI scheduler ticks.
+- USB controllers are discovered only by the Windows adapter; immutable readings become a five-bit platform-neutral joystick state that the core exposes through Kempston or independent Sinclair keyboard-matrix inputs, with RZX input retaining precedence and live host state excluded from Quick State.
 - The undocumented Z80 Q latch is tracked by flag-writing semantics, including prefix and interrupt boundaries, with focused regressions alongside ZEXDOC/ZEXALL.
 - Maskable interrupt acceptance resets both Z80 interrupt flip-flops; `LD A,I`/`LD A,R`, `RETN`/`RETI`, and delayed `EI` behavior have focused regressions across both execution schedulers.
 - Z80 IM 0 executes the interrupting device's data-bus opcode, including normal-memory operand fetches and acknowledge-cycle timing; the Spectrum defaults that bus to `0xFF` (`RST 38H`), while IM 1 retains its fixed `0x0038` vector.
@@ -90,8 +93,13 @@ tape-state ownership, structured load and transport diagnostics, stronger
 transition tests, and behavior-preserving decomposition. Milestone 21's
 bank-aware Poke Manager is complete and accepted. Its initial catalogue contains
 38 exact-image definitions and 140 named pokes, including the user-verified
-infinite-lives poke for the Ocean 128K RoboCop snapshot. Milestone 22 will add SZX snapshot loading, followed by a
-model-selectable 48K/128K on-screen keyboard in Milestone 23. Tape compatibility
+infinite-lives poke for the Ocean 128K RoboCop snapshot. Milestone 22 has
+implemented USB joystick input while retaining the platform-neutral core.
+Kempston has passed physical-controller acceptance; selectable Cursor and
+Sinclair Interface II mappings now await physical acceptance. SZX
+snapshot loading and a model-selectable 48K/128K on-screen keyboard follow in
+Milestones 23 and 24. Generic Kempston and AMX mouse support follows in
+Milestone 25. Tape compatibility
 and broader title-specific audio fidelity validation continue in parallel, with
 the verified media matrix plus ZEXDOC/ZEXALL used as regression gates.
 
@@ -107,6 +115,7 @@ Spectrum128kEmulator/
 |-- Spectrum128kEmulator.Core/             net8.0 platform-neutral emulator
 |   |-- Audio/                             AY/beeper synthesis and sample clock
 |   |-- Debugging/                         instruction-boundary execution controller
+|   |-- Input/                             platform-neutral joystick state and interfaces
 |   |-- Pokes/                             library validation, matching, preview, apply, and restore
 |   |-- Tape/                              TAP/TZX parsing, transport, and bootstrap policy
 |   |   |-- MountedTape.cs                 pulse/EAR playback state
@@ -135,12 +144,12 @@ Spectrum128kEmulator/
 |-- Disassembly/                           debugger UI, bank captures, symbolic analysis, memory inspection, and export
 |-- Host/                                  background loop, pause ownership, and UI snapshots
 |-- Forms/                                 main window partials, Poke Manager, and shortcut-reference dialog
-|-- Input/                                 WinForms-to-Spectrum keyboard bridge
+|-- Input/                                 Windows keyboard and USB-controller adapters
 |-- Pokes/                                 editable validated game/poke library and format guide
 |-- Video/                                 display modes, pixel-art scaling, and presentation adapter
 |-- docs/images/                           README screenshots of the emulator and debugger
 |-- Program.cs                             Windows application entry point
-|-- Spectrum128kEmulator.csproj            net10.0-windows frontend project
+|-- Spectrum128kEmulator.csproj            net10.0 Windows frontend project
 |-- VERIFIED_GAMES.md                      manual media compatibility record
 |
 |-- Spectrum128kEmulator.Tests/            net8.0 Core unit and regression tests
@@ -201,6 +210,17 @@ that do not consume a function key.
 | `F10` | Load a `.z80` snapshot or play an `.rzx` recording |
 | `F11` | Mount a `.tap` or `.tzx` tape image |
 | `F12` | Write a machine diagnostic dump |
+
+The right-click `Joystick` submenu enables automatic controller selection,
+disables joystick input, or pins a connected device, and reports the active
+Spectrum interface. `Configure...` pauses emulation while selecting Kempston,
+Cursor, Interface II Player 1 (keys 6-0), or Interface II Player 2 (keys 1-5), named horizontal/vertical axes,
+an optional D-pad/hat, an optional fire button, and the axis dead zone. A live
+preview confirms the interface, directions, and Fire before the mapping is saved. The default mapping uses axes
+0/1, hat 0, button 0, and a 25% dead zone; settings persist per Windows user.
+If an explicitly selected controller is unavailable, input temporarily falls
+back to the first available controller; if none is usable, the joystick state
+is neutral rather than leaving a direction or fire held.
 
 The right-click menu also opens the Poke Manager. Emulation remains paused while
 it is open. Its Library tab reads the user-maintainable `Pokes/pokes.json` file;
@@ -388,8 +408,10 @@ compatibility; completed milestones remain regression baselines.
 | 19 | Complete | Bank-aware inspection, labels, conservative control/data cross-references, persistent code/data marking, and hexadecimal memory navigation |
 | 20 | Complete | Tape state ownership, transition coverage, structured diagnostics, and behavior-preserving subsystem decomposition |
 | 21 | Complete | Accepted bank-aware Poke Manager with one-off writes, guarded restore, and an initial 38-game checksum-scoped catalogue |
-| 22 | Planned | SZX snapshot loading for supported 48K and 128K machine state, with explicit handling of unsupported peripherals |
-| 23 | Planned | Pop-up on-screen keyboard with selectable authentic 48K and 128K layouts |
+| 22 | In progress | USB joystick input with selectable Kempston, Cursor, and Interface II mappings through a Windows-only host adapter and platform-neutral core state |
+| 23 | Planned | SZX snapshot loading for supported 48K and 128K machine state, with explicit handling of unsupported peripherals |
+| 24 | Planned | Pop-up on-screen keyboard with selectable authentic 48K and 128K layouts |
+| 25 | Planned | Host mouse capture through generic Kempston Mouse support followed by interrupt-driven AMX Mouse emulation |
 
 ### Milestone 7 - Audio And Turbo Handoff Complete
 - Generates 48K beeper and 128K AY tone, noise, and envelope output from timestamped machine events through one mixed sample pipeline
@@ -472,20 +494,39 @@ compatibility; completed milestones remain regression baselines.
 - Kept the user-verified RoboCop infinite-lives entry distinct from source-backed entries awaiting progressive gameplay confirmation
 - Completed visual QA at the active desktop DPI, exact-match acceptance, and full regression coverage; expanding the version-verified catalogue remains ongoing data work rather than a blocker for the feature
 
-### Milestone 22 - SZX Snapshot Support Planned
+### Milestone 22 - USB Joystick Input In Progress
+- Keeps host input platform-neutral: the core owns only Right, Left, Down, Up, and Fire state plus the selected Spectrum interface
+- Supports Kempston through active-high low port byte `0x1F`, Cursor through keys 5/8/6/7/0, and Sinclair Interface II Player 1/2 through keys 6-0 and 1-5 without synthesizing host key events
+- Combines Sinclair joystick and physical keyboard contributions independently so releasing either input source cannot incorrectly release the other
+- Discovers and polls USB game controllers through a Windows-only `Windows.Gaming.Input` adapter, with no Windows controller types crossing into the core
+- Routes immutable controller readings through the emulation-loop input boundary, clears state safely on reset or disconnection, and preserves recorded RZX port input precedence
+- Provides automatic, disabled, and explicit device selection plus a polished live-preview dialog for the emulated interface, configurable axes, hat switch, fire button, and dead zone without consuming a function key
+- Migrates settings saved before interface selection to Kempston, preserving the already accepted controller setup
+- Covers 48K/128K port behavior, timed reads, Cursor and both Interface II matrix layouts, mixed keyboard ownership, mapping, configuration round-tripping, disconnect cleanup, persistence, menu state, and thread ownership with hardware-independent tests; Kempston has passed physical acceptance and the keyboard-mapped options remain outstanding
+
+### Milestone 23 - SZX Snapshot Support Planned
 - Add a dedicated chunk-based `.szx` parser with strict bounds checking, version validation, and clear diagnostics for malformed files
 - Restore the supported 48K and 128K CPU, RAM, paging, ULA, AY, and keyboard state through the existing machine-state boundaries
 - Ignore safely optional metadata while rejecting snapshots that require unsupported machines or mandatory peripherals rather than silently loading an inaccurate state
 - Integrate `.szx` with the existing snapshot picker, recent-media title handling, reset lifecycle, audio/input cleanup, and Quick State ownership rules
 - Add synthetic chunk-order, unknown-chunk, truncation, compression, paging, and model-selection tests plus representative 48K/128K execution smoke tests
 
-### Milestone 23 - On-Screen Keyboard Planned
+### Milestone 24 - On-Screen Keyboard Planned
 - Add a discoverable non-modal pop-up keyboard through the normal menus and right-click context menu without consuming another function key
 - Provide selectable 48K rubber-key and 128K keyboard layouts with authentic legends and model-appropriate key placement
 - Route pointer presses through the existing scan-aware Spectrum keyboard bridge so physical and on-screen input share matrix, chord, ownership, and emulated-timing behavior
 - Support held keys, reliable release on pointer loss or window close, and Spectrum chord keys such as symbol-shift combinations without leaving matrix keys stuck
 - Keep the keyboard usable alongside the emulator at common desktop sizes, remember its position and selected layout, and avoid covering or resizing the emulated display
 - Add matrix-mapping, multi-key chord, hold/release lifecycle, model-switch, focus-loss, and frontend interaction tests
+
+### Milestone 25 - Kempston And AMX Mouse Support Planned
+- Add explicit host-pointer capture only when requested, with click-to-capture, `Esc` release, focus-loss cleanup, and a clear on-screen capture indicator
+- Keep host pointer movement and buttons in the Windows adapter while the platform-neutral core owns emulated peripheral counters, buttons, ports, and interrupt state
+- Implement Kempston Mouse first through its wrapping X/Y counters and active-low button port, without conflating it with the existing Kempston joystick interface
+- Add AMX Mouse as a separate second phase with Z80 PIO data/control ports, movement-driven interrupts, button input, and tested interaction with normal Spectrum interrupts
+- Model real peripheral conflicts explicitly, including the AMX use of port `0x1F`, rather than allowing incompatible joystick and mouse interfaces to respond simultaneously
+- Preserve emulated mouse counters and peripheral state in Quick State and supported SZX snapshots while excluding transient host capture state
+- Add port-decoding, counter-wrap, scaling, button, capture/release, focus-loss, interrupt-ordering, save/restore, and peripheral-conflict tests plus acceptance checks with The Artist II
 
 ---
 

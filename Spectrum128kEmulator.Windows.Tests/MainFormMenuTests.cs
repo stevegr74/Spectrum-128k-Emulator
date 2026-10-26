@@ -43,6 +43,7 @@ namespace Spectrum128kEmulator.Tests
                             "---",
                             "F12 - Write Machine Diagnostic Dump",
                             "---",
+                            "Joystick",
                             "Poke Manager..."
                         ],
                         labels);
