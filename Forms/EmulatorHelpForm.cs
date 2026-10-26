@@ -65,18 +65,18 @@ namespace Spectrum128kEmulator
             {
                 ("F1", "Show or close this help window"),
                 ("F2", "Show or hide the FPS and display-mode overlay"),
-                ("F3", "Reset and toggle between 128K and 48K machine modes"),
+                ("F3", "Reset and switch between 128K and 48K machine modes"),
                 ("F4", "Cycle 1x Native, 2x Enhanced, and 3x Enhanced"),
                 ("F5", "Stop or resume tape; its state appears in the on-screen transport badge"),
-                ("F6", "Open or close the paused Z80 execution debugger"),
+                ("F6", "Open or close the paused debugger and disassembler"),
                 ("F7", "Save the current machine state to the temporary Quick State slot"),
                 ("F8", "Restore the temporary Quick State; unavailable until one is saved"),
-                ("Right-click", "Open the quick menu for all emulator actions")
+                ("Right-click", "Open the quick menu for emulator actions, including the Poke Manager")
             }));
             content.Controls.Add(CreateShortcutSection("Loading and Diagnostics", new[]
             {
                 ("F9", "Load a 48K or 128K .sna snapshot"),
-                ("F10", "Load a .z80 snapshot or .rzx recording"),
+                ("F10", "Load a .z80 snapshot or play an .rzx recording"),
                 ("F11", "Mount a .tap or .tzx tape image"),
                 ("F12", "Write a machine diagnostic dump")
             }));

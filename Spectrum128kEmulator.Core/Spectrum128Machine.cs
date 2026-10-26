@@ -718,6 +718,26 @@ namespace Spectrum128kEmulator
             return (byte[])ramBanks[bank].Clone();
         }
 
+        public byte PeekRamBank(int bank, ushort offset)
+        {
+            if ((uint)bank >= ramBanks.Length)
+                throw new ArgumentOutOfRangeException(nameof(bank));
+            if (offset >= 0x4000)
+                throw new ArgumentOutOfRangeException(nameof(offset));
+
+            return ramBanks[bank][offset];
+        }
+
+        public void PokeRamBank(int bank, ushort offset, byte value)
+        {
+            if ((uint)bank >= ramBanks.Length)
+                throw new ArgumentOutOfRangeException(nameof(bank));
+            if (offset >= 0x4000)
+                throw new ArgumentOutOfRangeException(nameof(offset));
+
+            ramBanks[bank][offset] = value;
+        }
+
         public byte[] GetRomBankCopy(int bank)
         {
             if ((uint)bank >= romBanks.Length)

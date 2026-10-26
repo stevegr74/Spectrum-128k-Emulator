@@ -99,6 +99,38 @@ namespace Spectrum128kEmulator
                 return;
             }
 
+            if (IsPlainShortcut(e, Keys.F9))
+            {
+                LoadSnaSnapshotFromDialog();
+                e.Handled = true;
+                e.SuppressKeyPress = true;
+                return;
+            }
+
+            if (IsPlainShortcut(e, Keys.F10))
+            {
+                LoadSnapshotOrRecordingFromDialog();
+                e.Handled = true;
+                e.SuppressKeyPress = true;
+                return;
+            }
+
+            if (IsPlainShortcut(e, Keys.F11))
+            {
+                MountTapFromDialog();
+                e.Handled = true;
+                e.SuppressKeyPress = true;
+                return;
+            }
+
+            if (IsPlainShortcut(e, Keys.F12))
+            {
+                DumpMachineDebugState();
+                e.Handled = true;
+                e.SuppressKeyPress = true;
+                return;
+            }
+
             if (IsSpectrumMappedKey(e.KeyCode))
             {
                 LogInputDiagnostic("keydown", e.KeyCode, "mapped event");
@@ -151,30 +183,6 @@ namespace Spectrum128kEmulator
 
         private void HandleKey(Keys key, bool pressed)
         {
-            if (pressed && key == Keys.F9)
-            {
-                LoadSnaSnapshotFromDialog();
-                return;
-            }
-
-            if (pressed && key == Keys.F10)
-            {
-                LoadSnapshotOrRecordingFromDialog();
-                return;
-            }
-
-            if (pressed && key == Keys.F11)
-            {
-                MountTapFromDialog();
-                return;
-            }
-
-            if (pressed && key == Keys.F12)
-            {
-                DumpMachineDebugState();
-                return;
-            }
-
             if (IsSpectrumMappedKey(key))
                 QueueSpectrumHostKeyEvent(key, pressed);
         }
