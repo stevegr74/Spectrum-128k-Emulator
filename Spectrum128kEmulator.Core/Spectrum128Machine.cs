@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Text;
 using Spectrum128kEmulator.Tap;
+using Spectrum128kEmulator.Input;
 using Spectrum128kEmulator.Z80;
 
 namespace Spectrum128kEmulator
@@ -37,6 +38,8 @@ namespace Spectrum128kEmulator
             0xFF, 0xFF, 0xFF, 0xFF
         };
         private readonly ulong[] keyboardRowScanCounts = new ulong[8];
+        private SpectrumJoystickInterface joystickInterface;
+        private SpectrumJoystickState joystickState;
         private readonly TapeActivityTracker tapeActivity = new TapeActivityTracker();
         private readonly TapeTransportController tapeTransport = new TapeTransportController();
         
@@ -639,6 +642,22 @@ namespace Spectrum128kEmulator
                 keyboardMatrix[row] = (byte)(keyboardMatrix[row] | (1 << bit));
         }
 
+        public SpectrumJoystickInterface JoystickInterface => joystickInterface;
+
+        public SpectrumJoystickState JoystickState => joystickState;
+
+        public void SetJoystickState(SpectrumJoystickInterface joystickInterface, SpectrumJoystickState state)
+        {
+            this.joystickInterface = joystickInterface;
+            joystickState = state & SpectrumJoystickState.All;
+        }
+
+        public void ClearJoystick()
+        {
+            joystickInterface = SpectrumJoystickInterface.None;
+            joystickState = SpectrumJoystickState.None;
+        }
+
         public byte[] GetKeyboardMatrixCopy() => (byte[])keyboardMatrix.Clone();
 
         public ulong GetKeyboardRowScanCount(int row)
@@ -1033,6 +1052,8 @@ namespace Spectrum128kEmulator
             byte value;
             if ((port & 0x0001) == 0)
                 value = ReadKeyboardEarPort(port, cpu.TStates);
+            else if (joystickInterface == SpectrumJoystickInterface.Kempston && IsKempstonJoystickPort(port))
+                value = (byte)joystickState;
             else if (IsAyRegisterReadPort(port))
                 value = ay.ReadRegister(ay.CurrentRegister);
             else
@@ -1055,6 +1076,9 @@ namespace Spectrum128kEmulator
             if (contentionDelay != 0)
                 cpu.AddTStates(contentionDelay);
 
+            if (rzxPlayback != null && rzxPlayback.TryReadPortValue(out byte replayValue))
+                return replayValue;
+
             if ((port & 0x0001) == 0)
             {
                 byte keyboardValue = ReadKeyboardEarPort(port, sampleTStates);
@@ -1064,7 +1088,11 @@ namespace Spectrum128kEmulator
             }
 
             byte value;
-            if (IsAyRegisterReadPort(port))
+            if (joystickInterface == SpectrumJoystickInterface.Kempston && IsKempstonJoystickPort(port))
+            {
+                value = (byte)joystickState;
+            }
+            else if (IsAyRegisterReadPort(port))
             {
                 value = ay.ReadRegister(ay.CurrentRegister);
             }
@@ -1083,6 +1111,9 @@ namespace Spectrum128kEmulator
         private bool IsAyRegisterReadPort(ushort port) =>
             IsAyHardwareEnabled && (port & 0xC002) == 0xC000;
 
+        private static bool IsKempstonJoystickPort(ushort port) =>
+            (port & 0x00FF) == 0x001F;
+
         private byte ReadKeyboardEarPort(ushort port, ulong sampleTStates)
         {
             byte result = 0xFF;
@@ -1094,6 +1125,7 @@ namespace Spectrum128kEmulator
                 {
                     keyboardRowScanCounts[row]++;
                     result &= keyboardMatrix[row];
+                    result &= ReadJoystickKeyboardRow(row);
                 }
             }
 
@@ -1114,6 +1146,54 @@ namespace Spectrum128kEmulator
                 result = (byte)(result & ~0x40);
 
             return result;
+        }
+
+        private byte ReadJoystickKeyboardRow(int row)
+        {
+            if (joystickInterface == SpectrumJoystickInterface.Cursor)
+            {
+                byte value = 0xFF;
+                if (row == 3)
+                    ClearJoystickKey(ref value, SpectrumJoystickState.Left, 4);  // 5
+                else if (row == 4)
+                {
+                    ClearJoystickKey(ref value, SpectrumJoystickState.Down, 4);  // 6
+                    ClearJoystickKey(ref value, SpectrumJoystickState.Up, 3);    // 7
+                    ClearJoystickKey(ref value, SpectrumJoystickState.Right, 2); // 8
+                    ClearJoystickKey(ref value, SpectrumJoystickState.Fire, 0);  // 0
+                }
+                return value;
+            }
+
+            if (joystickInterface == SpectrumJoystickInterface.Sinclair1 && row == 4)
+            {
+                byte value = 0xFF;
+                ClearJoystickKey(ref value, SpectrumJoystickState.Left, 4);  // 6
+                ClearJoystickKey(ref value, SpectrumJoystickState.Right, 3); // 7
+                ClearJoystickKey(ref value, SpectrumJoystickState.Down, 2);  // 8
+                ClearJoystickKey(ref value, SpectrumJoystickState.Up, 1);    // 9
+                ClearJoystickKey(ref value, SpectrumJoystickState.Fire, 0);  // 0
+                return value;
+            }
+
+            if (joystickInterface == SpectrumJoystickInterface.Sinclair2 && row == 3)
+            {
+                byte value = 0xFF;
+                ClearJoystickKey(ref value, SpectrumJoystickState.Left, 0);  // 1
+                ClearJoystickKey(ref value, SpectrumJoystickState.Right, 1); // 2
+                ClearJoystickKey(ref value, SpectrumJoystickState.Down, 2);  // 3
+                ClearJoystickKey(ref value, SpectrumJoystickState.Up, 3);    // 4
+                ClearJoystickKey(ref value, SpectrumJoystickState.Fire, 4);  // 5
+                return value;
+            }
+
+            return 0xFF;
+        }
+
+        private void ClearJoystickKey(ref byte value, SpectrumJoystickState control, int bit)
+        {
+            if ((joystickState & control) != 0)
+                value = (byte)(value & ~(1 << bit));
         }
 
         private void TryAutomaticallyResumeTapeForRomLoaderRead(ulong sampleTStates)

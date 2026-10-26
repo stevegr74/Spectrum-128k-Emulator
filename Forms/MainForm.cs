@@ -70,6 +70,7 @@ namespace Spectrum128kEmulator
         private readonly ToolStripMenuItem disassemblerMenuItem = new ToolStripMenuItem("F6 - Debugger / Disassembler");
         private readonly ToolStripMenuItem saveQuickStateMenuItem = new ToolStripMenuItem("F7 - Save Quick State");
         private readonly ToolStripMenuItem restoreQuickStateMenuItem = new ToolStripMenuItem("F8 - Restore Quick State");
+        private readonly ToolStripMenuItem joystickMenuItem = new ToolStripMenuItem("Joystick");
         private readonly ToolStripMenuItem pokeManagerMenuItem = new ToolStripMenuItem("Poke Manager...");
 
         private readonly string romFolder;
@@ -79,6 +80,12 @@ namespace Spectrum128kEmulator
         private readonly object audioPipelineLock = new();
         private readonly Queue<SpectrumHostKeyEvent> pendingSpectrumHostKeyEvents = new();
         private readonly SpectrumKeyboardInputController keyboardInputController = new();
+        private readonly IHostJoystickSource joystickSource = HostJoystickSourceFactory.Create();
+        private readonly JoystickSettingsStore joystickSettingsStore = new();
+        private readonly HostJoystickInputController joystickInputController;
+        private HostJoystickSettings joystickSettings;
+        private bool pendingJoystickReset;
+        private long nextJoystickPollTicks;
         private SpectrumKeyboardMessageFilter? keyboardMessageFilter;
         private readonly EmulationLoopController emulationLoop = new();
         private readonly DebuggerExecutionController debuggerExecutionController = new();
@@ -146,6 +153,8 @@ namespace Spectrum128kEmulator
 
             romFolder = Path.Combine(AppContext.BaseDirectory, "ROMs");
             machine = CreateConfiguredMachine();
+            joystickSettings = joystickSettingsStore.Load();
+            joystickInputController = new HostJoystickInputController(joystickSource);
             InitializeDisplayModeSelector();
             ApplyDisplayMode(SpectrumDisplayMode.Enhanced2x);
 
@@ -229,6 +238,8 @@ namespace Spectrum128kEmulator
             displayContextMenu.Items.Add(new ToolStripSeparator());
             displayContextMenu.Items.Add("F12 - Write Machine Diagnostic Dump", null, (_, _) => DumpMachineDebugState());
             displayContextMenu.Items.Add(new ToolStripSeparator());
+            InitializeJoystickMenu();
+            displayContextMenu.Items.Add(joystickMenuItem);
             pokeManagerMenuItem.Click += (_, _) => OpenPokeManager();
             displayContextMenu.Items.Add(pokeManagerMenuItem);
             displayContextMenu.Opening += (_, _) =>
@@ -760,6 +771,7 @@ namespace Spectrum128kEmulator
                             while (tStatesBudget > 0)
                             {
                                 DrainPendingSpectrumHostKeyEvents();
+                                PollJoystick(activeMachine);
                                 bool executeWholeFrame = activeMachine.HasMountedTape && tStatesBudget >= activeMachine.FrameTStates;
                                 int executedSliceTStates;
                                 if (executeWholeFrame)
@@ -926,10 +938,12 @@ namespace Spectrum128kEmulator
         private void ClearHostAndSpectrumInputState()
         {
             ResetInputBridgeState();
+            ResetJoystickInputBridgeState();
             lock (machineLock)
             {
                 inputEmulatedTStates = 0;
                 machine.ClearKeyboard();
+                machine.ClearJoystick();
             }
         }
 
@@ -1339,6 +1353,7 @@ namespace Spectrum128kEmulator
                     keyboardMessageFilter = null;
                 }
                 emulationLoop.Dispose();
+                joystickSource.Dispose();
                 lock (inputDiagnosticsLock)
                 {
                     inputDiagnosticsWriter?.Dispose();
