@@ -67,7 +67,7 @@ namespace Spectrum128kEmulator
         private readonly ToolStripMenuItem reset48kMenuItem = new ToolStripMenuItem("Reset to 48K");
         private readonly ToolStripMenuItem statusOverlayMenuItem = new ToolStripMenuItem("F2 - Status Overlay");
         private readonly ToolStripMenuItem tapeTransportMenuItem = new ToolStripMenuItem("F5 - Stop / Resume Tape");
-        private readonly ToolStripMenuItem disassemblerMenuItem = new ToolStripMenuItem("F6 - Disassembler");
+        private readonly ToolStripMenuItem disassemblerMenuItem = new ToolStripMenuItem("F6 - Debugger / Disassembler");
         private readonly ToolStripMenuItem saveQuickStateMenuItem = new ToolStripMenuItem("F7 - Save Quick State");
         private readonly ToolStripMenuItem restoreQuickStateMenuItem = new ToolStripMenuItem("F8 - Restore Quick State");
         private readonly ToolStripMenuItem pokeManagerMenuItem = new ToolStripMenuItem("Poke Manager...");
@@ -181,10 +181,12 @@ namespace Spectrum128kEmulator
         private void InitializeDisplayModeSelector()
         {
             displayContextMenu.Items.Add("F1 - Help", null, (_, _) => ToggleHelpWindow());
+            displayContextMenu.Items.Add(new ToolStripSeparator());
+
             statusOverlayMenuItem.Click += (_, _) => ToggleStatusOverlay();
             displayContextMenu.Items.Add(statusOverlayMenuItem);
 
-            var machineModelMenuItem = new ToolStripMenuItem("F3 - Machine Model");
+            var machineModelMenuItem = new ToolStripMenuItem("F3 - Reset / Switch Model");
             reset128kMenuItem.Click += (_, _) => ResetToMachineModel(SpectrumMachineModel.Spectrum128K);
             reset48kMenuItem.Click += (_, _) => ResetToMachineModel(SpectrumMachineModel.Spectrum48K);
             machineModelMenuItem.DropDownItems.AddRange(new ToolStripItem[]
@@ -206,9 +208,11 @@ namespace Spectrum128kEmulator
                 enhanced3xDisplayMenuItem
             });
             displayContextMenu.Items.Add(displaySizeMenuItem);
+            displayContextMenu.Items.Add(new ToolStripSeparator());
 
             tapeTransportMenuItem.Click += (_, _) => ToggleTapeTransport();
             displayContextMenu.Items.Add(tapeTransportMenuItem);
+            displayContextMenu.Items.Add(new ToolStripSeparator());
 
             disassemblerMenuItem.Click += (_, _) => ToggleDisassemblerWindow();
             displayContextMenu.Items.Add(disassemblerMenuItem);
@@ -220,8 +224,9 @@ namespace Spectrum128kEmulator
 
             displayContextMenu.Items.Add(new ToolStripSeparator());
             displayContextMenu.Items.Add("F9 - Load .sna Snapshot", null, (_, _) => LoadSnaSnapshotFromDialog());
-            displayContextMenu.Items.Add("F10 - Load .z80 Snapshot or .rzx Recording", null, (_, _) => LoadSnapshotOrRecordingFromDialog());
+            displayContextMenu.Items.Add("F10 - Load .z80 Snapshot / Play .rzx Recording", null, (_, _) => LoadSnapshotOrRecordingFromDialog());
             displayContextMenu.Items.Add("F11 - Mount .tap or .tzx Tape Image", null, (_, _) => MountTapFromDialog());
+            displayContextMenu.Items.Add(new ToolStripSeparator());
             displayContextMenu.Items.Add("F12 - Write Machine Diagnostic Dump", null, (_, _) => DumpMachineDebugState());
             displayContextMenu.Items.Add(new ToolStripSeparator());
             pokeManagerMenuItem.Click += (_, _) => OpenPokeManager();

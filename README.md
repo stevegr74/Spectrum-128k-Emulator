@@ -88,8 +88,9 @@ hexadecimal memory inspection, and a compact paging/CPU-state workspace.
 Milestone 20 is complete, with explicit
 tape-state ownership, structured load and transport diagnostics, stronger
 transition tests, and behavior-preserving decomposition. Milestone 21's
-bank-aware Poke Manager is implemented and ready for acceptance testing.
-Milestone 22 will add SZX snapshot loading, followed by a
+bank-aware Poke Manager is complete and accepted. Its initial catalogue contains
+38 exact-image definitions and 140 named pokes, including the user-verified
+infinite-lives poke for the Ocean 128K RoboCop snapshot. Milestone 22 will add SZX snapshot loading, followed by a
 model-selectable 48K/128K on-screen keyboard in Milestone 23. Tape compatibility
 and broader title-specific audio fidelity validation continue in parallel, with
 the verified media matrix plus ZEXDOC/ZEXALL used as regression gates.
@@ -191,21 +192,24 @@ that do not consume a function key.
 | --- | --- |
 | `F1` | Open the control reference; emulation pauses while it is open |
 | `F2` | Toggle bottom-left FPS, frame, model, tape, and display diagnostics |
-| `F3` | Reset into explicit 128K or 48K mode |
+| `F3` | Reset and switch between explicit 128K and 48K modes |
 | `F4` | Cycle fixed display size |
 | `F5` | Stop or resume the mounted tape without ejecting it |
-| `F6` | Open the execution debugger, paused on an immutable machine capture |
+| `F6` | Open the debugger and disassembler, paused on an immutable machine capture |
 | `F7` / `F8` | Save or restore the temporary in-memory Quick State |
 | `F9` | Load a 48K or 128K `.sna` snapshot |
-| `F10` | Load a `.z80` snapshot or `.rzx` recording |
+| `F10` | Load a `.z80` snapshot or play an `.rzx` recording |
 | `F11` | Mount a `.tap` or `.tzx` tape image |
 | `F12` | Write a machine diagnostic dump |
 
 The right-click menu also opens the Poke Manager. Emulation remains paused while
 it is open. Its Library tab reads the user-maintainable `Pokes/pokes.json` file;
 exact SHA-256 matches are authoritative, while filename aliases are visibly
-labelled as suggestions only. The initial catalogue is intentionally empty until
-version-specific entries are verified. The One-off tab supports mapped RAM or an
+labelled as suggestions only. Unmatched media stays on `Choose a game...` rather
+than selecting an unrelated title. The catalogue contains 38 exact-image game
+definitions and 140 named pokes; RoboCop is gameplay-verified, while the other
+source-backed entries have checksum and target-layout validation pending
+progressive gameplay confirmation. The One-off tab supports mapped RAM or an
 explicit physical RAM bank, previews current and replacement bytes, and can
 restore the most recent session poke when the game has not changed those bytes.
 
@@ -383,7 +387,7 @@ compatibility; completed milestones remain regression baselines.
 | 18 | Complete | Instruction-boundary Run/Pause, Step Into/Over/Out, run to cursor, CPU context, and persistent breakpoints |
 | 19 | Complete | Bank-aware inspection, labels, conservative control/data cross-references, persistent code/data marking, and hexadecimal memory navigation |
 | 20 | Complete | Tape state ownership, transition coverage, structured diagnostics, and behavior-preserving subsystem decomposition |
-| 21 | In progress | Bank-aware Poke Manager implemented and ready for acceptance testing; curated entries remain version-verified data work |
+| 21 | Complete | Accepted bank-aware Poke Manager with one-off writes, guarded restore, and an initial 38-game checksum-scoped catalogue |
 | 22 | Planned | SZX snapshot loading for supported 48K and 128K machine state, with explicit handling of unsupported peripherals |
 | 23 | Planned | Pop-up on-screen keyboard with selectable authentic 48K and 128K layouts |
 
@@ -456,7 +460,7 @@ compatibility; completed milestones remain regression baselines.
 - Retained the full automated suite, ZEXDOC/ZEXALL, and the verified media matrix as regression gates throughout the structural work
 - Completed final interactive acceptance with the hardened tape paths and transport behavior confirmed working as expected
 
-### Milestone 21 - Poke Manager And Cheat Library In Progress
+### Milestone 21 - Poke Manager And Cheat Library Complete
 - Added a discoverable Poke Manager through the right-click context menu without consuming another function key; emulation remains paused while it is open
 - Added a versioned, validated, human-maintainable `Pokes/pokes.json` library for game titles, aliases, model requirements, exact media checksums, named multi-address pokes, and mapped or bank-qualified writes
 - Added model-aware library browsing with exact SHA-256 matches clearly distinguished from filename-only discovery suggestions
@@ -464,7 +468,9 @@ compatibility; completed milestones remain regression baselines.
 - Applies a selected set atomically while the emulation loop is paused and keeps a session-local restoration stack; restoration is refused if the program has since changed an applied byte
 - Keeps the first version to deliberate one-time writes; frozen values, conditional trainers, and cheat discovery remain deferred until their continuous-mutation semantics are designed and tested
 - Added schema, duplicate-entry, checksum/alias matching, bank-selection, model-safety, application, restoration, empty-library, layout, and frontend workflow tests
-- Completed visual QA at the active desktop DPI and a full 620-test regression run; interactive acceptance and progressively adding verified catalogue entries remain
+- Added an initial catalogue of 38 exact-image game definitions and 140 named pokes from published reference data, rejecting candidates whose local snapshots did not match the expected memory layout
+- Kept the user-verified RoboCop infinite-lives entry distinct from source-backed entries awaiting progressive gameplay confirmation
+- Completed visual QA at the active desktop DPI, exact-match acceptance, and full regression coverage; expanding the version-verified catalogue remains ongoing data work rather than a blocker for the feature
 
 ### Milestone 22 - SZX Snapshot Support Planned
 - Add a dedicated chunk-based `.szx` parser with strict bounds checking, version validation, and clear diagnostics for malformed files

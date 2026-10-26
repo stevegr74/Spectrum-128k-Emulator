@@ -1,4 +1,413 @@
 {
   "version": 1,
-  "games": []
+  "games": [
+    {
+      "id": "cauldron-ii-palace", "title": "Cauldron II: The Pumpkin Strikes Back",
+      "aliases": ["Cauldron II"], "models": ["48K", "128K"],
+      "sha256": ["458031B26DBE4B90251C0B7C43F53380B3ECA92861376AD3DBEBEB9BCF3DB4F5"],
+      "pokes": [
+        { "id": "infinite-lives", "name": "Infinite lives", "description": "Prevents both life-loss paths from reducing the life counter.", "writes": [
+          { "space": "mapped", "address": "52974", "value": "0" },
+          { "space": "mapped", "address": "52133", "value": "0" }
+        ] }
+      ]
+    },
+    {
+      "id": "feud", "title": "Feud", "aliases": ["Feud"], "models": ["48K", "128K"],
+      "sha256": ["43DF957DB158FA1936956C359FF646042B1E23BAF53BBA24F64ACA6081DB0887"],
+      "pokes": [{ "id": "infinite-energy", "name": "Infinite energy", "description": "Prevents both energy-decrement paths.", "writes": [
+        { "space": "mapped", "address": "51425", "value": "0" }, { "space": "mapped", "address": "51447", "value": "0" }
+      ] }]
+    },
+    {
+      "id": "flying-shark", "title": "Flying Shark", "aliases": ["flyshark", "Flying Shark"], "models": ["48K", "128K"],
+      "sha256": ["C6FEECEB770DAEEE37FF694E743354AD505926D7E7B1C95D4682A31F41D0E64C"],
+      "pokes": [
+        { "id": "infinite-lives", "name": "Infinite lives", "description": "Prevents life loss.", "writes": [{ "space": "mapped", "address": "54462", "value": "201" }] },
+        { "id": "no-enemies", "name": "No enemies", "description": "Disables the principal enemy-generation path.", "writes": [{ "space": "mapped", "address": "51631", "value": "201" }] },
+        { "id": "immunity", "name": "Immunity", "description": "Bypasses the principal damage check.", "writes": [{ "space": "mapped", "address": "48115", "value": "58" }] },
+        { "id": "99-lives", "name": "99 lives", "description": "Sets the life counter to 99.", "writes": [{ "space": "mapped", "address": "42464", "value": "99" }] },
+        { "id": "99-bombs", "name": "99 bombs", "description": "Sets the bomb counter to 99.", "writes": [{ "space": "mapped", "address": "42490", "value": "99" }] }
+      ]
+    },
+    {
+      "id": "frankie-goes-to-hollywood", "title": "Frankie Goes to Hollywood", "aliases": ["frankie", "Frankie Goes to Hollywood"], "models": ["48K", "128K"],
+      "sha256": ["F5610C1F278150D4FD4340BEAB0710A2093E47C784D158E199338BF65559FDEB"],
+      "pokes": [
+        { "id": "infinite-lives", "name": "Infinite lives", "description": "Prevents life loss.", "writes": [{ "space": "mapped", "address": "52297", "value": "50" }] },
+        { "id": "infinite-time", "name": "Infinite time", "description": "Stops the timer.", "writes": [{ "space": "mapped", "address": "52311", "value": "58" }] },
+        { "id": "infinite-jumps", "name": "Infinite jumps", "description": "Prevents jumps from being consumed.", "writes": [{ "space": "mapped", "address": "52161", "value": "0" }] }
+      ]
+    },
+    {
+      "id": "glider-rider-48k", "title": "Glider Rider (48K)", "aliases": ["Glider Rider"], "models": ["48K", "128K"],
+      "sha256": ["19B9AD4CC6D03BACAFB57665ED2719A9EABF78C0D0A8BA8A6E562EA549694086"],
+      "pokes": [
+        { "id": "infinite-energy", "name": "Infinite energy", "description": "Prevents energy depletion.", "writes": [{ "space": "mapped", "address": "34973", "value": "0" }] },
+        { "id": "infinite-ammunition", "name": "Infinite ammunition", "description": "Prevents ammunition from being consumed.", "writes": [{ "space": "mapped", "address": "34931", "value": "0" }] },
+        { "id": "infinite-time", "name": "Infinite time", "description": "Stops the timer.", "writes": [{ "space": "mapped", "address": "34818", "value": "0" }] },
+        { "id": "infinite-laser", "name": "Infinite laser", "description": "Prevents laser depletion.", "writes": [{ "space": "mapped", "address": "37441", "value": "0" }] },
+        { "id": "slower-time", "name": "Slower time", "description": "Slows the timer.", "writes": [{ "space": "mapped", "address": "34829", "value": "0" }] },
+        { "id": "no-enemy-lasers", "name": "No enemy lasers", "description": "Disables enemy lasers.", "writes": [
+          { "space": "mapped", "address": "37439", "value": "0" }, { "space": "mapped", "address": "37440", "value": "0" }
+        ] },
+        { "id": "lock-direction", "name": "No direction changes", "description": "Prevents forced direction changes.", "writes": [
+          { "space": "mapped", "address": "37461", "value": "0" }, { "space": "mapped", "address": "37462", "value": "0" }, { "space": "mapped", "address": "37463", "value": "0" }
+        ] }
+      ]
+    },
+    {
+      "id": "great-escape", "title": "The Great Escape", "aliases": ["The Great Escape"], "models": ["48K", "128K"],
+      "sha256": [
+        "E4E9605F92931F260CC0801635DED0AE93E3F23EFFE70C43A9BA93A0A1091FDC",
+        "F0835B7A3289E6863F1D1D9EB1EFB65CCEF00683D341D8C621973F4BA1C25E17"
+      ],
+      "pokes": [
+        { "id": "infinite-morale", "name": "Infinite morale", "description": "Prevents morale depletion.", "writes": [{ "space": "mapped", "address": "41187", "value": "0" }] },
+        { "id": "no-other-people", "name": "No other people", "description": "Disables other characters.", "writes": [{ "space": "mapped", "address": "50475", "value": "201" }] }
+      ]
+    },
+    {
+      "id": "chase-hq", "title": "Chase H.Q.",
+      "aliases": ["chasehq", "Chase HQ"], "models": ["48K", "128K"],
+      "sha256": ["E09C913661D75A90FCA2E55C91A9F2AD71B17F6432398D2DCEB086F2B9599CA0"],
+      "pokes": [
+        { "id": "infinite-credits", "name": "Infinite credits", "description": "Prevents credits from running out.", "writes": [{ "space": "mapped", "address": "39998", "value": "166" }] },
+        { "id": "infinite-time", "name": "Infinite time", "description": "Stops the pursuit timer.", "writes": [{ "space": "mapped", "address": "39937", "value": "0" }] },
+        { "id": "one-hit-capture", "name": "One-hit capture", "description": "Makes the target vehicle surrender after one hit.", "writes": [{ "space": "mapped", "address": "46351", "value": "62" }] }
+      ]
+    },
+    {
+      "id": "elite-48k", "title": "Elite (48K)",
+      "aliases": ["Elite"], "models": ["48K", "128K"],
+      "sha256": ["FD30C946000135368A9937504BCD55A8D18980F79B406BAC862034EA922E8D43"],
+      "pokes": [
+        { "id": "infinite-energy", "name": "Infinite energy", "description": "Prevents energy depletion.", "writes": [{ "space": "mapped", "address": "39517", "value": "0" }] },
+        { "id": "infinite-fuel", "name": "Infinite fuel", "description": "Prevents fuel depletion.", "writes": [{ "space": "mapped", "address": "56997", "value": "0" }] },
+        { "id": "one-hit-kills", "name": "One-hit kills", "description": "Destroys enemy ships with one hit.", "writes": [{ "space": "mapped", "address": "46848", "value": "0" }] },
+        { "id": "cool-lasers", "name": "Lasers do not overheat", "description": "Disables laser overheating.", "writes": [{ "space": "mapped", "address": "46759", "value": "0" }] },
+        { "id": "infinite-missiles", "name": "Infinite missiles", "description": "Prevents missiles from being consumed.", "writes": [{ "space": "mapped", "address": "39959", "value": "0" }] },
+        { "id": "free-hyperspace", "name": "Hyperspace without fuel", "description": "Allows hyperspace jumps without consuming fuel.", "writes": [
+          { "space": "mapped", "address": "56280", "value": "0" }, { "space": "mapped", "address": "56290", "value": "0" }
+        ] },
+        { "id": "keep-escape-pod", "name": "Reusable escape pod", "description": "Keeps the escape pod after use.", "writes": [{ "space": "mapped", "address": "39987", "value": "0" }] },
+        { "id": "infinite-energy-bombs", "name": "Infinite energy bombs", "description": "Keeps the energy bomb after use.", "writes": [{ "space": "mapped", "address": "28820", "value": "0" }] },
+        { "id": "infinite-money", "name": "Infinite money", "description": "Prevents purchases from reducing credits.", "writes": [
+          { "space": "mapped", "address": "54261", "value": "0" }, { "space": "mapped", "address": "54275", "value": "0" }
+        ] }
+      ]
+    },
+    {
+      "id": "elite-128k", "title": "Elite (128K)",
+      "aliases": ["Elite128"], "models": ["128K"],
+      "sha256": ["8FAC822B71A8DE44E486007CCC1BFA894803ED19AC4EC7023F8581C2A199F23A"],
+      "pokes": [
+        { "id": "infinite-energy", "name": "Infinite energy", "description": "Prevents energy depletion.", "writes": [{ "space": "mapped", "address": "42358", "value": "0" }] },
+        { "id": "infinite-fuel", "name": "Infinite fuel", "description": "Prevents fuel depletion.", "writes": [{ "space": "mapped", "address": "55408", "value": "0" }] },
+        { "id": "immunity", "name": "Immunity", "description": "Disables the principal collision and damage paths.", "writes": [
+          { "space": "mapped", "address": "29490", "value": "195" }, { "space": "mapped", "address": "59989", "value": "0" }, { "space": "mapped", "address": "60740", "value": "0" }
+        ] },
+        { "id": "one-hit-kills", "name": "One-hit kills", "description": "Destroys enemy ships with one hit.", "writes": [{ "space": "mapped", "address": "60555", "value": "0" }] },
+        { "id": "cool-lasers", "name": "Lasers do not overheat", "description": "Disables laser overheating.", "writes": [{ "space": "mapped", "address": "60466", "value": "0" }] },
+        { "id": "infinite-missiles", "name": "Infinite missiles", "description": "Prevents missiles from being consumed.", "writes": [{ "space": "mapped", "address": "42870", "value": "0" }] },
+        { "id": "infinite-cargo", "name": "Infinite cargo", "description": "Prevents cargo from being consumed.", "writes": [{ "space": "mapped", "address": "46028", "value": "0" }] },
+        { "id": "keep-escape-pod", "name": "Reusable escape pod", "description": "Keeps the escape pod after use.", "writes": [{ "space": "mapped", "address": "42898", "value": "0" }] },
+        { "id": "free-hyperspace", "name": "Hyperspace without fuel", "description": "Allows hyperspace jumps without fuel.", "writes": [{ "space": "mapped", "address": "54713", "value": "0" }] },
+        { "id": "infinite-money", "name": "Infinite money", "description": "Prevents purchases from reducing credits.", "writes": [{ "space": "mapped", "address": "47229", "value": "24" }] },
+        { "id": "infinite-ecm", "name": "Infinite ECM", "description": "Allows repeated ECM use without energy loss.", "writes": [
+          { "space": "mapped", "address": "53583", "value": "0" }, { "space": "mapped", "address": "53593", "value": "0" }, { "space": "mapped", "address": "63533", "value": "24" }
+        ] }
+      ]
+    },
+    {
+      "id": "exolon", "title": "Exolon",
+      "aliases": ["exolon", "Exolon"], "models": ["48K", "128K"],
+      "sha256": [
+        "8B5B08F2C8D2F46172D53E0C996F1937A5027D0BFE30888C3A1429F71F1245C3",
+        "1F7B104C6DC059AFD452C20DD86406A5EF25DD1AFE144566A09D421D0154B7B4"
+      ],
+      "pokes": [
+        { "id": "infinite-lives", "name": "Infinite lives", "description": "Prevents lives from being decremented.", "writes": [{ "space": "mapped", "address": "40221", "value": "0" }] },
+        { "id": "infinite-ammunition", "name": "Infinite ammunition", "description": "Prevents ammunition from being consumed.", "writes": [{ "space": "mapped", "address": "33646", "value": "0" }] },
+        { "id": "infinite-grenades", "name": "Infinite grenades", "description": "Prevents grenades from being consumed.", "writes": [{ "space": "mapped", "address": "37456", "value": "0" }] },
+        { "id": "double-fire", "name": "Double fire", "description": "Enables the double-fire weapon effect.", "writes": [{ "space": "mapped", "address": "33663", "value": "0" }] },
+        { "id": "one-shot-kills", "name": "One-shot kills", "description": "Makes one shot sufficient to destroy an enemy.", "writes": [{ "space": "mapped", "address": "44074", "value": "0" }] },
+        { "id": "infinite-rockets", "name": "Infinite rockets", "description": "Prevents rockets from being consumed.", "writes": [{ "space": "mapped", "address": "37397", "value": "0" }] },
+        { "id": "no-cannon-fire", "name": "No cannon fire", "description": "Disables enemy cannon fire.", "writes": [{ "space": "mapped", "address": "36831", "value": "24" }] },
+        { "id": "no-flying-aliens", "name": "No flying aliens", "description": "Disables flying aliens.", "writes": [{ "space": "mapped", "address": "42330", "value": "201" }] },
+        { "id": "more-flying-aliens", "name": "More flying aliens", "description": "Increases flying-alien activity.", "writes": [
+          { "space": "mapped", "address": "42330", "value": "0" }, { "space": "mapped", "address": "42336", "value": "24" }
+        ] },
+        { "id": "no-aliens", "name": "No aliens", "description": "Disables the main alien-generation path.", "writes": [{ "space": "mapped", "address": "42338", "value": "0" }] },
+        { "id": "harmless-mines", "name": "Harmless mines", "description": "Makes mines harmless.", "writes": [{ "space": "mapped", "address": "40110", "value": "201" }] }
+      ]
+    },
+    {
+      "id": "green-beret", "title": "Green Beret", "aliases": ["Green Beret"], "models": ["48K", "128K"],
+      "sha256": [
+        "313935822CC353C3107AAB6CC88F8AAAED430098E04BCA570A25EE6E0DF4290A",
+        "17AA4B900FAC0B3E75CC09F36D221C7AE1DB2AE9DA2D1574A2080C2AB817A071"
+      ],
+      "pokes": [
+        { "id": "infinite-lives", "name": "Infinite lives", "description": "Prevents life loss.", "writes": [{ "space": "mapped", "address": "41652", "value": "182" }] },
+        { "id": "extra-firepower", "name": "Extra firepower", "description": "Enables enhanced firepower.", "writes": [{ "space": "mapped", "address": "46377", "value": "8" }] },
+        { "id": "no-mines", "name": "No mines", "description": "Disables mines.", "writes": [{ "space": "mapped", "address": "44607", "value": "0" }] },
+        { "id": "no-mortars", "name": "No mortars", "description": "Disables mortars.", "writes": [{ "space": "mapped", "address": "47183", "value": "0" }] },
+        { "id": "eight-lives", "name": "8 lives", "description": "Sets the life counter to 8 without overflowing the display.", "writes": [{ "space": "mapped", "address": "42076", "value": "8" }] },
+        { "id": "infinite-ammunition", "name": "Infinite ammunition", "description": "Prevents weapon ammunition from being consumed.", "writes": [{ "space": "mapped", "address": "46827", "value": "183" }] }
+      ]
+    },
+    {
+      "id": "ikari-warriors", "title": "Ikari Warriors", "aliases": ["Ikari Warriors"], "models": ["48K", "128K"],
+      "sha256": [
+        "DA71F75905004EC08E7C1F5A0E63234230334CDCE3F2A3D2C34C51D903633AD7",
+        "1C3CD5ED5EB4D97DA26E6D0D53D9BCC9AB30ADD03F59FCE3E07562A17232D29D"
+      ],
+      "pokes": [
+        { "id": "infinite-lives", "name": "Infinite lives", "description": "Prevents life loss.", "writes": [{ "space": "mapped", "address": "39273", "value": "0" }] },
+        { "id": "infinite-fuel", "name": "Infinite fuel", "description": "Prevents vehicle fuel depletion.", "writes": [{ "space": "mapped", "address": "40618", "value": "0" }] },
+        { "id": "infinite-ammunition", "name": "Infinite ammunition", "description": "Prevents ammunition from being consumed.", "writes": [{ "space": "mapped", "address": "39917", "value": "167" }] },
+        { "id": "infinite-grenades", "name": "Infinite grenades", "description": "Prevents grenades from being consumed.", "writes": [{ "space": "mapped", "address": "40076", "value": "167" }] },
+        { "id": "infinite-tanks", "name": "Infinite tanks", "description": "Prevents tanks from being consumed.", "writes": [{ "space": "mapped", "address": "62384", "value": "190" }] },
+        { "id": "immunity", "name": "Immunity", "description": "Bypasses the principal damage path.", "writes": [{ "space": "mapped", "address": "40272", "value": "0" }] },
+        { "id": "nine-lives", "name": "9 lives", "description": "Sets the life counter to 9.", "writes": [{ "space": "mapped", "address": "41178", "value": "9" }] }
+      ]
+    },
+    {
+      "id": "paperboy", "title": "Paperboy", "aliases": ["Paperboy"], "models": ["48K", "128K"],
+      "sha256": ["CFFBB3EF92E17FBA5C00F70EB01A62A2F1BE97A137A0C071B89F487932F12241"],
+      "pokes": [
+        { "id": "immunity", "name": "Immunity", "description": "Disables collision damage.", "writes": [{ "space": "mapped", "address": "48023", "value": "201" }] },
+        { "id": "infinite-lives", "name": "Infinite lives", "description": "Prevents life loss.", "writes": [{ "space": "mapped", "address": "50577", "value": "190" }] },
+        { "id": "infinite-papers", "name": "Infinite papers", "description": "Prevents newspapers from being consumed.", "writes": [{ "space": "mapped", "address": "49263", "value": "0" }] }
+      ]
+    },
+    {
+      "id": "rainbow-islands", "title": "Rainbow Islands", "aliases": ["Rainbow Islands"], "models": ["128K"],
+      "sha256": ["755F62551E996DE382F8599C09C07D4B7B7A852F453EB9923FB9D046C538BE11"],
+      "pokes": [{ "id": "99-lives", "name": "99 lives", "description": "Sets the life counter to 99.", "writes": [{ "space": "mapped", "address": "25471", "value": "99" }] }]
+    },
+    {
+      "id": "rambo", "title": "Rambo", "aliases": ["rambo", "Rambo"], "models": ["48K", "128K"],
+      "sha256": ["6F8B0763FD077878470EA454C24AD4DE6B0F14F168F026CA1EB2C41A167E08ED"],
+      "pokes": [
+        { "id": "infinite-lives", "name": "Infinite lives", "description": "Patches all known life-loss paths in this release.", "writes": [
+          { "space": "mapped", "address": "27401", "value": "0" }, { "space": "mapped", "address": "27402", "value": "0" }, { "space": "mapped", "address": "60263", "value": "0" }
+        ] },
+        { "id": "immunity", "name": "Immunity", "description": "Bypasses the principal damage check.", "writes": [{ "space": "mapped", "address": "38841", "value": "24" }] }
+      ]
+    },
+    {
+      "id": "renegade-128k", "title": "Renegade (128K)", "aliases": ["Renegade_1987_Imagine_a_128K", "Renegade"], "models": ["128K"],
+      "sha256": [
+        "546B7F36CD79E0014FA78731FAB9DC63681F90A24B639341639EADBCEFC662DD",
+        "FE8B677FC07096CAB1DB6CF6BF302FF5732B0F14E6E3899097812BE0788349DD"
+      ],
+      "pokes": [
+        { "id": "infinite-lives", "name": "Infinite lives", "description": "Prevents life loss.", "writes": [{ "space": "mapped", "address": "40455", "value": "195" }] },
+        { "id": "infinite-time", "name": "Infinite time", "description": "Stops the round timer.", "writes": [{ "space": "mapped", "address": "39804", "value": "0" }] },
+        { "id": "strong-punches", "name": "Stronger punches", "description": "Increases punch damage.", "writes": [{ "space": "mapped", "address": "37666", "value": "7" }] },
+        { "id": "easier-fights", "name": "Easier fights", "description": "Reduces enemy resistance.", "writes": [{ "space": "mapped", "address": "35094", "value": "0" }] }
+      ]
+    },
+    {
+      "id": "robocop-1988-ocean", "title": "RoboCop", "aliases": ["Robocop_1988_Ocean"], "models": ["128K"],
+      "sha256": ["C5DB22E39DAE8AF9F41BB18FCF81982BF0D3C893685DA22B223B7BAD294F3A16"],
+      "pokes": [
+        { "id": "infinite-lives", "name": "Infinite lives", "description": "Prevents the game from decrementing RoboCop's life counter.", "writes": [{ "space": "mapped", "address": "0x653D", "value": "0x00" }] }
+      ]
+    },
+    {
+      "id": "rockford", "title": "Rockford", "aliases": ["Rockford"], "models": ["48K", "128K"],
+      "sha256": ["C6482F7FC5C88EA67AF7EB9D2962178D9FB79CC4BE9375D042734B5941DC0F2B"],
+      "pokes": [
+        { "id": "infinite-lives", "name": "Infinite lives", "description": "Prevents life loss.", "writes": [{ "space": "mapped", "address": "57048", "value": "0" }] },
+        { "id": "infinite-time", "name": "Infinite time", "description": "Stops the timer.", "writes": [{ "space": "mapped", "address": "56926", "value": "0" }] }
+      ]
+    },
+    {
+      "id": "sabrina", "title": "Sabrina", "aliases": ["sabrina"], "models": ["48K", "128K"],
+      "sha256": ["5096B84E2653E4C0E09E67FC667848E1132F2EC8A5A84866550D4272237E19A9"],
+      "pokes": [{ "id": "infinite-lives", "name": "Infinite lives", "description": "Prevents life loss.", "writes": [{ "space": "mapped", "address": "28738", "value": "0" }] }]
+    },
+    {
+      "id": "the-way-of-the-exploding-fist", "title": "The Way of the Exploding Fist", "aliases": ["fist", "Exploding Fist"], "models": ["48K", "128K"],
+      "sha256": ["B9F8983D4F2B06AE229209F1B95DA5EF4C410D1A0AA4612D09232EF84671C5BE"],
+      "pokes": [{ "id": "maximum-time", "name": "Maximum time", "description": "Sets the round timer value to 255.", "writes": [{ "space": "mapped", "address": "44793", "value": "255" }] }]
+    },
+    {
+      "id": "uridium", "title": "Uridium", "aliases": ["Uridium"], "models": ["48K", "128K"],
+      "sha256": ["E34F14C8C20891A1BFAFEF780F173C3C149F2C2BB54B47DDF32C368526E59C2F"],
+      "pokes": [
+        { "id": "infinite-lives", "name": "Infinite lives", "description": "Prevents life loss.", "writes": [{ "space": "mapped", "address": "31307", "value": "33" }] },
+        { "id": "immunity", "name": "Immunity", "description": "Disables the principal collision-damage path.", "writes": [
+          { "space": "mapped", "address": "55419", "value": "0" }, { "space": "mapped", "address": "55420", "value": "255" }
+        ] }
+      ]
+    },
+    {
+      "id": "wec-le-mans", "title": "WEC Le Mans", "aliases": ["lemans", "WEC Le Mans"], "models": ["48K", "128K"],
+      "sha256": ["736115BA2388DB5841C9113B491C896E0B322EA508268F5EFC56C2F2E7BA3F0B"],
+      "pokes": [{ "id": "infinite-time", "name": "Infinite time", "description": "Prevents the race timer from expiring.", "writes": [{ "space": "mapped", "address": "33249", "value": "195" }] }]
+    },
+    {
+      "id": "who-dares-wins-ii", "title": "Who Dares Wins II", "aliases": ["who_dare", "Who Dares Wins"], "models": ["48K", "128K"],
+      "sha256": ["381E66EE4CF09B7399400EA664B7DBC1B4648BEA39F5C40583DE70C71C770E79"],
+      "pokes": [
+        { "id": "infinite-lives", "name": "Infinite lives", "description": "Prevents life loss.", "writes": [{ "space": "mapped", "address": "50833", "value": "0" }] },
+        { "id": "infinite-grenades", "name": "Infinite grenades", "description": "Prevents grenades from being consumed.", "writes": [{ "space": "mapped", "address": "51847", "value": "0" }] }
+      ]
+    },
+    {
+      "id": "cybernoid", "title": "Cybernoid: The Fighting Machine", "aliases": ["Cybernoid", "Cybernoid_The_Fighting_Machine"], "models": ["48K", "128K"],
+      "sha256": [
+        "5942293C712F2E70EE81AAFC436FDF69CCC339A98F3A22CBF965FF4A9AC334B8",
+        "1B26D0CA8B5F5ECB968A5AC8525E98424174952BB6B5035E225B85981A7A1BBF"
+      ],
+      "pokes": [
+        { "id": "infinite-lives", "name": "Infinite lives", "description": "Prevents life loss.", "writes": [{ "space": "mapped", "address": "36687", "value": "0" }] },
+        { "id": "infinite-shields", "name": "Infinite shields", "description": "Prevents shields from being consumed.", "writes": [{ "space": "mapped", "address": "31818", "value": "0" }] },
+        { "id": "no-sound", "name": "No sound", "description": "Disables the game's sound routine.", "writes": [{ "space": "mapped", "address": "61683", "value": "201" }] },
+        { "id": "immunity", "name": "Immunity", "description": "Bypasses the principal damage path.", "writes": [{ "space": "mapped", "address": "36571", "value": "201" }] },
+        { "id": "no-enemies", "name": "No enemies", "description": "Disables the main enemy-generation paths.", "writes": [
+          { "space": "mapped", "address": "36055", "value": "201" }, { "space": "mapped", "address": "39784", "value": "201" }
+        ] },
+        { "id": "no-guns", "name": "No guns", "description": "Disables enemy guns.", "writes": [
+          { "space": "mapped", "address": "34732", "value": "201" }, { "space": "mapped", "address": "36156", "value": "201" }
+        ] },
+        { "id": "no-tunnel-aliens", "name": "No tunnel aliens", "description": "Disables tunnel aliens.", "writes": [{ "space": "mapped", "address": "36928", "value": "201" }] },
+        { "id": "no-snakes", "name": "No snakes", "description": "Disables snakes.", "writes": [{ "space": "mapped", "address": "37479", "value": "201" }] },
+        { "id": "no-rockets", "name": "No enemy rockets", "description": "Disables enemy rockets.", "writes": [{ "space": "mapped", "address": "38896", "value": "201" }] },
+        { "id": "no-flying-aliens", "name": "No flying aliens", "description": "Disables flying aliens.", "writes": [{ "space": "mapped", "address": "39906", "value": "201" }] },
+        { "id": "infinite-weapons", "name": "Infinite weapons", "description": "Prevents special weapons from being consumed.", "writes": [{ "space": "mapped", "address": "31799", "value": "0" }] },
+        { "id": "immediate-backshot", "name": "Immediate backshot", "description": "Makes the backshot available immediately.", "writes": [{ "space": "mapped", "address": "27374", "value": "1" }] },
+        { "id": "infinite-backshot", "name": "Infinite backshot", "description": "Prevents the backshot from expiring.", "writes": [{ "space": "mapped", "address": "36680", "value": "0" }] },
+        { "id": "eternal-satellite", "name": "Eternal satellite", "description": "Prevents the satellite from expiring.", "writes": [{ "space": "mapped", "address": "36683", "value": "0" }] },
+        { "id": "99-lives", "name": "99 lives", "description": "Sets the starting life count to 99.", "writes": [{ "space": "mapped", "address": "25941", "value": "99" }] }
+      ]
+    },
+    {
+      "id": "donkey-kong-ocean", "title": "Donkey Kong", "aliases": ["DONKKONG", "Donkey Kong"], "models": ["48K", "128K"],
+      "sha256": ["6326A8AE6EA379D3413392E3568A71CCC0AA51B54208B3E700100CF5B2A9CAAE"],
+      "pokes": [{ "id": "infinite-lives", "name": "Infinite lives", "description": "Prevents life loss.", "writes": [{ "space": "mapped", "address": "33371", "value": "0" }] }]
+    },
+    {
+      "id": "pac-land", "title": "Pac-Land", "aliases": ["Pacland", "Pac-Land"], "models": ["48K", "128K"],
+      "sha256": ["8C337A42DF65B8FCE37DB4D2E1B70978C5537DD6FC31DCA6BFD541E7461C87B4"],
+      "pokes": [{ "id": "infinite-lives", "name": "Infinite lives (both players)", "description": "Prevents life loss for both players.", "writes": [{ "space": "mapped", "address": "35294", "value": "0" }] }]
+    },
+    {
+      "id": "auf-wiedersehen-monty", "title": "Auf Wiedersehen Monty", "aliases": ["Auf_Wiedersehen_Monty", "aufmonty"], "models": ["48K", "128K"],
+      "sha256": [
+        "839DE7D320F7496190CE17433FBAC126B95243568F75865DC5DCB2392465B680",
+        "9B832F663FC32CF0BA9839A701E848446E0A5526E3C97B89AEFAF756A95FF5EF"
+      ],
+      "pokes": [
+        { "id": "infinite-lives", "name": "Infinite lives", "description": "Prevents life loss.", "writes": [{ "space": "mapped", "address": "41139", "value": "0" }] },
+        { "id": "harmless-aliens", "name": "Harmless aliens", "description": "Makes contact with aliens harmless.", "writes": [{ "space": "mapped", "address": "42160", "value": "201" }] },
+        { "id": "no-crushers", "name": "No crushers", "description": "Disables the crushers.", "writes": [{ "space": "mapped", "address": "47715", "value": "201" }] },
+        { "id": "harmless-water", "name": "Harmless water", "description": "Makes water harmless.", "writes": [{ "space": "mapped", "address": "37002", "value": "0" }] }
+      ]
+    },
+    {
+      "id": "cauldron", "title": "Cauldron", "aliases": ["Cauldron"], "models": ["48K", "128K"],
+      "sha256": ["6BB88FA704DFB7B092B4A8CA2F339FAA1DAF3C4AE38088F026A8ABE0AF8D5D50"],
+      "pokes": [
+        { "id": "infinite-lives", "name": "Infinite lives", "description": "Prevents life loss except from falls inside buildings.", "writes": [{ "space": "mapped", "address": "40060", "value": "0" }] },
+        { "id": "infinite-hags", "name": "Infinite hags", "description": "Prevents the hags supply from running out; the displayed counter may still decrease.", "writes": [{ "space": "mapped", "address": "40055", "value": "0" }] },
+        { "id": "infinite-magic", "name": "Infinite magic", "description": "Prevents both magic-use paths from consuming magic.", "writes": [
+          { "space": "mapped", "address": "28602", "value": "0" }, { "space": "mapped", "address": "34756", "value": "0" }
+        ] }
+      ]
+    },
+    {
+      "id": "cliffhanger", "title": "Cliff Hanger", "aliases": ["Cliff Hanger", "Cliffhanger"], "models": ["48K", "128K"],
+      "sha256": ["B6A631A1519248ABFC688E0C8250A7AAA9173C4C46F30D98289FB1E8E6115B36"],
+      "pokes": [{ "id": "99-lives", "name": "99 lives", "description": "Sets the life counter to 99.", "writes": [{ "space": "mapped", "address": "26515", "value": "99" }] }]
+    },
+    {
+      "id": "contact-sam-cruise", "title": "Contact Sam Cruise", "aliases": ["contact sam cruise", "Contact Sam Cruise"], "models": ["48K", "128K"],
+      "sha256": ["A7733CB22307048406BA9F83FB991239B752F58A136D2A4BD1A247AB6443EFCB"],
+      "pokes": [{ "id": "infinite-money", "name": "Infinite money", "description": "Prevents money from running out.", "writes": [{ "space": "mapped", "address": "28309", "value": "33" }] }]
+    },
+    {
+      "id": "jet-set-willy", "title": "Jet Set Willy", "aliases": ["JETSETW1", "Jet Set Willy"], "models": ["48K", "128K"],
+      "sha256": ["2FAA7D46FABD4DB94D30582A2F3ECAF14CB2F3A2B24D55750D0E97181424ED17"],
+      "pokes": [
+        { "id": "infinite-lives", "name": "Infinite lives", "description": "Prevents life loss.", "writes": [{ "space": "mapped", "address": "35899", "value": "0" }] },
+        { "id": "infinite-energy", "name": "Infinite energy", "description": "Prevents energy loss. Do not combine with No death from falls.", "writes": [{ "space": "mapped", "address": "36477", "value": "0" }] },
+        { "id": "no-enemies", "name": "No enemies", "description": "Removes enemies, substantially changing the game.", "writes": [{ "space": "mapped", "address": "35123", "value": "3" }] },
+        { "id": "collect-all-items", "name": "No items required", "description": "Sets the remaining-item requirement to zero.", "writes": [{ "space": "mapped", "address": "37874", "value": "0" }] },
+        { "id": "walk-through-monsters", "name": "Walk through monsters", "description": "Disables both monster-collision paths.", "writes": [
+          { "space": "mapped", "address": "37982", "value": "0" }, { "space": "mapped", "address": "37994", "value": "0" }
+        ] },
+        { "id": "survive-falls", "name": "No death from falls", "description": "Allows long falls. Do not combine with Infinite energy.", "writes": [{ "space": "mapped", "address": "36477", "value": "1" }] },
+        { "id": "remove-maria", "name": "Maria disappears", "description": "Removes Maria from the end-game room.", "writes": [{ "space": "mapped", "address": "38240", "value": "0" }] },
+        { "id": "no-g-force", "name": "No G-force", "description": "Disables the G-force restriction.", "writes": [{ "space": "mapped", "address": "36358", "value": "0" }] },
+        { "id": "wall-jumps", "name": "Jump up some walls", "description": "Enables jumping up selected walls.", "writes": [{ "space": "mapped", "address": "36353", "value": "60" }] },
+        { "id": "stop-horizontal-enemies", "name": "Stop horizontal enemies", "description": "Stops horizontal enemy movement.", "writes": [
+          { "space": "mapped", "address": "37203", "value": "0" }, { "space": "mapped", "address": "37438", "value": "0" }
+        ] }
+      ]
+    },
+    {
+      "id": "roller-coaster", "title": "Roller Coaster", "aliases": ["Roller Coaster"], "models": ["48K", "128K"],
+      "sha256": ["385E4773BF8551E1C836CCF4701F6162AF39DBC23C2A9F48268A18552E4E44FD"],
+      "pokes": [{ "id": "infinite-lives", "name": "Infinite lives", "description": "Prevents life loss.", "writes": [{ "space": "mapped", "address": "36595", "value": "182" }] }]
+    },
+    {
+      "id": "space-harrier", "title": "Space Harrier", "aliases": ["Space Harrier"], "models": ["48K", "128K"],
+      "sha256": [
+        "1CD19812F3869C240758B8FF2FE95D65868E17DED7B492288F3EA395EB7C5BCF",
+        "B955246B43D9966463E6277D5689A4727C0C04CDD9410EED076A32CBAC3E9B8D"
+      ],
+      "pokes": [
+        { "id": "99-lives", "name": "99 lives", "description": "Sets the life counter to 99.", "writes": [{ "space": "mapped", "address": "41499", "value": "99" }] },
+        { "id": "infinite-lives", "name": "Infinite lives", "description": "Prevents life loss.", "writes": [{ "space": "mapped", "address": "46551", "value": "0" }] }
+      ]
+    },
+    {
+      "id": "starglider", "title": "Starglider", "aliases": ["starglid", "Starglider"], "models": ["48K", "128K"],
+      "sha256": ["F6F87F090D091F645B0D746D442B54197C6D7B93AB60AAA94EB0263C26D0ACBD"],
+      "pokes": [
+        { "id": "infinite-fuel", "name": "Infinite fuel", "description": "Prevents fuel depletion.", "writes": [{ "space": "mapped", "address": "54647", "value": "201" }] },
+        { "id": "infinite-shields", "name": "Infinite shields", "description": "Prevents shield depletion.", "writes": [{ "space": "mapped", "address": "54690", "value": "201" }] }
+      ]
+    },
+    {
+      "id": "starquake", "title": "Starquake", "aliases": ["starquake"], "models": ["48K", "128K"],
+      "sha256": ["33F38C4876BE3C28E4DE4E84BDCEA9F28116F3DA1934E54DA630792E0BEBA1BE"],
+      "pokes": [
+        { "id": "infinite-lives", "name": "Infinite lives", "description": "Prevents life loss.", "writes": [{ "space": "mapped", "address": "50274", "value": "0" }] },
+        { "id": "infinite-energy", "name": "Infinite energy", "description": "Prevents energy depletion.", "writes": [{ "space": "mapped", "address": "54505", "value": "201" }] },
+        { "id": "no-rays", "name": "No rays", "description": "Disables harmful rays.", "writes": [{ "space": "mapped", "address": "42604", "value": "201" }] },
+        { "id": "no-aliens", "name": "No aliens", "description": "Disables aliens.", "writes": [{ "space": "mapped", "address": "40956", "value": "201" }] },
+        { "id": "immunity", "name": "Immunity", "description": "Patches both principal damage paths.", "writes": [
+          { "space": "mapped", "address": "50000", "value": "201" }, { "space": "mapped", "address": "52857", "value": "24" }
+        ] },
+        { "id": "no-key-required", "name": "No key required", "description": "Allows progress without collecting the key.", "writes": [{ "space": "mapped", "address": "52878", "value": "24" }] },
+        { "id": "infinite-powers", "name": "Infinite powers", "description": "Provides infinite energy, laser power, and climbing pads.", "writes": [{ "space": "mapped", "address": "54303", "value": "201" }] },
+        { "id": "card-for-cheops", "name": "Card for Cheops", "description": "Provides the access card for Cheops.", "writes": [{ "space": "mapped", "address": "52516", "value": "33" }] },
+        { "id": "open-security-door", "name": "Open security door", "description": "Bypasses the security door check.", "writes": [{ "space": "mapped", "address": "52273", "value": "62" }] }
+      ]
+    },
+    {
+      "id": "star-wars", "title": "Star Wars", "aliases": ["starwars", "Star Wars"], "models": ["48K", "128K"],
+      "sha256": ["7B0D59FBA45D435D3C15032A1BB5591B45D152A8CA155BEC052E3CD8B6621136"],
+      "pokes": [{ "id": "infinite-shields", "name": "Infinite shields", "description": "Prevents shield depletion.", "writes": [{ "space": "mapped", "address": "45268", "value": "0" }] }]
+    },
+    {
+      "id": "xevious", "title": "Xevious", "aliases": ["Xevious"], "models": ["48K", "128K"],
+      "sha256": ["656D4B53272BF5714CF3D588805B8196E32BB71812F841C1BA17B7A09BD4CF03"],
+      "pokes": [{ "id": "infinite-lives", "name": "Infinite lives", "description": "Prevents life loss.", "writes": [{ "space": "mapped", "address": "53756", "value": "58" }] }]
+    },
+    {
+      "id": "xenon", "title": "Xenon", "aliases": ["xenon"], "models": ["48K", "128K"],
+      "sha256": ["47447FB9F3523E6F3BD019B9CCB7A2D9FB70E4316843BEF801B5786C342DB841"],
+      "pokes": [
+        { "id": "infinite-lives", "name": "Infinite lives", "description": "Prevents life loss.", "writes": [{ "space": "mapped", "address": "25029", "value": "182" }] },
+        { "id": "infinite-energy", "name": "Infinite energy", "description": "Prevents energy depletion.", "writes": [{ "space": "mapped", "address": "25004", "value": "0" }] }
+      ]
+    }
+  ]
 }

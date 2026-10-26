@@ -8,6 +8,9 @@ namespace Spectrum128kEmulator
         private static readonly Color Paper = Color.FromArgb(239, 238, 228);
         private static readonly Color Accent = Color.FromArgb(23, 151, 126);
         private static readonly Color Warning = Color.FromArgb(190, 112, 26);
+        private static readonly Color MatchPaper = Color.FromArgb(222, 240, 232);
+        private static readonly Color SuggestionPaper = Color.FromArgb(248, 235, 215);
+        private static readonly Color BrowsePaper = Color.FromArgb(224, 224, 214);
 
         private readonly Func<IReadOnlyList<PokeWrite>, IReadOnlyList<PokeWritePreview>> previewWrites;
         private readonly Func<IReadOnlyList<PokeWrite>, PokeApplication> applyWrites;
@@ -18,7 +21,13 @@ namespace Spectrum128kEmulator
         private readonly List<PokeWrite> pendingWrites = [];
 
         private readonly ComboBox gameSelector = new() { Name = "PokeGameSelector", DropDownStyle = ComboBoxStyle.DropDownList };
-        private readonly CheckedListBox pokeList = new() { Name = "PokeList", CheckOnClick = true, IntegralHeight = false };
+        private readonly CheckedListBox pokeList = new()
+        {
+            Name = "PokeList",
+            CheckOnClick = true,
+            IntegralHeight = false,
+            DisplayMember = nameof(PokeDefinition.Name)
+        };
         private readonly Label matchLabel = new() { Name = "PokeMatchLabel", AutoSize = false };
         private readonly Label descriptionLabel = new() { Name = "PokeDescription", AutoSize = false };
         private readonly ListView libraryPreview = CreatePreviewList("PokeLibraryPreview");
@@ -131,8 +140,7 @@ namespace Spectrum128kEmulator
 
             var gameLabel = new Label { Text = "GAME", Dock = DockStyle.Top, Height = 18, Font = BoldFont() };
             var gamePanel = new Panel { Dock = DockStyle.Fill };
-            gameSelector.SetBounds(0, 19, 350, 26);
-            gameSelector.Anchor = AnchorStyles.Left | AnchorStyles.Right | AnchorStyles.Top;
+            gameSelector.Dock = DockStyle.Bottom;
             gamePanel.Controls.Add(gameSelector);
             gamePanel.Controls.Add(gameLabel);
             layout.Controls.Add(gamePanel, 0, 0);
@@ -140,7 +148,8 @@ namespace Spectrum128kEmulator
 
             matchLabel.Dock = DockStyle.Fill;
             matchLabel.Padding = new Padding(8, 7, 8, 4);
-            matchLabel.BackColor = Color.FromArgb(224, 224, 214);
+            matchLabel.BackColor = BrowsePaper;
+            matchLabel.BorderStyle = BorderStyle.FixedSingle;
             layout.Controls.Add(matchLabel, 0, 1);
             layout.SetColumnSpan(matchLabel, 2);
 
@@ -226,11 +235,13 @@ namespace Spectrum128kEmulator
         private void PopulateGames()
         {
             gameSelector.Items.Clear();
+            gameSelector.Items.Add("Choose a game...");
             foreach (PokeGameMatch match in matches)
                 gameSelector.Items.Add(new GameChoice(match));
 
-            if (gameSelector.Items.Count == 0)
+            if (matches.Count == 0)
             {
+                gameSelector.Items.Clear();
                 gameSelector.Enabled = false;
                 matchLabel.Text = "The library contains no entries compatible with this machine model. One-off writes remain available.";
                 pokeList.Enabled = false;
@@ -238,14 +249,28 @@ namespace Spectrum128kEmulator
                 return;
             }
 
-            gameSelector.SelectedIndex = 0;
+            int recommendedIndex = matches
+                .Select((match, index) => (match, index))
+                .Where(item => item.match.Kind != PokeMatchKind.None)
+                .Select(item => item.index + 1)
+                .DefaultIfEmpty(0)
+                .First();
+            gameSelector.SelectedIndex = recommendedIndex;
         }
 
         private void PopulatePokes()
         {
             pokeList.Items.Clear();
             if (gameSelector.SelectedItem is not GameChoice choice)
+            {
+                descriptionLabel.Text = "Choose a library game to inspect its available pokes.";
+                libraryPreview.Items.Clear();
+                applyLibraryButton.Enabled = false;
+                matchLabel.Text = "No matching game found  |  Choose a library entry to browse its pokes.";
+                matchLabel.ForeColor = Color.DimGray;
+                matchLabel.BackColor = BrowsePaper;
                 return;
+            }
 
             foreach (PokeDefinition poke in choice.Match.Game.Pokes)
                 pokeList.Items.Add(poke);
@@ -254,15 +279,21 @@ namespace Spectrum128kEmulator
 
             matchLabel.Text = choice.Match.Kind switch
             {
-                PokeMatchKind.ExactChecksum => "EXACT MEDIA MATCH: checksum and machine model match this library entry.",
-                PokeMatchKind.Alias => "FILENAME SUGGESTION ONLY: confirm the game version before applying a poke.",
-                _ => "LIBRARY BROWSE: this entry is not matched to the currently loaded media."
+                PokeMatchKind.ExactChecksum => "Exact game match  |  Verified by media checksum and machine model.",
+                PokeMatchKind.Alias => "Filename suggestion  |  Confirm the game version before applying a poke.",
+                _ => "Library entry  |  Not matched to the currently loaded media."
             };
             matchLabel.ForeColor = choice.Match.Kind switch
             {
                 PokeMatchKind.ExactChecksum => Accent,
                 PokeMatchKind.Alias => Warning,
                 _ => Color.DimGray
+            };
+            matchLabel.BackColor = choice.Match.Kind switch
+            {
+                PokeMatchKind.ExactChecksum => MatchPaper,
+                PokeMatchKind.Alias => SuggestionPaper,
+                _ => BrowsePaper
             };
             RefreshDescription();
             RefreshLibraryPreview();
@@ -475,12 +506,7 @@ namespace Spectrum128kEmulator
 
         private sealed record GameChoice(PokeGameMatch Match)
         {
-            public override string ToString() => Match.Kind switch
-            {
-                PokeMatchKind.ExactChecksum => $"[MATCH] {Match.Game.Title}",
-                PokeMatchKind.Alias => $"[NAME] {Match.Game.Title}",
-                _ => Match.Game.Title
-            };
+            public override string ToString() => Match.Game.Title;
         }
     }
 }
