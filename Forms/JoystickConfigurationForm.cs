@@ -4,51 +4,23 @@ namespace Spectrum128kEmulator
 {
     public sealed class JoystickConfigurationForm : Form
     {
-        private readonly ComboBox emulatedInterface = CreateSelector();
-        private readonly ComboBox horizontalAxis = CreateSelector();
-        private readonly ComboBox verticalAxis = CreateSelector();
-        private readonly ComboBox hatSwitch = CreateSelector();
-        private readonly ComboBox fireButton = CreateSelector();
-        private readonly TrackBar deadZone = new()
-        {
-            Minimum = 0,
-            Maximum = 95,
-            SmallChange = 5,
-            LargeChange = 10,
-            TickFrequency = 10,
-            AutoSize = false,
-            Height = 30,
-            Dock = DockStyle.Fill
-        };
-        private readonly Label deadZoneValue = new()
-        {
-            AutoSize = false,
-            Width = 48,
-            TextAlign = ContentAlignment.MiddleRight
-        };
-        private readonly Label livePreview = new()
-        {
-            Dock = DockStyle.Fill,
-            TextAlign = ContentAlignment.MiddleCenter,
-            Font = EmulatorUiStyle.UiFont(9F, FontStyle.Bold),
-            ForeColor = EmulatorUiStyle.Muted,
-            BackColor = EmulatorUiStyle.Panel,
-            Text = "Waiting for controller input..."
-        };
+        private readonly ControllerEditor controller1;
+        private readonly ControllerEditor controller2;
         private readonly IHostJoystickSource? source;
-        private readonly string? preferredDeviceId;
+        private readonly IReadOnlyList<HostJoystickDevice> devices;
         private readonly System.Windows.Forms.Timer previewTimer = new() { Interval = 75 };
 
         public JoystickConfigurationForm(
-            HostJoystickMapping mapping,
-            SpectrumJoystickInterface joystickInterface,
-            HostJoystickDevice? device,
-            IHostJoystickSource? source = null,
-            string? preferredDeviceId = null)
+            HostJoystickChannelSettings controller1Settings,
+            HostJoystickChannelSettings controller2Settings,
+            IReadOnlyList<HostJoystickDevice> devices,
+            IHostJoystickSource? source = null)
         {
-            ArgumentNullException.ThrowIfNull(mapping);
+            ArgumentNullException.ThrowIfNull(controller1Settings);
+            ArgumentNullException.ThrowIfNull(controller2Settings);
+            ArgumentNullException.ThrowIfNull(devices);
             this.source = source;
-            this.preferredDeviceId = preferredDeviceId;
+            this.devices = devices;
 
             Text = "Joystick Configuration";
             StartPosition = FormStartPosition.CenterParent;
@@ -56,30 +28,24 @@ namespace Spectrum128kEmulator
             MaximizeBox = false;
             MinimizeBox = false;
             ShowInTaskbar = false;
-            ClientSize = new Size(520, 485);
+            ClientSize = new Size(940, 570);
             EmulatorUiStyle.ApplyForm(this);
 
-            PopulateInterfaceSelector(emulatedInterface, joystickInterface);
-            PopulateSelector(horizontalAxis, "Axis", device?.AxisCount ?? -1, mapping.HorizontalAxis, allowUnassigned: false);
-            PopulateSelector(verticalAxis, "Axis", device?.AxisCount ?? -1, mapping.VerticalAxis, allowUnassigned: false);
-            PopulateSelector(hatSwitch, "Hat", device?.SwitchCount ?? -1, mapping.HatSwitch, allowUnassigned: true);
-            PopulateSelector(fireButton, "Button", device?.ButtonCount ?? -1, mapping.FireButton, allowUnassigned: true);
-            deadZone.Value = (int)Math.Round(Math.Clamp(mapping.DeadZone, 0.0, 0.95) * 100.0);
-            UpdateDeadZoneLabel();
+            controller1 = new ControllerEditor("Controller 1", controller1Settings, devices);
+            controller2 = new ControllerEditor("Controller 2", controller2Settings, devices);
 
             var root = new TableLayoutPanel
             {
                 Dock = DockStyle.Fill,
                 Padding = new Padding(18, 16, 18, 14),
                 ColumnCount = 1,
-                RowCount = 6,
+                RowCount = 5,
                 BackColor = BackColor
             };
             root.RowStyles.Add(new RowStyle(SizeType.AutoSize));
             root.RowStyles.Add(new RowStyle(SizeType.AutoSize));
-            root.RowStyles.Add(new RowStyle(SizeType.Absolute, 245));
-            root.RowStyles.Add(new RowStyle(SizeType.Absolute, 70));
             root.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
+            root.RowStyles.Add(new RowStyle(SizeType.AutoSize));
             root.RowStyles.Add(new RowStyle(SizeType.AutoSize));
 
             root.Controls.Add(new Label
@@ -92,70 +58,35 @@ namespace Spectrum128kEmulator
             }, 0, 0);
             root.Controls.Add(new Label
             {
-                Text = device == null
-                    ? "No controller is currently detected. These choices will be retained for the next device."
-                    : $"{device.DisplayName}  |  {device.AxisCount} axes  |  {device.SwitchCount} hats  |  {device.ButtonCount} buttons",
+                Text = "Assign up to two USB controllers. Automatic selection uses the first unclaimed device for each enabled controller.",
                 AutoSize = true,
                 ForeColor = EmulatorUiStyle.Muted,
-                MaximumSize = new Size(475, 0),
                 Margin = new Padding(0, 0, 0, 12)
             }, 0, 1);
 
-            var mappingGroup = new GroupBox
-            {
-                Text = "Control mapping",
-                Dock = DockStyle.Fill,
-                Padding = new Padding(12, 8, 12, 10),
-                Margin = new Padding(0, 0, 0, 10)
-            };
-            EmulatorUiStyle.StyleGroup(mappingGroup);
-            var mappingLayout = new TableLayoutPanel
+            var editors = new TableLayoutPanel
             {
                 Dock = DockStyle.Fill,
                 ColumnCount = 2,
-                RowCount = 6
-            };
-            mappingLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50));
-            mappingLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50));
-            AddRow(mappingLayout, 0, "Spectrum interface", emulatedInterface);
-            AddRow(mappingLayout, 1, "Left / right", horizontalAxis);
-            AddRow(mappingLayout, 2, "Up / down", verticalAxis);
-            AddRow(mappingLayout, 3, "D-pad / hat", hatSwitch);
-            AddRow(mappingLayout, 4, "Fire", fireButton);
-
-            var deadZonePanel = new TableLayoutPanel
-            {
-                Dock = DockStyle.Fill,
-                ColumnCount = 2,
+                RowCount = 1,
                 Margin = Padding.Empty
             };
-            deadZonePanel.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
-            deadZonePanel.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 52));
-            deadZonePanel.Controls.Add(deadZone, 0, 0);
-            deadZonePanel.Controls.Add(deadZoneValue, 1, 0);
-            AddRow(mappingLayout, 5, "Axis dead zone", deadZonePanel);
-            mappingGroup.Controls.Add(mappingLayout);
-            root.Controls.Add(mappingGroup, 0, 2);
-
-            var previewGroup = new GroupBox
-            {
-                Text = "Live input preview",
-                Dock = DockStyle.Fill,
-                Padding = new Padding(8),
-                Margin = new Padding(0, 0, 0, 10)
-            };
-            EmulatorUiStyle.StyleGroup(previewGroup);
-            previewGroup.Controls.Add(livePreview);
-            root.Controls.Add(previewGroup, 0, 3);
+            editors.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50));
+            editors.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50));
+            controller1.Group.Margin = new Padding(0, 0, 7, 0);
+            controller2.Group.Margin = new Padding(7, 0, 0, 0);
+            editors.Controls.Add(controller1.Group, 0, 0);
+            editors.Controls.Add(controller2.Group, 1, 0);
+            root.Controls.Add(editors, 0, 2);
 
             root.Controls.Add(new Label
             {
-                Text = "Choose the interface expected by the game, then move the controller and press Fire to verify the mapping. Opposing directions cancel.",
+                Text = "For original dual-joystick support, assign one controller to Sinclair 1 and the other to Sinclair 2. A USB device or emulated interface can be claimed only once.",
                 AutoSize = true,
-                MaximumSize = new Size(475, 0),
+                MaximumSize = new Size(890, 0),
                 ForeColor = EmulatorUiStyle.Muted,
-                Margin = new Padding(0, 0, 0, 10)
-            }, 0, 4);
+                Margin = new Padding(0, 10, 0, 10)
+            }, 0, 3);
 
             var buttons = new FlowLayoutPanel
             {
@@ -165,13 +96,7 @@ namespace Spectrum128kEmulator
                 WrapContents = false,
                 Margin = Padding.Empty
             };
-            var ok = new Button
-            {
-                Text = "Save mapping",
-                DialogResult = DialogResult.OK,
-                AutoSize = true,
-                Padding = new Padding(8, 2, 8, 2)
-            };
+            var save = new Button { Text = "Save mappings", AutoSize = true, Padding = new Padding(8, 2, 8, 2) };
             var cancel = new Button
             {
                 Text = "Cancel",
@@ -179,45 +104,27 @@ namespace Spectrum128kEmulator
                 AutoSize = true,
                 Padding = new Padding(8, 2, 8, 2)
             };
-            EmulatorUiStyle.StyleButton(ok, primary: true);
+            EmulatorUiStyle.StyleButton(save, primary: true);
             EmulatorUiStyle.StyleButton(cancel);
-            buttons.Controls.Add(ok);
+            save.Click += (_, _) => SaveIfValid();
+            buttons.Controls.Add(save);
             buttons.Controls.Add(cancel);
-            root.Controls.Add(buttons, 0, 5);
+            root.Controls.Add(buttons, 0, 4);
 
-            AcceptButton = ok;
+            AcceptButton = save;
             CancelButton = cancel;
             Controls.Add(root);
 
-            deadZone.ValueChanged += (_, _) =>
-            {
-                UpdateDeadZoneLabel();
-                UpdateLivePreview();
-            };
-            emulatedInterface.SelectedIndexChanged += (_, _) => UpdateLivePreview();
-            horizontalAxis.SelectedIndexChanged += (_, _) => UpdateLivePreview();
-            verticalAxis.SelectedIndexChanged += (_, _) => UpdateLivePreview();
-            hatSwitch.SelectedIndexChanged += (_, _) => UpdateLivePreview();
-            fireButton.SelectedIndexChanged += (_, _) => UpdateLivePreview();
-            previewTimer.Tick += (_, _) => UpdateLivePreview();
+            previewTimer.Tick += (_, _) => UpdateLivePreviews();
             Shown += (_, _) =>
             {
-                UpdateLivePreview();
+                UpdateLivePreviews();
                 previewTimer.Start();
             };
         }
 
-        public HostJoystickMapping SelectedMapping => new(
-            GetSelectedValue(horizontalAxis),
-            GetSelectedValue(verticalAxis),
-            GetSelectedValue(hatSwitch),
-            GetSelectedValue(fireButton),
-            deadZone.Value / 100.0);
-
-        public SpectrumJoystickInterface SelectedInterface =>
-            emulatedInterface.SelectedItem is InterfaceChoice choice
-                ? choice.Value
-                : SpectrumJoystickInterface.Kempston;
+        public HostJoystickChannelSettings Controller1Settings => controller1.Settings;
+        public HostJoystickChannelSettings Controller2Settings => controller2.Settings;
 
         protected override void Dispose(bool disposing)
         {
@@ -226,42 +133,230 @@ namespace Spectrum128kEmulator
             base.Dispose(disposing);
         }
 
-        private void UpdateDeadZoneLabel() => deadZoneValue.Text = $"{deadZone.Value}%";
-
-        private void UpdateLivePreview()
+        private void SaveIfValid()
         {
-            if (source == null || !source.TryRead(preferredDeviceId, out HostJoystickReading reading))
+            HostJoystickChannelSettings first = Controller1Settings;
+            HostJoystickChannelSettings second = Controller2Settings;
+            if (first.Enabled && second.Enabled && first.EffectiveInterface == second.EffectiveInterface)
             {
-                livePreview.Text = "NO CONTROLLER INPUT";
-                livePreview.ForeColor = EmulatorUiStyle.Muted;
-                livePreview.BackColor = EmulatorUiStyle.Panel;
+                MessageBox.Show(
+                    this,
+                    "Controller 1 and Controller 2 must use different Spectrum interfaces.",
+                    "Joystick Configuration",
+                    MessageBoxButtons.OK,
+                    MessageBoxIcon.Information);
                 return;
             }
 
-            SpectrumJoystickState state = HostJoystickMapper.Map(reading, SelectedMapping);
-            livePreview.Text = $"{FormatInterface(SelectedInterface)}  |  {DescribeState(state)}";
-            bool active = state != SpectrumJoystickState.None;
-            livePreview.ForeColor = active ? EmulatorUiStyle.Accent : EmulatorUiStyle.Muted;
-            livePreview.BackColor = active ? EmulatorUiStyle.AccentSoft : EmulatorUiStyle.Panel;
+            HostJoystickDevice? firstDevice = FindMatchingDevice(devices, first.PreferredDeviceId);
+            HostJoystickDevice? secondDevice = FindMatchingDevice(devices, second.PreferredDeviceId);
+            if (first.Enabled && second.Enabled && firstDevice != null && secondDevice != null &&
+                firstDevice.Id == secondDevice.Id)
+            {
+                MessageBox.Show(
+                    this,
+                    "The same USB controller cannot be assigned to both controller slots.",
+                    "Joystick Configuration",
+                    MessageBoxButtons.OK,
+                    MessageBoxIcon.Information);
+                return;
+            }
+
+            DialogResult = DialogResult.OK;
+            Close();
         }
 
-        private static string DescribeState(SpectrumJoystickState state)
+        private void UpdateLivePreviews()
         {
-            if (state == SpectrumJoystickState.None)
-                return "CENTRED  |  FIRE RELEASED";
+            var claimed = new HashSet<string>(StringComparer.Ordinal);
+            string? firstDeviceId = ResolvePreviewDevice(controller1, claimed);
+            if (firstDeviceId != null)
+                claimed.Add(firstDeviceId);
+            string? secondDeviceId = ResolvePreviewDevice(controller2, claimed);
+            controller1.UpdateLivePreview(source, firstDeviceId);
+            controller2.UpdateLivePreview(source, secondDeviceId);
+        }
 
-            var parts = new List<string>();
-            if (state.HasFlag(SpectrumJoystickState.Left))
-                parts.Add("LEFT");
-            if (state.HasFlag(SpectrumJoystickState.Right))
-                parts.Add("RIGHT");
-            if (state.HasFlag(SpectrumJoystickState.Up))
-                parts.Add("UP");
-            if (state.HasFlag(SpectrumJoystickState.Down))
-                parts.Add("DOWN");
-            if (state.HasFlag(SpectrumJoystickState.Fire))
-                parts.Add("FIRE");
-            return string.Join("  +  ", parts);
+        private string? ResolvePreviewDevice(ControllerEditor editor, HashSet<string> claimed)
+        {
+            if (!editor.Enabled)
+                return null;
+            string? preferred = editor.PreferredDeviceId;
+            if (preferred != null)
+            {
+                HostJoystickDevice? preferredDevice = FindMatchingDevice(devices, preferred);
+                return preferredDevice != null && !claimed.Contains(preferredDevice.Id)
+                    ? preferredDevice.Id
+                    : null;
+            }
+            return devices.FirstOrDefault(device => !claimed.Contains(device.Id))?.Id;
+        }
+
+        private static HostJoystickDevice? FindMatchingDevice(
+            IReadOnlyList<HostJoystickDevice> devices,
+            string? preferredDeviceId) =>
+            preferredDeviceId == null
+                ? null
+                : devices.FirstOrDefault(device =>
+                    string.Equals(device.Id, preferredDeviceId, StringComparison.Ordinal) ||
+                    string.Equals(device.LegacyId, preferredDeviceId, StringComparison.Ordinal));
+
+        private sealed class ControllerEditor
+        {
+            private readonly CheckBox enabled = new() { Text = "Enabled", AutoSize = true };
+            private readonly ComboBox device = CreateSelector();
+            private readonly ComboBox emulatedInterface = CreateSelector();
+            private readonly ComboBox horizontalAxis = CreateSelector();
+            private readonly ComboBox verticalAxis = CreateSelector();
+            private readonly ComboBox hatSwitch = CreateSelector();
+            private readonly ComboBox fireButton = CreateSelector();
+            private readonly TrackBar deadZone = new()
+            {
+                Minimum = 0,
+                Maximum = 95,
+                SmallChange = 5,
+                LargeChange = 10,
+                TickFrequency = 10,
+                AutoSize = false,
+                Height = 30,
+                Dock = DockStyle.Fill
+            };
+            private readonly Label deadZoneValue = new()
+            {
+                AutoSize = false,
+                Width = 48,
+                TextAlign = ContentAlignment.MiddleRight
+            };
+            private readonly Label livePreview = new()
+            {
+                Dock = DockStyle.Fill,
+                TextAlign = ContentAlignment.MiddleCenter,
+                Font = EmulatorUiStyle.UiFont(9F, FontStyle.Bold),
+                ForeColor = EmulatorUiStyle.Muted,
+                BackColor = EmulatorUiStyle.Panel,
+                Text = "NO CONTROLLER INPUT"
+            };
+            private readonly IReadOnlyList<HostJoystickDevice> devices;
+
+            public ControllerEditor(
+                string title,
+                HostJoystickChannelSettings settings,
+                IReadOnlyList<HostJoystickDevice> devices)
+            {
+                this.devices = devices;
+                Group = new GroupBox
+                {
+                    Text = title,
+                    Dock = DockStyle.Fill,
+                    Padding = new Padding(12, 8, 12, 10)
+                };
+                EmulatorUiStyle.StyleGroup(Group);
+
+                enabled.Checked = settings.Enabled;
+                PopulateDeviceSelector(device, devices, settings.PreferredDeviceId);
+                PopulateInterfaceSelector(emulatedInterface, settings.EffectiveInterface);
+                PopulateMappingSelectors(settings.EffectiveMapping);
+                deadZone.Value = (int)Math.Round(Math.Clamp(settings.EffectiveMapping.DeadZone, 0.0, 0.95) * 100.0);
+                UpdateDeadZoneLabel();
+
+                var layout = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 2, RowCount = 9 };
+                layout.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 132));
+                layout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+                layout.Controls.Add(enabled, 0, 0);
+                layout.SetColumnSpan(enabled, 2);
+                AddRow(layout, 1, "USB device", device);
+                AddRow(layout, 2, "Spectrum interface", emulatedInterface);
+                AddRow(layout, 3, "Left / right", horizontalAxis);
+                AddRow(layout, 4, "Up / down", verticalAxis);
+                AddRow(layout, 5, "D-pad / hat", hatSwitch);
+                AddRow(layout, 6, "Fire", fireButton);
+
+                var deadZonePanel = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 2, Margin = Padding.Empty };
+                deadZonePanel.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+                deadZonePanel.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 52));
+                deadZonePanel.Controls.Add(deadZone, 0, 0);
+                deadZonePanel.Controls.Add(deadZoneValue, 1, 0);
+                AddRow(layout, 7, "Axis dead zone", deadZonePanel);
+                layout.Controls.Add(livePreview, 0, 8);
+                layout.SetColumnSpan(livePreview, 2);
+                Group.Controls.Add(layout);
+
+                enabled.CheckedChanged += (_, _) => UpdateEnabledState();
+                device.SelectedIndexChanged += (_, _) => RefreshMappingSelectors();
+                deadZone.ValueChanged += (_, _) => UpdateDeadZoneLabel();
+                UpdateEnabledState();
+            }
+
+            public GroupBox Group { get; }
+            public bool Enabled => enabled.Checked;
+            public string? PreferredDeviceId =>
+                device.SelectedItem is DeviceChoice choice ? choice.Id : null;
+            public HostJoystickChannelSettings Settings => new(
+                enabled.Checked,
+                PreferredDeviceId,
+                new HostJoystickMapping(
+                    GetSelectedValue(horizontalAxis),
+                    GetSelectedValue(verticalAxis),
+                    GetSelectedValue(hatSwitch),
+                    GetSelectedValue(fireButton),
+                    deadZone.Value / 100.0),
+                GetSelectedInterface());
+
+            public void UpdateLivePreview(IHostJoystickSource? source, string? resolvedDeviceId)
+            {
+                if (!Enabled)
+                {
+                    SetPreview("OFF", active: false);
+                    return;
+                }
+                if (source == null || resolvedDeviceId == null ||
+                    !source.TryRead(resolvedDeviceId, out HostJoystickReading reading))
+                {
+                    SetPreview("NO CONTROLLER INPUT", active: false);
+                    return;
+                }
+
+                SpectrumJoystickState state = HostJoystickMapper.Map(reading, Settings.EffectiveMapping);
+                SetPreview($"{FormatInterface(Settings.EffectiveInterface)}  |  {DescribeState(state)}", state != SpectrumJoystickState.None);
+            }
+
+            private void SetPreview(string text, bool active)
+            {
+                livePreview.Text = text;
+                livePreview.ForeColor = active ? EmulatorUiStyle.Accent : EmulatorUiStyle.Muted;
+                livePreview.BackColor = active ? EmulatorUiStyle.AccentSoft : EmulatorUiStyle.Panel;
+            }
+
+            private void UpdateEnabledState()
+            {
+                foreach (Control control in new Control[]
+                         { device, emulatedInterface, horizontalAxis, verticalAxis, hatSwitch, fireButton, deadZone })
+                    control.Enabled = enabled.Checked;
+            }
+
+            private void RefreshMappingSelectors()
+            {
+                HostJoystickMapping current = Settings.EffectiveMapping;
+                PopulateMappingSelectors(current);
+            }
+
+            private void PopulateMappingSelectors(HostJoystickMapping mapping)
+            {
+                HostJoystickDevice? selectedDevice = PreferredDeviceId == null
+                    ? devices.FirstOrDefault()
+                    : FindMatchingDevice(devices, PreferredDeviceId);
+                PopulateSelector(horizontalAxis, "Axis", selectedDevice?.AxisCount ?? -1, mapping.HorizontalAxis, false);
+                PopulateSelector(verticalAxis, "Axis", selectedDevice?.AxisCount ?? -1, mapping.VerticalAxis, false);
+                PopulateSelector(hatSwitch, "Hat", selectedDevice?.SwitchCount ?? -1, mapping.HatSwitch, true);
+                PopulateSelector(fireButton, "Button", selectedDevice?.ButtonCount ?? -1, mapping.FireButton, true);
+            }
+
+            private SpectrumJoystickInterface GetSelectedInterface() =>
+                emulatedInterface.SelectedItem is InterfaceChoice choice
+                    ? choice.Value
+                    : SpectrumJoystickInterface.Kempston;
+
+            private void UpdateDeadZoneLabel() => deadZoneValue.Text = $"{deadZone.Value}%";
         }
 
         private static ComboBox CreateSelector() => new()
@@ -272,14 +367,29 @@ namespace Spectrum128kEmulator
             DropDownHeight = 180
         };
 
+        private static void PopulateDeviceSelector(
+            ComboBox selector,
+            IReadOnlyList<HostJoystickDevice> devices,
+            string? selectedValue)
+        {
+            var choices = new List<DeviceChoice> { new("Automatic", null) };
+            choices.AddRange(devices.Select(device => new DeviceChoice(device.DisplayName, device.Id)));
+            HostJoystickDevice? selectedDevice = FindMatchingDevice(devices, selectedValue);
+            if (selectedValue != null && selectedDevice == null)
+                choices.Add(new DeviceChoice("Unavailable saved controller", selectedValue));
+            selector.Items.AddRange(choices.Cast<object>().ToArray());
+            string? normalizedSelection = selectedDevice?.Id ?? selectedValue;
+            selector.SelectedIndex = Math.Max(0, choices.FindIndex(choice => choice.Id == normalizedSelection));
+        }
+
         private static void PopulateInterfaceSelector(ComboBox selector, SpectrumJoystickInterface selectedValue)
         {
             InterfaceChoice[] choices =
             [
                 new("Kempston", SpectrumJoystickInterface.Kempston),
                 new("Cursor (keys 5, 8, 6, 7, 0)", SpectrumJoystickInterface.Cursor),
-                new("Interface II - Player 1 (keys 6-0)", SpectrumJoystickInterface.Sinclair1),
-                new("Interface II - Player 2 (keys 1-5)", SpectrumJoystickInterface.Sinclair2)
+                new("Sinclair 1 (keys 1-5; Interface II socket 2)", SpectrumJoystickInterface.SinclairKeys1To5),
+                new("Sinclair 2 (keys 6-0; Interface II socket 1)", SpectrumJoystickInterface.SinclairKeys6To0)
             ];
             selector.Items.AddRange(choices.Cast<object>().ToArray());
             int selectedIndex = Array.FindIndex(choices, choice => choice.Value == selectedValue);
@@ -289,10 +399,23 @@ namespace Spectrum128kEmulator
         private static string FormatInterface(SpectrumJoystickInterface joystickInterface) => joystickInterface switch
         {
             SpectrumJoystickInterface.Cursor => "CURSOR",
-            SpectrumJoystickInterface.Sinclair1 => "INTERFACE II P1",
-            SpectrumJoystickInterface.Sinclair2 => "INTERFACE II P2",
+            SpectrumJoystickInterface.SinclairKeys1To5 => "SINCLAIR 1",
+            SpectrumJoystickInterface.SinclairKeys6To0 => "SINCLAIR 2",
             _ => "KEMPSTON"
         };
+
+        private static string DescribeState(SpectrumJoystickState state)
+        {
+            if (state == SpectrumJoystickState.None)
+                return "CENTRED  |  FIRE RELEASED";
+            var parts = new List<string>();
+            if (state.HasFlag(SpectrumJoystickState.Left)) parts.Add("LEFT");
+            if (state.HasFlag(SpectrumJoystickState.Right)) parts.Add("RIGHT");
+            if (state.HasFlag(SpectrumJoystickState.Up)) parts.Add("UP");
+            if (state.HasFlag(SpectrumJoystickState.Down)) parts.Add("DOWN");
+            if (state.HasFlag(SpectrumJoystickState.Fire)) parts.Add("FIRE");
+            return string.Join("  +  ", parts);
+        }
 
         private static void PopulateSelector(
             ComboBox selector,
@@ -304,15 +427,11 @@ namespace Spectrum128kEmulator
             var choices = new List<MappingChoice>();
             if (allowUnassigned)
                 choices.Add(new MappingChoice("Not assigned", -1));
-
-            int count = availableCount >= 0
-                ? availableCount
-                : Math.Max(8, selectedValue + 1);
+            int count = availableCount >= 0 ? availableCount : Math.Max(8, selectedValue + 1);
             for (int index = 0; index < count; index++)
                 choices.Add(new MappingChoice($"{itemName} {index + 1}", index));
             if (choices.Count == 0)
                 choices.Add(new MappingChoice("Not available", -1));
-
             selector.Items.Clear();
             selector.Items.AddRange(choices.Cast<object>().ToArray());
             int selectedIndex = choices.FindIndex(choice => choice.Value == selectedValue);
@@ -334,6 +453,11 @@ namespace Spectrum128kEmulator
             control.Anchor = AnchorStyles.Left | AnchorStyles.Right;
             control.Margin = new Padding(8, 4, 0, 4);
             layout.Controls.Add(control, 1, row);
+        }
+
+        private sealed record DeviceChoice(string Label, string? Id)
+        {
+            public override string ToString() => Label;
         }
 
         private sealed record MappingChoice(string Label, int Value)

@@ -15,53 +15,96 @@ namespace Spectrum128kEmulator
             joystickMenuItem.DropDownItems.Clear();
             HostJoystickSettings settings = GetJoystickSettingsSnapshot();
             IReadOnlyList<HostJoystickDevice> devices = joystickSource.GetDevices();
+            polledJoystickDevices = devices;
+            nextJoystickDeviceRefreshTicks = frameClock.ElapsedTicks + System.Diagnostics.Stopwatch.Frequency;
 
-            var disabled = new ToolStripMenuItem("Off") { Checked = !settings.Enabled };
-            disabled.Click += (_, _) => SelectJoystick(enabled: false, preferredDeviceId: null);
-            joystickMenuItem.DropDownItems.Add(disabled);
+            AddControllerMenu("Controller 1", 1, settings.Controller1Settings, devices);
+            AddControllerMenu("Controller 2", 2, settings.Controller2Settings, devices);
+            joystickMenuItem.DropDownItems.Add(new ToolStripSeparator());
+            var configure = new ToolStripMenuItem("Configure both controllers...");
+            configure.Click += (_, _) => ConfigureJoystick();
+            joystickMenuItem.DropDownItems.Add(configure);
+        }
+
+        private void AddControllerMenu(
+            string label,
+            int controllerNumber,
+            HostJoystickChannelSettings channel,
+            IReadOnlyList<HostJoystickDevice> devices)
+        {
+            var controllerMenu = new ToolStripMenuItem(label);
+            var disabled = new ToolStripMenuItem("Off") { Checked = !channel.Enabled };
+            disabled.Click += (_, _) => SelectJoystick(controllerNumber, enabled: false, preferredDeviceId: null);
+            controllerMenu.DropDownItems.Add(disabled);
 
             var automatic = new ToolStripMenuItem("Automatic")
             {
-                Checked = settings.Enabled && settings.PreferredDeviceId == null
+                Checked = channel.Enabled && channel.PreferredDeviceId == null
             };
-            automatic.Click += (_, _) => SelectJoystick(enabled: true, preferredDeviceId: null);
-            joystickMenuItem.DropDownItems.Add(automatic);
-            joystickMenuItem.DropDownItems.Add(new ToolStripSeparator());
+            automatic.Click += (_, _) => SelectJoystick(controllerNumber, enabled: true, preferredDeviceId: null);
+            controllerMenu.DropDownItems.Add(automatic);
+            controllerMenu.DropDownItems.Add(new ToolStripSeparator());
 
             foreach (HostJoystickDevice device in devices)
             {
                 var item = new ToolStripMenuItem(device.DisplayName)
                 {
-                    Checked = settings.Enabled && settings.PreferredDeviceId == device.Id,
+                    Checked = channel.Enabled && DeviceMatchesPreference(device, channel.PreferredDeviceId),
                     ToolTipText = $"{device.AxisCount} axes, {device.SwitchCount} switches, {device.ButtonCount} buttons"
                 };
                 string deviceId = device.Id;
-                item.Click += (_, _) => SelectJoystick(enabled: true, preferredDeviceId: deviceId);
-                joystickMenuItem.DropDownItems.Add(item);
+                item.Click += (_, _) => SelectJoystick(controllerNumber, enabled: true, preferredDeviceId: deviceId);
+                controllerMenu.DropDownItems.Add(item);
             }
 
             if (devices.Count == 0)
-                joystickMenuItem.DropDownItems.Add(new ToolStripMenuItem("No controllers detected") { Enabled = false });
-            else if (settings.Enabled && settings.PreferredDeviceId != null && devices.All(device => device.Id != settings.PreferredDeviceId))
-                joystickMenuItem.DropDownItems.Add(new ToolStripMenuItem("Selected controller unavailable - using automatic") { Enabled = false });
+                controllerMenu.DropDownItems.Add(new ToolStripMenuItem("No controllers detected") { Enabled = false });
+            else if (channel.Enabled && channel.PreferredDeviceId != null &&
+                     devices.All(device => !DeviceMatchesPreference(device, channel.PreferredDeviceId)))
+                controllerMenu.DropDownItems.Add(new ToolStripMenuItem("Selected controller unavailable") { Enabled = false });
 
-            joystickMenuItem.DropDownItems.Add(new ToolStripSeparator());
-            joystickMenuItem.DropDownItems.Add(new ToolStripMenuItem($"Interface: {FormatJoystickInterface(settings.EffectiveInterface)}") { Enabled = false });
-            var configure = new ToolStripMenuItem("Configure...");
-            configure.Click += (_, _) => ConfigureJoystick();
-            joystickMenuItem.DropDownItems.Add(configure);
+            controllerMenu.DropDownItems.Add(new ToolStripSeparator());
+            controllerMenu.DropDownItems.Add(
+                new ToolStripMenuItem($"Interface: {FormatJoystickInterface(channel.EffectiveInterface)}") { Enabled = false });
+            joystickMenuItem.DropDownItems.Add(controllerMenu);
         }
 
-        private void SelectJoystick(bool enabled, string? preferredDeviceId)
+        private void SelectJoystick(int controllerNumber, bool enabled, string? preferredDeviceId)
         {
+            HostJoystickSettings current = GetJoystickSettingsSnapshot();
+            HostJoystickChannelSettings channel = GetControllerSettings(current, controllerNumber) with
+            {
+                Enabled = enabled,
+                PreferredDeviceId = preferredDeviceId
+            };
+            HostJoystickChannelSettings other = GetControllerSettings(current, controllerNumber == 1 ? 2 : 1);
+            if (channel.Enabled && other.Enabled && channel.EffectiveInterface == other.EffectiveInterface)
+            {
+                MessageBox.Show(
+                    this,
+                    "Controller 1 and Controller 2 must use different Spectrum interfaces. Use Configure both controllers to choose the mappings.",
+                    "Joystick Configuration",
+                    MessageBoxButtons.OK,
+                    MessageBoxIcon.Information);
+                return;
+            }
+
+            if (channel.Enabled && other.Enabled &&
+                PreferencesClaimSameDevice(channel.PreferredDeviceId, other.PreferredDeviceId, polledJoystickDevices))
+            {
+                MessageBox.Show(
+                    this,
+                    "The same USB controller cannot be assigned to both controller slots.",
+                    "Joystick Configuration",
+                    MessageBoxButtons.OK,
+                    MessageBoxIcon.Information);
+                return;
+            }
+
             HostJoystickSettings updated;
             lock (inputStateLock)
             {
-                joystickSettings = joystickSettings with
-                {
-                    Enabled = enabled,
-                    PreferredDeviceId = preferredDeviceId
-                };
+                joystickSettings = SetControllerSettings(joystickSettings, controllerNumber, channel);
                 pendingJoystickReset = true;
                 updated = joystickSettings;
             }
@@ -76,30 +119,28 @@ namespace Spectrum128kEmulator
             using IDisposable pauseLease = AcquireEmulationPauseLease();
             HostJoystickSettings settings = GetJoystickSettingsSnapshot();
             IReadOnlyList<HostJoystickDevice> devices = joystickSource.GetDevices();
-            HostJoystickDevice? selected = settings.PreferredDeviceId == null
-                ? devices.FirstOrDefault()
-                : devices.FirstOrDefault(device => device.Id == settings.PreferredDeviceId);
             using var dialog = new JoystickConfigurationForm(
-                settings.EffectiveMapping,
-                settings.EffectiveInterface,
-                selected,
-                joystickSource,
-                settings.PreferredDeviceId);
+                settings.Controller1Settings,
+                settings.Controller2Settings,
+                devices,
+                joystickSource);
             if (dialog.ShowDialog(this) != DialogResult.OK)
                 return;
 
             HostJoystickSettings updated;
             lock (inputStateLock)
             {
-                joystickSettings = joystickSettings with
-                {
-                    Mapping = dialog.SelectedMapping,
-                    Interface = dialog.SelectedInterface
-                };
+                joystickSettings = settings
+                    .WithController1(dialog.Controller1Settings) with
+                    {
+                        Controller2 = dialog.Controller2Settings
+                    };
                 pendingJoystickReset = true;
                 updated = joystickSettings;
             }
+
             joystickSettingsStore.Save(updated);
+            RebuildJoystickMenu();
             screenBox.Focus();
         }
 
@@ -120,17 +161,84 @@ namespace Spectrum128kEmulator
                 pendingJoystickReset = false;
             }
 
-            if (reset)
-                activeMachine.ClearJoystick();
-
             long now = frameClock.ElapsedTicks;
             if (!reset && now < nextJoystickPollTicks)
                 return;
             nextJoystickPollTicks = now + (System.Diagnostics.Stopwatch.Frequency / 200);
-            SpectrumJoystickInterface joystickInterface = settings.Enabled
-                ? settings.EffectiveInterface
-                : SpectrumJoystickInterface.None;
-            activeMachine.SetJoystickState(joystickInterface, joystickInputController.Poll(settings));
+
+            if (reset || now >= nextJoystickDeviceRefreshTicks)
+            {
+                polledJoystickDevices = joystickSource.GetDevices();
+                nextJoystickDeviceRefreshTicks = now + System.Diagnostics.Stopwatch.Frequency;
+            }
+            IReadOnlyList<HostJoystickDevice> devices = polledJoystickDevices;
+            var claimedDeviceIds = new HashSet<string>(StringComparer.Ordinal);
+            var states = new Dictionary<SpectrumJoystickInterface, SpectrumJoystickState>();
+            PollController(settings.Controller1Settings, devices, claimedDeviceIds, states);
+            PollController(settings.Controller2Settings, devices, claimedDeviceIds, states);
+
+            activeMachine.ClearJoystick();
+            foreach ((SpectrumJoystickInterface joystickInterface, SpectrumJoystickState state) in states)
+                activeMachine.SetJoystickState(joystickInterface, state);
+        }
+
+        private void PollController(
+            HostJoystickChannelSettings channel,
+            IReadOnlyList<HostJoystickDevice> devices,
+            HashSet<string> claimedDeviceIds,
+            Dictionary<SpectrumJoystickInterface, SpectrumJoystickState> states)
+        {
+            if (!channel.Enabled)
+                return;
+
+            string? deviceId = ResolveDeviceId(channel, devices, claimedDeviceIds);
+            if (deviceId == null)
+                return;
+
+            claimedDeviceIds.Add(deviceId);
+            SpectrumJoystickInterface joystickInterface = channel.EffectiveInterface;
+            SpectrumJoystickState state = joystickInputController.Poll(channel, deviceId);
+            if (joystickInterface != SpectrumJoystickInterface.None)
+                states[joystickInterface] = states.GetValueOrDefault(joystickInterface) | state;
+        }
+
+        private static string? ResolveDeviceId(
+            HostJoystickChannelSettings channel,
+            IReadOnlyList<HostJoystickDevice> devices,
+            HashSet<string> claimedDeviceIds)
+        {
+            if (channel.PreferredDeviceId != null)
+            {
+                HostJoystickDevice? preferred = devices.FirstOrDefault(device =>
+                    DeviceMatchesPreference(device, channel.PreferredDeviceId));
+                return preferred != null && !claimedDeviceIds.Contains(preferred.Id)
+                    ? preferred.Id
+                    : null;
+            }
+
+            return devices.FirstOrDefault(device => !claimedDeviceIds.Contains(device.Id))?.Id;
+        }
+
+        private static bool DeviceMatchesPreference(HostJoystickDevice device, string? preferredDeviceId) =>
+            preferredDeviceId != null &&
+            (string.Equals(device.Id, preferredDeviceId, StringComparison.Ordinal) ||
+             string.Equals(device.LegacyId, preferredDeviceId, StringComparison.Ordinal));
+
+        private static bool PreferencesClaimSameDevice(
+            string? firstPreference,
+            string? secondPreference,
+            IReadOnlyList<HostJoystickDevice> devices)
+        {
+            if (firstPreference == null || secondPreference == null)
+                return false;
+            if (string.Equals(firstPreference, secondPreference, StringComparison.Ordinal))
+                return true;
+
+            HostJoystickDevice? first = devices.FirstOrDefault(device =>
+                DeviceMatchesPreference(device, firstPreference));
+            HostJoystickDevice? second = devices.FirstOrDefault(device =>
+                DeviceMatchesPreference(device, secondPreference));
+            return first != null && second != null && first.Id == second.Id;
         }
 
         private void ResetJoystickInputBridgeState()
@@ -138,14 +246,28 @@ namespace Spectrum128kEmulator
             lock (inputStateLock)
                 pendingJoystickReset = true;
             nextJoystickPollTicks = 0;
+            nextJoystickDeviceRefreshTicks = 0;
         }
+
+        private static HostJoystickChannelSettings GetControllerSettings(
+            HostJoystickSettings settings,
+            int controllerNumber) =>
+            controllerNumber == 1 ? settings.Controller1Settings : settings.Controller2Settings;
+
+        private static HostJoystickSettings SetControllerSettings(
+            HostJoystickSettings settings,
+            int controllerNumber,
+            HostJoystickChannelSettings channel) =>
+            controllerNumber == 1
+                ? settings.WithController1(channel)
+                : settings with { Controller2 = channel };
 
         private static string FormatJoystickInterface(SpectrumJoystickInterface joystickInterface) => joystickInterface switch
         {
             SpectrumJoystickInterface.Kempston => "Kempston",
             SpectrumJoystickInterface.Cursor => "Cursor (keys 5, 8, 6, 7, 0)",
-            SpectrumJoystickInterface.Sinclair1 => "Interface II - Player 1 (keys 6-0)",
-            SpectrumJoystickInterface.Sinclair2 => "Interface II - Player 2 (keys 1-5)",
+            SpectrumJoystickInterface.SinclairKeys1To5 => "Sinclair 1 (keys 1-5; Interface II socket 2)",
+            SpectrumJoystickInterface.SinclairKeys6To0 => "Sinclair 2 (keys 6-0; Interface II socket 1)",
             _ => "None"
         };
     }

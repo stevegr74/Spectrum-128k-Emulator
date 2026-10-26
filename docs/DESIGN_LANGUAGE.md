@@ -63,7 +63,7 @@ Use monospace only where fixed-width comparison or technical identity matters. O
 
 - Use sentence case for controls and fields.
 - Reserve uppercase for compact tool titles, section labels, and machine-state banners.
-- Use specific verbs: **Save mapping**, **Apply Checked**, **Run to Cursor**.
+- Use specific verbs: **Save mappings**, **Apply Checked**, **Run to Cursor**.
 - Explain consequences where they matter rather than exposing internal implementation names.
 - Use the established terms **128K**, **48K**, **Quick State**, **Poke Manager**, **Interface II**, **mapped 64K**, and **physical RAM bank**.
 
@@ -105,13 +105,13 @@ Use `Paper` throughout rather than a contrasting masthead. Create hierarchy with
 
 ![Joystick configuration showing primary and secondary buttons](images/joystick-configuration.png)
 
-*Figure 2. **Save mapping** is the primary action. **Cancel** is a neutral secondary action. The same figure shows dropdowns, a slider, group boxes, descriptive copy, and a live-state panel.*
+*Figure 2. **Save mappings** is the primary action. **Cancel** is a neutral secondary action. The same figure shows paired settings groups, dropdowns, sliders, descriptive copy, and live-state panels.*
 
 **Primary button**
 
 - `Accent` background, white text, and `Accent` border.
 - Use once per decision area for the action that completes the task.
-- Examples: **Save mapping**, **Apply Checked**, **Run**, **Close** on reference-only windows.
+- Examples: **Save mappings**, **Apply Checked**, **Run**, **Close** on reference-only windows.
 
 **Secondary button**
 
@@ -142,7 +142,7 @@ All styled buttons use `EmulatorUiStyle.StyleButton`. Do not locally recreate th
 - Keep native dropdown arrows and focus cues.
 - Use `Field` for editable controls and selectors.
 - Labels sit above or consistently to the left of related controls.
-- Use human-readable values such as **Interface II - Player 1 (keys 6-0)** rather than internal enum names.
+- Use game-facing values such as **Sinclair 1 (keys 1-5; Interface II socket 2)** rather than internal enum names or ambiguous player labels.
 - A blank or explicit prompt such as **Choose a game...** is preferable to silently selecting an unrelated value.
 
 ### 5.4 Tabs, lists, and previews
