@@ -151,8 +151,11 @@ namespace Spectrum128kEmulator.Tests
             }
         }
 
-        [Fact]
-        public void ExecutePlan_UsesNative128TapeLoader_WhenUnsupportedMixedBootstrapNeeds128State()
+        [Theory]
+        [InlineData(TapeLoadPlanReason.UnsupportedMixedBootstrapControlFlow)]
+        [InlineData(TapeLoadPlanReason.UnsupportedStandardBootstrapControlFlow)]
+        public void ExecutePlan_UsesNative128TapeLoader_WhenUnsupportedBootstrapNeeds128State(
+            TapeLoadPlanReason reasonCode)
         {
             byte[] protectedLoader = BuildBasicProgram(
                 BuildBasicLine(0, Token(234), Ascii("PROTECTED LOADER")),
@@ -181,13 +184,13 @@ namespace Spectrum128kEmulator.Tests
             var machine = new Spectrum128Machine(romFolder);
             var plan = new TapeLoadPlan(
                 TapeLoadStrategy.RomBootstrapMounted,
-                TapeLoadPlanReason.UnsupportedMixedBootstrapControlFlow,
-                "Synthetic unsupported mixed bootstrap requiring native 128 BASIC.");
+                reasonCode,
+                "Synthetic unsupported bootstrap requiring native 128 BASIC.");
 
             TapeExecutionResult result = TapLoader.ExecutePlan(machine, "native-128-bootstrap.tap", blocks, plan);
 
             Assert.Equal(TapeLoadStrategy.RomBootstrapMounted, result.Strategy);
-            Assert.Equal(TapeLoadPlanReason.UnsupportedMixedBootstrapControlFlow, result.ReasonCode);
+            Assert.Equal(reasonCode, result.ReasonCode);
             Assert.Equal(0, result.ConsumedBlockCount);
             Assert.True(machine.HasMountedTape);
             Assert.Equal(SpectrumMachineModel.Spectrum128K, machine.MachineModel);
@@ -195,6 +198,14 @@ namespace Spectrum128kEmulator.Tests
             Assert.Equal(0, machine.PagedRamBank);
             Assert.NotEqual(0, machine.PeekMemory(23611) & 0x10);
             Assert.Equal(0xCF, machine.PeekMemory(23389));
+
+            machine.Cpu.Regs.PC = machine.RomProfile.LoadBytesTrapAddress;
+            machine.Cpu.Regs.SP = 0x9000;
+            machine.Cpu.Regs.IX = 0x8000;
+            machine.Cpu.Regs.DE = 1;
+            machine.Cpu.Regs.A = 0;
+            machine.Cpu.Regs.F = 1;
+            Assert.False(machine.TryServiceTapeTrap());
         }
 
         [Fact]

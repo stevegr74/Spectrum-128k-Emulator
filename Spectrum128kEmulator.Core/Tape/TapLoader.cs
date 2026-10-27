@@ -487,8 +487,9 @@ namespace Spectrum128kEmulator.Tap
                     bool requiresNative128Basic =
                         machine.MachineModel == SpectrumMachineModel.Spectrum128K &&
                         !ReferenceEquals(machine.RomProfile, SpectrumRomProfile.SyntheticTest) &&
-                        plan.ReasonCode == TapeLoadPlanReason.UnsupportedMixedBootstrapControlFlow &&
-                        Requires128kTapeLoadModeForStandardTape(machine, blocks);
+                        (plan.ReasonCode == TapeLoadPlanReason.UnsupportedStandardBootstrapControlFlow ||
+                         (plan.ReasonCode == TapeLoadPlanReason.UnsupportedMixedBootstrapControlFlow &&
+                          Requires128kTapeLoadModeForStandardTape(machine, blocks)));
                     TapBootstrapResult result = requiresNative128Basic
                         ? StartNative128kRomTapeLoader(
                             machine,
@@ -1708,7 +1709,8 @@ namespace Spectrum128kEmulator.Tap
                 skipCustomHeaderForEarPlayback: false,
                 nonRomTimingDivisor: nonRomTimingDivisor,
                 loadableTimingDivisor: loadableTimingDivisor,
-                initialEarLevelHigh: initialEarLevelHigh);
+                initialEarLevelHigh: initialEarLevelHigh,
+                allowRomLoadTraps: false);
             machine.MountTape(tape);
 
             machine.SetKey(6, 0, true);
