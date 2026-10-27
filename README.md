@@ -69,6 +69,7 @@ Current limitations and active work:
 - Mounted playback detects stable keyboard/HALT handoffs, pauses at multiload boundaries, and preserves custom ROM flag and LOAD/VERIFY state across accelerated blocks.
 - Accelerated BASIC bootstrap expressions preserve `INT` and division semantics used by byte-extraction loader idioms instead of rejecting otherwise safe programs.
 - Protected playback and Quick State preserve precise tape pulse, EAR, loader-continuation and replay positions.
+- Continuations classified as unrepresentable remain under real ROM pulse/EAR control for the mounted remainder; byte-copy traps are disabled for that tape rather than contradicting the planner's safety decision.
 - Mounted-loader continuation state, BASIC workspace preservation, resume gating, and Quick State capture are isolated from the machine in a dedicated controller.
 - Tape strategy and continuation decisions do not inspect media names or game hashes; preloaded custom-loader handoff requires a unique wait loop that the executed BASIC bootstrap demonstrably patched in live RAM.
 - The background emulation loop owns mutable machine state; the UI consumes copied snapshots and uses nested pause leases for safe inspection.
@@ -487,6 +488,7 @@ compatibility; completed milestones remain regression baselines.
 - Added a protected chained-BASIC capability gate so blocks that read live ROM interpreter cursors remain on exact pulse/EAR playback instead of entering the byte-copy trap
 - Routed unsupported standard BASIC through the native 128 Tape Loader with per-mount ROM traps disabled; exact pulse/EAR playback now carries multi-file 128K loaders through their real ROM control flow without changing accelerated tapes globally
 - Recognized checksum-valid ROM record prefixes inside padded TZX blocks while preserving the trailing physical bytes, allowing two-stage BASIC prefixes to enter their protected continuation without weakening malformed-record checks
+- Disabled byte-copy traps for mounted continuations the planner cannot represent safely, preserving application-RAM ROM-call returns and loader state through exact pulse/EAR execution
 - Re-ran every entry in the verified-media matrix with post-load execution soak; Target Renegade 48K/128K, New Zealand Story, Indiana Jones, and Oracle's Cave also passed their mode-specific or interactive multiload checkpoints
 - Added table-driven lifecycle coverage alongside focused regressions for fast loading, real-time fallback, pause/resume, stop markers, tape end, multiloads, media replacement, reset, and Quick State restoration
 - Split the large tape regression suite into transport, mounted-playback, and load-planning test files without reducing coverage

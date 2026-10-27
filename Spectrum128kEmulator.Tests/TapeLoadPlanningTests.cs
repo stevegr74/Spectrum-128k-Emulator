@@ -433,7 +433,7 @@ namespace Spectrum128kEmulator.Tests
                 MethodInfo parseBlocks = typeof(TapLoader).GetMethod("ParseBlocks", BindingFlags.NonPublic | BindingFlags.Static)!;
                 MethodInfo loadRomBootstrap = typeof(TapLoader).GetMethod("LoadLeadingBasicProgramAndMountRemainingForRomAutoStart", BindingFlags.NonPublic | BindingFlags.Static)!;
                 IReadOnlyList<TapeBlock> blocks = (IReadOnlyList<TapeBlock>)parseBlocks.Invoke(null, new object[] { tap })!;
-                TapBootstrapResult result = (TapBootstrapResult)loadRomBootstrap.Invoke(null, new object[] { machine, "rom-driven.tap", blocks, true, 1, 1, true })!;
+                TapBootstrapResult result = (TapBootstrapResult)loadRomBootstrap.Invoke(null, new object[] { machine, "rom-driven.tap", blocks, true, 1, 1, true, true })!;
 
                 Assert.Equal(4, result.TotalBlockCount);
                 Assert.Equal(2, result.ConsumedBlockCount);
@@ -445,6 +445,49 @@ namespace Spectrum128kEmulator.Tests
                 Assert.Equal("Pause", GetPrivateField(mountedTape, "earPlaybackState").ToString());
                 Assert.Equal(3546900, (int)GetPrivateField(mountedTape, "earPulseLengthTStates"));
                 Assert.Equal(2, (int)GetPrivateField(mountedTape, "earPlaybackBlockIndex"));
+            }
+            finally
+            {
+                Directory.Delete(tempFolder, true);
+            }
+        }
+
+        [Fact]
+        public void ExecutePlan_DisablesRomTraps_WhenMountedContinuationIsUnrepresentable()
+        {
+            string tempFolder = CreateTempRoms();
+
+            try
+            {
+                byte[] rom = new byte[16384];
+                byte[] bootstrap =
+                {
+                    0x31, 0x58, 0xFF,
+                    0x21, 0x50, 0xFF,
+                    0x22, 0x3D, 0x5C,
+                    0xC3, 0xE7, 0x15
+                };
+                Buffer.BlockCopy(bootstrap, 0, rom, 0, bootstrap.Length);
+                File.WriteAllBytes(Path.Combine(tempFolder, "128-1.rom"), rom);
+
+                byte[] firstStage = BuildBasicProgram(
+                    BuildBasicLine(10, Token(239)));
+                IReadOnlyList<TapeBlock> blocks = TapLoader.ParseBlocks(BuildTap(
+                    BuildHeaderBlock(0, "BOOT", (ushort)firstStage.Length, 10, (ushort)firstStage.Length),
+                    BuildDataBlock(firstStage),
+                    BuildHeaderBlock(3, "CODE", 1, 0x8000, 0),
+                    BuildDataBlock(new byte[] { 0xC9 })));
+                var machine = new Spectrum128Machine(tempFolder, SpectrumRomProfile.SyntheticTest);
+                var plan = new TapeLoadPlan(
+                    TapeLoadStrategy.RomBootstrapMounted,
+                    TapeLoadPlanReason.UnrepresentableMountedContinuation,
+                    "Synthetic unrepresentable mounted continuation.");
+
+                TapeExecutionResult result = TapLoader.ExecutePlan(machine, "unrepresentable.tap", blocks, plan);
+
+                Assert.Equal(TapeLoadPlanReason.UnrepresentableMountedContinuation, result.ReasonCode);
+                MountedTape mountedTape = Assert.IsType<MountedTape>(machine.MountedTape);
+                Assert.False((bool)GetPrivateField(mountedTape, "allowRomLoadTraps"));
             }
             finally
             {

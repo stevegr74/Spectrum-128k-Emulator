@@ -101,6 +101,9 @@ focused checks for:
 - unsupported standard BASIC in 128K mode also starts through the native Tape
   Loader, with byte-copy ROM traps disabled for that mount so the ROM owns the
   complete multi-file load sequence and paging setup;
+- mounted continuations classified as unrepresentable keep their safe leading
+  BASIC preload but disable byte-copy traps for the remainder, leaving ROM call
+  returns and loader state under exact pulse/EAR execution;
 - application RAM is not classified as a ROM return path, and unchanged loader
   wait-loop lookalikes cannot redirect bootstrap execution;
 - unsupported ROM acceleration, unsafe bootstrap control flow, and
