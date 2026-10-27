@@ -114,14 +114,19 @@ namespace Spectrum128kEmulator.Tap
             ushort oneBitPulseLength,
             byte usedBitsInLastByte,
             ushort pauseAfterBlockMs,
-            bool canUseRomLoadTrap = true)
+            bool canUseRomLoadTrap = true,
+            int? romRecordByteCount = null)
         {
             if (streamData == null)
                 throw new ArgumentNullException(nameof(streamData));
             if (streamData.Length < 2)
                 throw new ArgumentException("Tape data blocks must contain at least a flag byte and checksum byte.", nameof(streamData));
 
-            byte[] payload = new byte[streamData.Length - 2];
+            int logicalByteCount = romRecordByteCount ?? streamData.Length;
+            if (logicalByteCount < 2 || logicalByteCount > streamData.Length)
+                throw new ArgumentOutOfRangeException(nameof(romRecordByteCount));
+
+            byte[] payload = new byte[logicalByteCount - 2];
             Buffer.BlockCopy(streamData, 1, payload, 0, payload.Length);
 
             return new TapeBlock(
@@ -130,7 +135,7 @@ namespace Spectrum128kEmulator.Tap
                 canUseRomLoadTrap: canUseRomLoadTrap,
                 (byte[])streamData.Clone(),
                 payload,
-                streamData[^1],
+                streamData[logicalByteCount - 1],
                 pilotPulseLength,
                 pilotPulseCount,
                 syncFirstPulseLength,

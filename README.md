@@ -65,6 +65,7 @@ Current limitations and active work:
 - ROM-driven tape handoffs preserve consumed-block pauses, exact TZX pause signal transitions, and zero-duration stop markers.
 - TZX pulse and pause timings use their 3.5 MHz tape-time basis and are scaled to the selected machine clock; unstructured ROM loads return to their actual caller so banked multiload stages can continue safely.
 - Standard-speed TAP/TZX pilot length follows the complete flag range: flags below `0x80`, including custom loader flags, receive the 8,063-pulse pilot; flags at or above `0x80` receive 3,223 pulses.
+- TZX blocks containing a checksum-valid ROM header or header-declared data record followed by archive padding retain every physical tape byte for EAR playback while exposing only the logical ROM record to planning and byte traps.
 - Mounted playback detects stable keyboard/HALT handoffs, pauses at multiload boundaries, and preserves custom ROM flag and LOAD/VERIFY state across accelerated blocks.
 - Accelerated BASIC bootstrap expressions preserve `INT` and division semantics used by byte-extraction loader idioms instead of rejecting otherwise safe programs.
 - Protected playback and Quick State preserve precise tape pulse, EAR, loader-continuation and replay positions.
@@ -485,6 +486,7 @@ compatibility; completed milestones remain regression baselines.
 - Locked the recent compatibility fixes behind synthetic regressions for early-stop prevention, cross-frame keyboard evidence, EAR-sensitive cancellation, exact-cursor ROM resume, `INT`/division tokenization, and bootstrap byte-extraction expressions
 - Added a protected chained-BASIC capability gate so blocks that read live ROM interpreter cursors remain on exact pulse/EAR playback instead of entering the byte-copy trap
 - Routed unsupported standard BASIC through the native 128 Tape Loader with per-mount ROM traps disabled; exact pulse/EAR playback now carries multi-file 128K loaders through their real ROM control flow without changing accelerated tapes globally
+- Recognized checksum-valid ROM record prefixes inside padded TZX blocks while preserving the trailing physical bytes, allowing two-stage BASIC prefixes to enter their protected continuation without weakening malformed-record checks
 - Re-ran every entry in the verified-media matrix with post-load execution soak; Target Renegade 48K/128K, New Zealand Story, Indiana Jones, and Oracle's Cave also passed their mode-specific or interactive multiload checkpoints
 - Added table-driven lifecycle coverage alongside focused regressions for fast loading, real-time fallback, pause/resume, stop markers, tape end, multiloads, media replacement, reset, and Quick State restoration
 - Split the large tape regression suite into transport, mounted-playback, and load-planning test files without reducing coverage
