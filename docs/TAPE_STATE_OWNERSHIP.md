@@ -91,6 +91,11 @@ focused checks for:
   byte-extraction expressions used by protected loaders;
 - mixed raw-stream structure permits hybrid loading only when the leading BASIC
   program independently passes the bootstrap executor's capability check;
+- 128K hybrid bootstrap keeps the ROM `BANK_M` mirror aligned with the active
+  ROM-1 paging latch before paging-aware loaded code begins execution;
+- unsupported mixed BASIC that depends on native 128K workspace initialization
+  starts through ROM 0 and the 128 Tape Loader instead of receiving fabricated
+  ROM-1-only state;
 - application RAM is not classified as a ROM return path, and unchanged loader
   wait-loop lookalikes cannot redirect bootstrap execution;
 - unsupported ROM acceleration, unsafe bootstrap control flow, and
