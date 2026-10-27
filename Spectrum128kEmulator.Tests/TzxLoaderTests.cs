@@ -495,6 +495,7 @@ namespace Spectrum128kEmulator.Tests
                 Assert.Equal("BootstrapHybrid", result.Strategy.ToString());
                 Assert.True(machine.HasMountedTape);
                 Assert.True(machine.HasPendingMountedLoadUsrContinuation);
+                Assert.Equal(0x10, machine.PeekMemory(23388));
             }
             finally
             {

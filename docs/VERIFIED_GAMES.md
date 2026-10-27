@@ -52,7 +52,9 @@ that every level, control path, or hardware edge case has been tested.
 | 🟢 | Star Wars (Hit Squad) | `.tzx` | Loading reaches the complete X-Wing control menu and remains stable |
 | 🟢 | Star Wars (Domark original, sides 1 and 2) | `.tzx` | The explicit stop/key/resume sequence reaches the complete title screen from both sides; side 2 requires 48K mode |
 | 🟢 | Starglider (48K original) | `.tzx` | Loading reaches the in-game control menu and automatically stops at the handoff boundary |
+| 🟢 | Starglider (Rainbird original releases 1 and 2, 128K) | `.tzx` | Both releases reach the complete Starglider title screen; release 1 automatically stops at its final handoff with one trailing signal block retained, while release 2 loads through native 128 BASIC and ends cleanly |
 | 🟢 | Starglider 2 (48K original) | `.tzx` | Loading reaches the complete title screen and ends cleanly |
+| 🟢 | Starglider 2 (Rainbird original, 128K) | `.tzx` | Hybrid protected loading preserves the 128K paging mirror, reaches the complete illustrated title screen, and ends cleanly |
 | 🟢 | Starquake (Bubblebus original and Ricochet) | `.sna`, `.tzx` | The repaired standard-size 48K SNA and both TZX releases reach the control menu and remain stable |
 | 🟢 | Target Renegade | `128k.tzx` | 128K mode loads the complete game; 48K mode loads the first level and automatically pauses at the level-at-a-time boundary with resumable transport; both modes remain responsive with good audio |
 | 🟢 | The Goonies | `.tzx` | Loading reaches active gameplay and remains stable |
@@ -144,9 +146,6 @@ were made as part of this audit.
 | 🔴 | Kwah! (Melbourne House original) `.tzx` | Tape ends on a black frame |
 | 🔴 | Paperboy (Encore) `.tzx` | Tape ends on a black frame; the Elite original TZX and Paperboy SNA work |
 | 🔴 | Red Hawk parts 1 and 2 `.tap` | Both parts end at the Sinclair copyright/BASIC screen; the Red Hawk SNA works |
-| 🟠 | Starglider (Rainbird original release 1) 128K `.tzx` | Loads to the Starglider picture and auto-stops near tape end, but does not advance beyond that screen |
-| 🔴 | Starglider (Rainbird original release 2) 128K `.tzx` | Incorrectly reports that it will only run on a 128K Spectrum despite running in 128K mode |
-| 🔴 | Starglider 2 128K `.tzx` | Reaches an internal tape-loader menu, but selecting the loader does not reach the game; the 48K tape works |
 | 🔴 | The Way of the Exploding Fist original/Ricochet `.tzx` | Both tapes end without reaching a meaningful title/game screen; the SNA works |
 | 🔴 | Uridium and Uridium Plus (Hewson original) `.tzx` | Inconsistent BASIC header/data pairs now select safe real-time mounting instead of throwing, but both tapes end on black frames; their snapshots work |
 | 🔴 | Wanted! Monty Mole (Gremlin original) `.tzx` | Tape ends at the Sinclair copyright screen; the SNA works |
@@ -177,6 +176,12 @@ automatically into level 1-1, Indiana Jones resumes into level 1 and preserves
 the next tape boundary, and Oracle's Cave accepts a quest selection and enters
 the generated cave. Synthetic tests cover the underlying loader transitions so
 these checks do not depend on distributing the game media with the repository.
+
+The 27 October 2026 Starglider follow-up verified both Rainbird 128K Starglider
+releases and Starglider 2 through their complete title screens. It also reran
+New Zealand Story, Target Renegade in both machine modes, and Cabal 128K as
+regression checks after separating native 128 BASIC startup from hybrid paging
+state.
 
 ## Recording New Results
 

@@ -121,6 +121,9 @@ namespace Spectrum128kEmulator.Tests
                     BuildBasicLine(0,
                         Token(241), Ascii("entry"), Equals(),
                         Token(190), Ascii("23627"), NumberMarker(23627)),
+                    BuildBasicLine(5,
+                        Token(244), Ascii("23388"), NumberMarker(23388),
+                        Comma(), Ascii("16"), NumberMarker(16)),
                     BuildBasicLine(10,
                         Token(249), Ascii(" "), Token(192), Ascii("32768"), NumberMarker(32768)));
                 byte[] tape = BuildTap(
@@ -146,6 +149,52 @@ namespace Spectrum128kEmulator.Tests
             {
                 Directory.Delete(tempFolder, true);
             }
+        }
+
+        [Fact]
+        public void ExecutePlan_UsesNative128TapeLoader_WhenUnsupportedMixedBootstrapNeeds128State()
+        {
+            byte[] protectedLoader = BuildBasicProgram(
+                BuildBasicLine(0, Token(234), Ascii("PROTECTED LOADER")),
+                BuildBasicLine(0,
+                    Token(241), Ascii("entry"), Equals(),
+                    Token(190), Ascii("23627"), NumberMarker(23627)),
+                BuildBasicLine(5,
+                    Token(244), Ascii("23388"), NumberMarker(23388),
+                    Comma(), Ascii("16"), NumberMarker(16)),
+                BuildBasicLine(10,
+                    Token(249), Ascii(" "), Token(192), Ascii("32768"), NumberMarker(32768)));
+            byte[] tape = BuildTap(
+                BuildHeaderBlock(
+                    type: 0,
+                    fileName: "LOADER",
+                    dataLength: (ushort)protectedLoader.Length,
+                    parameter1: 0,
+                    parameter2: (ushort)protectedLoader.Length),
+                BuildDataBlock(protectedLoader),
+                BuildDataBlock(new byte[] { 0x10, 0x20, 0x30 }, flag: 0x98));
+            MethodInfo parseBlocks = typeof(TapLoader).GetMethod(
+                "ParseBlocks",
+                BindingFlags.NonPublic | BindingFlags.Static)!;
+            var blocks = (IReadOnlyList<TapeBlock>)parseBlocks.Invoke(null, new object[] { tape })!;
+            string romFolder = Path.Combine(AppContext.BaseDirectory, "ROMs");
+            var machine = new Spectrum128Machine(romFolder);
+            var plan = new TapeLoadPlan(
+                TapeLoadStrategy.RomBootstrapMounted,
+                TapeLoadPlanReason.UnsupportedMixedBootstrapControlFlow,
+                "Synthetic unsupported mixed bootstrap requiring native 128 BASIC.");
+
+            TapeExecutionResult result = TapLoader.ExecutePlan(machine, "native-128-bootstrap.tap", blocks, plan);
+
+            Assert.Equal(TapeLoadStrategy.RomBootstrapMounted, result.Strategy);
+            Assert.Equal(TapeLoadPlanReason.UnsupportedMixedBootstrapControlFlow, result.ReasonCode);
+            Assert.Equal(0, result.ConsumedBlockCount);
+            Assert.True(machine.HasMountedTape);
+            Assert.Equal(SpectrumMachineModel.Spectrum128K, machine.MachineModel);
+            Assert.Equal(1, machine.CurrentRomBank);
+            Assert.Equal(0, machine.PagedRamBank);
+            Assert.NotEqual(0, machine.PeekMemory(23611) & 0x10);
+            Assert.Equal(0xCF, machine.PeekMemory(23389));
         }
 
         [Fact]

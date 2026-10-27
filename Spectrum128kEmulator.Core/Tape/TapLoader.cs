@@ -61,6 +61,8 @@ namespace Spectrum128kEmulator.Tap
         private const ushort RamTopAddress = 23730;
         private const ushort PhysicalRamTopAddress = 23732;
         private const ushort Spectrum128TapeLoadBankSelectAddress = 23388;
+        private const ushort Spectrum128RamRstAddress = 23389;
+        private const byte Spectrum128RamRstOpcode = 0xCF;
         private const ushort InitialChannelsAreaAddress = BasicProgramStart - 21;
         private const ushort KeyboardChannelDescriptorAddress = InitialChannelsAreaAddress;
         private const ushort ScreenChannelDescriptorAddress = InitialChannelsAreaAddress + 5;
@@ -200,6 +202,13 @@ namespace Spectrum128kEmulator.Tap
 
             bool use128kMode = Use128kTapeLoadMode(machine);
             InitializeMachineForFakeTapeLoad(machine, use128kMode);
+            if (use128kMode)
+            {
+                // Hybrid execution can hand paging-aware machine code directly
+                // into live execution. Keep the ROM's BANK_M mirror aligned with
+                // the ROM-1 paging latch established by ConfigureFor128kTapeLoad.
+                machine.PokeMemory(Spectrum128TapeLoadBankSelectAddress, 0x10);
+            }
             int consumedBlockCount = 0;
             string? autoStartFileName = null;
 
@@ -475,14 +484,27 @@ namespace Spectrum128kEmulator.Tap
 
                 case TapeLoadStrategy.RomBootstrapMounted:
                 {
-                    TapBootstrapResult result = LoadLeadingBasicProgramAndMountRemainingForRomAutoStart(
-                        machine,
-                        displayName,
-                        blocks,
-                        skipCustomHeaderForEarPlayback: false,
-                        nonRomTimingDivisor: nonRomTimingDivisor,
-                        loadableTimingDivisor: loadableTimingDivisor,
-                        initialEarLevelHigh: initialEarLevelHigh);
+                    bool requiresNative128Basic =
+                        machine.MachineModel == SpectrumMachineModel.Spectrum128K &&
+                        !ReferenceEquals(machine.RomProfile, SpectrumRomProfile.SyntheticTest) &&
+                        plan.ReasonCode == TapeLoadPlanReason.UnsupportedMixedBootstrapControlFlow &&
+                        Requires128kTapeLoadModeForStandardTape(machine, blocks);
+                    TapBootstrapResult result = requiresNative128Basic
+                        ? StartNative128kRomTapeLoader(
+                            machine,
+                            displayName,
+                            blocks,
+                            nonRomTimingDivisor,
+                            loadableTimingDivisor,
+                            initialEarLevelHigh)
+                        : LoadLeadingBasicProgramAndMountRemainingForRomAutoStart(
+                            machine,
+                            displayName,
+                            blocks,
+                            skipCustomHeaderForEarPlayback: false,
+                            nonRomTimingDivisor: nonRomTimingDivisor,
+                            loadableTimingDivisor: loadableTimingDivisor,
+                            initialEarLevelHigh: initialEarLevelHigh);
                     return new TapeExecutionResult(
                         TapeLoadStrategy.RomBootstrapMounted,
                         plan.ReasonCode,
@@ -1647,6 +1669,87 @@ namespace Spectrum128kEmulator.Tap
 
             machine.ClearLogs();
             machine.ClearKeyboard();
+        }
+
+        private static TapBootstrapResult StartNative128kRomTapeLoader(
+            Spectrum128Machine machine,
+            string displayName,
+            IReadOnlyList<TapeBlock> blocks,
+            int nonRomTimingDivisor,
+            int loadableTimingDivisor,
+            bool initialEarLevelHigh)
+        {
+            machine.Reset(SpectrumMachineModel.Spectrum128K);
+
+            for (int frame = 0;
+                 frame < RomInitializationFrameLimit &&
+                 machine.PeekMemory(Spectrum128RamRstAddress) != Spectrum128RamRstOpcode;
+                 frame++)
+            {
+                machine.ExecuteTimeSlice(machine.FrameTStates);
+            }
+
+            if (machine.PeekMemory(Spectrum128RamRstAddress) != Spectrum128RamRstOpcode)
+            {
+                throw new InvalidOperationException(
+                    "The Spectrum 128 ROM did not initialize its paging workspace.");
+            }
+
+            // Allow the menu to settle on its default Tape Loader entry before
+            // mounting. Starting playback here preserves the complete tape while
+            // avoiding consumption during ROM startup.
+            for (int frame = 0; frame < 30; frame++)
+                machine.ExecuteTimeSlice(machine.FrameTStates);
+
+            var tape = new MountedTape(
+                displayName,
+                blocks,
+                initialBlockIndex: 0,
+                skipCustomHeaderForEarPlayback: false,
+                nonRomTimingDivisor: nonRomTimingDivisor,
+                loadableTimingDivisor: loadableTimingDivisor,
+                initialEarLevelHigh: initialEarLevelHigh);
+            machine.MountTape(tape);
+
+            machine.SetKey(6, 0, true);
+            for (int frame = 0; frame < 10; frame++)
+                machine.ExecuteTimeSlice(machine.FrameTStates);
+            machine.SetKey(6, 0, false);
+
+            bool enteredTapeLoader = false;
+            for (int frame = 0; frame < 100; frame++)
+            {
+                machine.ExecuteTimeSlice(machine.FrameTStates);
+                if (machine.CurrentRomBank == 1 &&
+                    machine.PagedRamBank == 0 &&
+                    (machine.PeekMemory(FlagsSystemVariableAddress) & 0x10) != 0)
+                {
+                    enteredTapeLoader = true;
+                    break;
+                }
+            }
+
+            machine.ClearKeyboard();
+            if (!enteredTapeLoader)
+                throw new InvalidOperationException("The Spectrum 128 ROM did not enter its Tape Loader.");
+
+            string? autoStartFileName = null;
+            foreach (TapeBlock block in blocks)
+            {
+                if (!IsStandardHeaderBlock(block))
+                    continue;
+
+                TapHeaderInfo header = ParseHeaderInfo(block);
+                if (header.Type == ProgramType)
+                    autoStartFileName = header.FileName;
+                break;
+            }
+
+            return new TapBootstrapResult(
+                blocks.Count,
+                0,
+                displayName,
+                autoStartFileName);
         }
 
         private static int FindFirstCustomHeaderBlockIndex(IReadOnlyList<TapeBlock> blocks)

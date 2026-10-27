@@ -59,7 +59,7 @@ Current limitations and active work:
 
 ### Implementation Notes
 
-- Fast tape bootstrap is capability-gated. Unsupported initial or chained BASIC control flow, including protected handoff directly into raw pulses and mixed raw-stream autorun that cannot be represented safely, falls back to a clean real-ROM autorun path with the remaining tape mounted.
+- Fast tape bootstrap is capability-gated. Unsupported initial or chained BASIC control flow, including protected handoff directly into raw pulses and mixed raw-stream autorun that cannot be represented safely, falls back to a clean real-ROM autorun path with the remaining tape mounted. When software requires native 128 BASIC workspace semantics, startup proceeds through ROM 0 and its Tape Loader instead of synthesizing ROM 1 state.
 - BASIC expression syntax and header/data length consistency are preflighted before acceleration; malformed or ambiguous pairs fall back without partially executing the bootstrap or terminating the emulator.
 - Address-based ROM tape services are enabled only for the fingerprinted bundled ROM pair; an unknown ROM pair uses real-time mounted pulse/EAR playback instead of assuming compatible internal addresses.
 - ROM-driven tape handoffs preserve consumed-block pauses, exact TZX pause signal transitions, and zero-duration stop markers.
