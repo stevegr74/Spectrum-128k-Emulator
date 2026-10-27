@@ -29,7 +29,7 @@ that every level, control path, or hardware edge case has been tested.
 | 🟢 | Head Over Heels | `.tap` | Loading reaches the complete illustrated title screen and remains stable |
 | 🟢 | Glider Rider (Bug-Byte) | `.tzx` | In 48K mode, protected loading reaches the complete title screen and remains stable |
 | 🟢 | Ikari Warriors | `.tzx` | Both the original and Encore releases load and run; transport stops after loading |
-| 🟢 | Impossible Mission | `.tap`, `.tzx` | The TAP and primary/Bugfix TZX releases complete protected loading and reach the title or control menu; the Ricochet release is excluded below |
+| 🟢 | Impossible Mission | `.tap`, `.tzx` | The TAP plus primary, Bugfix, and Ricochet TZX releases complete protected loading and reach the control menu; protected chained BASIC stages retain exact ROM interpreter-cursor handling |
 | 🟢 | Impossible Mission II | `.tzx` | US Gold original and both Kixx sides complete protected loading and reach stable game/control screens |
 | 🟢 | Impossamole (Gremlin original, side 1) | `.tzx` | Side 1 reaches the control menu; continuation with side 2 remains unverified below |
 | 🟢 | Indiana Jones and the Last Crusade | `128k.tap` | Initial load auto-stops at the picture; side-two resume loads into gameplay and preserves the next multiload boundary |
@@ -139,7 +139,6 @@ were made as part of this audit.
 | 🟠 | Chase HQ Portuguese sides 1 and 2 `.tzx` | Side 1 reaches a stop marker with a black frame; side 2 alone also stops without a meaningful screen |
 | 🔴 | Frankie (original Speedlock 1) `.tzx` | Tape ends on a solid cyan screen; the Frankie SNA works |
 | 🔴 | Glider Rider (Quicksilva original) `.tzx` | Ends on a cyan/black frame in both machine modes; the Bug-Byte TZX works in 48K mode and the SNA works |
-| 🔴 | Impossible Mission (Ricochet) `.tzx` | Tape ends at the BASIC error `N Statement lost, 0:2` |
 | 🟠 | Impossamole side 2 `.tzx` | Standalone side reaches a stop marker with a black frame; side 1 reaches its menu, but the cross-side continuation was not proven |
 | 🟠 | Indiana Jones and the Last Crusade Kixx/US Gold TZX side sets | Side 1 reaches its loading/title handoff, but mounting and completing side 2 was not proven; the 128K TAP path is verified |
 | 🔴 | Kung-Fu Master `.tzx` | Unlabelled release ends on a blank grey frame; the Americana release works |

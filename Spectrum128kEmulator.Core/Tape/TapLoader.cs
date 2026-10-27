@@ -2234,6 +2234,17 @@ namespace Spectrum128kEmulator.Tap
                        header.AutoStartLine);
         }
 
+        internal static bool RequiresExactRomBasicLoad(TapHeaderInfo header, byte[] payload)
+        {
+            if (header.Type != ProgramType || header.ProgramLength == 0)
+                return false;
+
+            return BasicBootstrapExecutor.RequiresRomDrivenMountedLoadedProgramData(
+                payload,
+                header.ProgramLength,
+                header.AutoStartLine);
+        }
+
         private readonly record struct BootstrapExecutionResult(int IgnoredLoadCount, int ConsumedMountedLoadCount)
         {
             public static readonly BootstrapExecutionResult None = new(0, 0);

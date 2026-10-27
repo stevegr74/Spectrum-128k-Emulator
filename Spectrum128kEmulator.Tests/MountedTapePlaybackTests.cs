@@ -1058,6 +1058,68 @@ namespace Spectrum128kEmulator.Tests
         }
 
         [Fact]
+        public void MountedTape_RomTrap_ProtectedStructuredBasic_RemainsOnExactEarPath()
+        {
+            string tempFolder = CreateTempRoms();
+
+            try
+            {
+                byte[] protectedProgram = BuildBasicProgram(
+                    BuildBasicLine(0,
+                        Token(244), Ascii("23662"), Comma(),
+                        Token(190), Ascii("23618"), NumberMarker(23618)));
+
+                TapeBlock headerBlock = TapeBlock.CreateData(
+                    BuildHeaderBlock(
+                        type: 0,
+                        fileName: "PROTECTED",
+                        dataLength: (ushort)protectedProgram.Length,
+                        parameter1: 0,
+                        parameter2: (ushort)protectedProgram.Length),
+                    2168, 8063, 667, 735, 855, 1710, 8, 1000);
+                TapeBlock dataBlock = TapeBlock.CreateData(
+                    BuildDataBlock(protectedProgram),
+                    2168, 3223, 667, 735, 855, 1710, 8, 1000);
+
+                MethodInfo parseHeaderInfo = typeof(TapLoader).GetMethod(
+                    "ParseHeaderInfo",
+                    BindingFlags.NonPublic | BindingFlags.Static)!;
+                object header = parseHeaderInfo.Invoke(null, new object[] { headerBlock })!;
+
+                var machine = new Spectrum128Machine(tempFolder);
+                var tape = new MountedTape(
+                    "protected-structured-basic",
+                    new[] { headerBlock, dataBlock },
+                    initialBlockIndex: 0,
+                    skipCustomHeaderForEarPlayback: false);
+                machine.MountTape(tape);
+
+                SetPrivateField(tape, "nextBlockIndex", 1);
+                SetPrivateField(tape, "state", Enum.Parse(GetPrivateField(tape, "state").GetType(), "ExpectData"));
+                SetPrivateField(tape, "expectedDataLength", (int?)protectedProgram.Length);
+                SetPrivateField(tape, "pendingHeaderName", "PROTECTED");
+                SetPrivateField(tape, "pendingHeaderInfo", header);
+
+                machine.Cpu.Regs.PC = 0x056B;
+                machine.Cpu.Regs.SP = 0x9000;
+                machine.PokeMemory(0x9000, 0x3F);
+                machine.PokeMemory(0x9001, 0x05);
+                machine.Cpu.Regs.IX = 23755;
+                machine.Cpu.Regs.DE = (ushort)protectedProgram.Length;
+                machine.Cpu.Regs.A = 0xFF;
+                machine.Cpu.Regs.F = 0x01;
+
+                Assert.False(tape.TryHandleRomLoadTrap(machine, machine.Cpu));
+                Assert.Equal(1, (int)GetPrivateField(tape, "nextBlockIndex"));
+                Assert.Equal((byte)0, machine.PeekMemory(23755));
+            }
+            finally
+            {
+                Directory.Delete(tempFolder, true);
+            }
+        }
+
+        [Fact]
         public void MountedTape_RomTrap_UnsupportedAutoStartBasic_Uses_Clean_Rom_Handoff()
         {
             string tempFolder = CreateTempRoms();
