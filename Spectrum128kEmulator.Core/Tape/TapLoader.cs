@@ -505,7 +505,8 @@ namespace Spectrum128kEmulator.Tap
                             skipCustomHeaderForEarPlayback: false,
                             nonRomTimingDivisor: nonRomTimingDivisor,
                             loadableTimingDivisor: loadableTimingDivisor,
-                            initialEarLevelHigh: initialEarLevelHigh);
+                            initialEarLevelHigh: initialEarLevelHigh,
+                            allowRomLoadTraps: plan.ReasonCode != TapeLoadPlanReason.UnrepresentableMountedContinuation);
                     return new TapeExecutionResult(
                         TapeLoadStrategy.RomBootstrapMounted,
                         plan.ReasonCode,
@@ -1464,7 +1465,8 @@ namespace Spectrum128kEmulator.Tap
             bool skipCustomHeaderForEarPlayback = true,
             int nonRomTimingDivisor = 1,
             int loadableTimingDivisor = 1,
-            bool initialEarLevelHigh = true)
+            bool initialEarLevelHigh = true,
+            bool allowRomLoadTraps = true)
         {
             if (machine == null)
                 throw new ArgumentNullException(nameof(machine));
@@ -1542,7 +1544,8 @@ namespace Spectrum128kEmulator.Tap
                     initialPrePlaybackPauseTStates: dataBlock.PauseAfterBlockMs * TStatesPerMillisecond48k,
                     nonRomTimingDivisor: nonRomTimingDivisor,
                     loadableTimingDivisor: loadableTimingDivisor,
-                    initialEarLevelHigh: initialEarLevelHigh);
+                    initialEarLevelHigh: initialEarLevelHigh,
+                    allowRomLoadTraps: allowRomLoadTraps);
                 machine.MountTape(tape);
             }
 
