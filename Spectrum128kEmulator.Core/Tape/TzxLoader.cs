@@ -148,7 +148,7 @@ namespace Spectrum128kEmulator.Tap
             if (streamData.Length < 2 || usedBits != 8)
                 return false;
 
-            ushort expectedPilotCount = streamData[0] == HeaderFlag
+            ushort expectedPilotCount = streamData[0] < 0x80
                 ? StandardHeaderPilotPulseCount
                 : StandardDataPilotPulseCount;
 
@@ -186,7 +186,7 @@ namespace Spectrum128kEmulator.Tap
                         blocks.Add(RawTzxBlock.FromTapeBlock(TapeBlock.CreateData(
                             streamData,
                             StandardPilotPulseLength,
-                            streamData[0] == HeaderFlag ? StandardHeaderPilotPulseCount : StandardDataPilotPulseCount,
+                            streamData[0] < 0x80 ? StandardHeaderPilotPulseCount : StandardDataPilotPulseCount,
                             StandardSyncFirstPulseLength,
                             StandardSyncSecondPulseLength,
                             StandardZeroBitPulseLength,

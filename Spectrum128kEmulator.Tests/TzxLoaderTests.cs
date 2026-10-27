@@ -25,6 +25,22 @@ namespace Spectrum128kEmulator.Tests
             Assert.Equal(new byte[] { 0x01, 0x02 }, blocks[1].Payload);
         }
 
+        [Theory]
+        [InlineData(0x00, 8063)]
+        [InlineData(0x07, 8063)]
+        [InlineData(0x7F, 8063)]
+        [InlineData(0x80, 3223)]
+        [InlineData(0xFF, 3223)]
+        public void ParseBlocks_StandardData_SelectsPilotLengthFromFlagRange(byte flag, ushort expectedPilotPulses)
+        {
+            byte[] tzx = BuildTzx(
+                BuildStandardSpeedDataBlock(new byte[] { flag, 0x42, (byte)(flag ^ 0x42) }, pauseMs: 1000));
+
+            Tap.TapeBlock block = Assert.Single(Tap.TzxLoader.ParseBlocks(tzx));
+
+            Assert.Equal(expectedPilotPulses, block.PilotPulseCount);
+        }
+
         [Fact]
         public void ParseBlocks_Parses_PureTone_PulseSequence_And_PureData()
         {
@@ -71,6 +87,18 @@ namespace Spectrum128kEmulator.Tests
             Assert.True(blocks[0].IsLoadableRomBlock);
             Assert.False(blocks[1].CanUseRomLoadTrap);
             Assert.False(blocks[1].IsLoadableRomBlock);
+        }
+
+        [Fact]
+        public void ParseBlocks_TurboData_WithLowCustomFlag_RecognizesLongStandardPilot()
+        {
+            byte[] stream = new byte[] { 0x07, 0x42, 0x45 };
+
+            Tap.TapeBlock block = Assert.Single(Tap.TzxLoader.ParseBlocks(BuildTzx(
+                BuildTurboDataBlock(stream, 2168, 8063, 855, 1710, 8))));
+
+            Assert.True(block.CanUseRomLoadTrap);
+            Assert.True(block.IsLoadableRomBlock);
         }
 
         [Fact]

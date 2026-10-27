@@ -18,7 +18,7 @@ that every level, control path, or hardware edge case has been tested.
 | 🟢 | Booze Up | `.tzx` | Interactive BASIC loading remains under real-ROM control, reaches the loaded program, and detects the terminal tape state correctly |
 | 🟢 | Cabal | `48k.tzx`, `128k.tzx` | Both editions reach the player-selection menu through real-ROM bootstrap; 48K stops at its first multiload marker, while 128K completes and ends the tape cleanly |
 | 🟢 | Captain America | `.tzx` | Protected loader completes; game runs |
-| 🟢 | Cauldron (original release) | `.tzx` | ROM-driven loading reaches the tape prompt and advances to the complete title screen |
+| 🟢 | Cauldron (original and Silverbird/Cyberlode 1.1 releases) | `.tzx` | Both releases reach their complete title/control screens; standard-speed custom flags below `0x80` retain the required long pilot tone |
 | 🟢 | Cauldron II (Erbe, original, and Silverbird/Cyberlode releases) | `.tzx` | All three releases reach the control-selection menu and remain stable; malformed accelerated expressions in the Cyberlode loader fall back before execution |
 | 🟢 | Cliff Hanger | `.tzx` | Loading reaches the control-selection menu and remains stable |
 | 🟢 | Cobra (Hit Squad and Ocean original releases) | `.tzx` | Both releases complete loading and reach the stable opening credit sequence |
@@ -135,7 +135,6 @@ were made as part of this audit.
 
 | Status | File / release | Result |
 | :---: | --- | --- |
-| 🔴 | Cauldron (Silverbird, Cyberlode 1.1) `.tzx` | Malformed bootstrap expressions now fall back safely without an exception, but execution ends on an incomplete black/red frame; the original release works |
 | 🟠 | Chase HQ Portuguese sides 1 and 2 `.tzx` | Side 1 reaches a stop marker with a black frame; side 2 alone also stops without a meaningful screen |
 | 🔴 | Frankie (original Speedlock 1) `.tzx` | Tape ends on a solid cyan screen; the Frankie SNA works |
 | 🔴 | Glider Rider (Quicksilva original) `.tzx` | Ends on a cyan/black frame in both machine modes; the Bug-Byte TZX works in 48K mode and the SNA works |
