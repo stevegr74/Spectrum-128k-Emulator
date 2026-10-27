@@ -1177,6 +1177,36 @@ namespace Spectrum128kEmulator.Tap
                 return parsedLines;
             }
 
+            private static List<BasicLine> ParseLinesFromData(byte[] programData, ushort programLength)
+            {
+                var parsedLines = new List<BasicLine>();
+                int cursor = 0;
+                int endOffset = Math.Min(programLength, programData.Length);
+
+                while (cursor + 4 <= endOffset)
+                {
+                    ushort lineNumber = (ushort)((programData[cursor] << 8) | programData[cursor + 1]);
+                    ushort lineLength = (ushort)(programData[cursor + 2] | (programData[cursor + 3] << 8));
+                    int lineDataOffset = cursor + 4;
+                    int nextLineOffset = lineDataOffset + lineLength;
+                    if (nextLineOffset > endOffset)
+                        break;
+
+                    byte[] lineBytes = new byte[lineLength];
+                    Buffer.BlockCopy(programData, lineDataOffset, lineBytes, 0, lineLength);
+                    (List<List<string>> statements, List<int> statementByteOffsets, List<List<TokenSpan>> statementTokenSpans) = SplitStatements(Tokenize(lineBytes));
+                    parsedLines.Add(new BasicLine(
+                        lineNumber,
+                        statements,
+                        statementByteOffsets,
+                        statementTokenSpans,
+                        (ushort)(BasicProgramStart + lineDataOffset)));
+                    cursor = nextLineOffset;
+                }
+
+                return parsedLines;
+            }
+
             private static (List<List<string>> Statements, List<int> StatementByteOffsets, List<List<TokenSpan>> StatementTokenSpans) SplitStatements(List<TokenSpan> tokens)
             {
                 var statements = new List<List<string>>();
@@ -1613,6 +1643,24 @@ namespace Spectrum128kEmulator.Tap
                     return false;
 
                 List<BasicLine> parsedLines = ParseLines(machine, programStart, programLength);
+                int startLineIndex = autoStartLine == 0
+                    ? 0
+                    : parsedLines.FindIndex(line => line.Number == autoStartLine);
+                if (startLineIndex < 0)
+                    return false;
+
+                return TouchesProtectedInterpreterHandoff(parsedLines, startLineIndex);
+            }
+
+            public static bool RequiresRomDrivenMountedLoadedProgramData(
+                byte[] programData,
+                ushort programLength,
+                ushort autoStartLine)
+            {
+                if (programLength == 0)
+                    return false;
+
+                List<BasicLine> parsedLines = ParseLinesFromData(programData, programLength);
                 int startLineIndex = autoStartLine == 0
                     ? 0
                     : parsedLines.FindIndex(line => line.Number == autoStartLine);

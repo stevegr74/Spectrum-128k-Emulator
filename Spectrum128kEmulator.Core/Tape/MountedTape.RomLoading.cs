@@ -135,6 +135,15 @@ namespace Spectrum128kEmulator.Tap
                         throw new InvalidOperationException(
                             $"Tape data block length mismatch for '{displayName}'. Expected {expectedDataLength.Value} bytes, got {block.Payload.Length}.");
                     }
+
+                    // Protected chained BASIC programs depend on ROM-maintained
+                    // interpreter cursors that cannot be reconstructed safely by
+                    // the byte-copy trap. Leave those blocks on the exact EAR path.
+                    if (pendingHeaderInfo?.Type == 0 &&
+                        TapLoader.RequiresExactRomBasicLoad(pendingHeaderInfo, block.Payload!))
+                    {
+                        return false;
+                    }
                 }
 
                 bool hasStructuredRomLoadContext =
