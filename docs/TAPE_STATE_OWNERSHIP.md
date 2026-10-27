@@ -98,6 +98,9 @@ focused checks for:
 - unsupported mixed BASIC that depends on native 128K workspace initialization
   starts through ROM 0 and the 128 Tape Loader instead of receiving fabricated
   ROM-1-only state;
+- unsupported standard BASIC in 128K mode also starts through the native Tape
+  Loader, with byte-copy ROM traps disabled for that mount so the ROM owns the
+  complete multi-file load sequence and paging setup;
 - application RAM is not classified as a ROM return path, and unchanged loader
   wait-loop lookalikes cannot redirect bootstrap execution;
 - unsupported ROM acceleration, unsafe bootstrap control flow, and

@@ -28,7 +28,7 @@ that every level, control path, or hardware edge case has been tested.
 | 🟢 | Feud (Bulldog original release) | `.tzx` | Loading reaches the control-selection menu and remains stable |
 | 🟢 | Frankie (original Speedlock 1 release) | `.tzx` | Protected Speedlock pulse playback completes in both machine modes, ends the tape cleanly, reaches the joystick-selection menu, and accepts input into keyboard definition |
 | 🟢 | Head Over Heels | `.tap` | Loading reaches the complete illustrated title screen and remains stable |
-| 🟢 | Glider Rider (Bug-Byte) | `.tzx` | In 48K mode, protected loading reaches the complete title screen and remains stable |
+| 🟢 | Glider Rider (Bug-Byte and Quicksilva original) | `.tzx` | The Bug-Byte release reaches its complete title screen in 48K mode; the Quicksilva 128K release completes native ROM pulse loading, reaches its control menu, accepts Kempston selection, and enters gameplay |
 | 🟢 | Ikari Warriors | `.tzx` | Both the original and Encore releases load and run; transport stops after loading |
 | 🟢 | Impossible Mission | `.tap`, `.tzx` | The TAP plus primary, Bugfix, and Ricochet TZX releases complete protected loading and reach the control menu; protected chained BASIC stages retain exact ROM interpreter-cursor handling |
 | 🟢 | Impossible Mission II | `.tzx` | US Gold original and both Kixx sides complete protected loading and reach stable game/control screens |
@@ -137,7 +137,6 @@ were made as part of this audit.
 | Status | File / release | Result |
 | :---: | --- | --- |
 | 🟠 | Chase HQ Portuguese sides 1 and 2 `.tzx` | Side 1 reaches a stop marker with a black frame; side 2 alone also stops without a meaningful screen |
-| 🔴 | Glider Rider (Quicksilva original) `.tzx` | Ends on a cyan/black frame in both machine modes; the Bug-Byte TZX works in 48K mode and the SNA works |
 | 🟠 | Impossamole side 2 `.tzx` | Standalone side reaches a stop marker with a black frame; side 1 reaches its menu, but the cross-side continuation was not proven |
 | 🟠 | Indiana Jones and the Last Crusade Kixx/US Gold TZX side sets | Side 1 reaches its loading/title handoff, but mounting and completing side 2 was not proven; the 128K TAP path is verified |
 | 🔴 | Kung-Fu Master `.tzx` | Unlabelled release ends on a blank grey frame; the Americana release works |
@@ -172,7 +171,10 @@ The interaction-dependent checks also confirmed that Target Renegade follows
 the distinct 48K multiload and 128K full-load paths, New Zealand Story resumes
 automatically into level 1-1, Indiana Jones resumes into level 1 and preserves
 the next tape boundary, and Oracle's Cave accepts a quest selection and enters
-the generated cave. Synthetic tests cover the underlying loader transitions so
+the generated cave. A later exact-pulse follow-up confirmed that the Quicksilva
+128K release of Glider Rider completes through the native ROM Tape Loader,
+accepts its control selection, and enters live gameplay. Synthetic tests cover
+the underlying loader transitions so
 these checks do not depend on distributing the game media with the repository.
 
 The 27 October 2026 Starglider follow-up verified both Rainbird 128K Starglider

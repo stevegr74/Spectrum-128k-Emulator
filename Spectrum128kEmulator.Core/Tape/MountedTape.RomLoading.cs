@@ -12,7 +12,7 @@ namespace Spectrum128kEmulator.Tap
                 throw new ArgumentNullException(nameof(machine));
             if (cpu == null)
                 throw new ArgumentNullException(nameof(cpu));
-            if (playbackPaused || !machine.SupportsRomTapeAcceleration)
+            if (playbackPaused || !allowRomLoadTraps || !machine.SupportsRomTapeAcceleration)
                 return false;
 
             bool isSyncLoopTrap = cpu.Regs.PC == machine.RomProfile.LoadBytesSyncLoopAddress;

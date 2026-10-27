@@ -1374,6 +1374,48 @@ namespace Spectrum128kEmulator.Tests
         }
 
         [Fact]
+        public void MountedTap_RomTrap_CanBeDisabled_ForNativeRomPlayback()
+        {
+            string tempFolder = CreateTempRoms();
+
+            try
+            {
+                byte[] payload = Enumerable.Repeat((byte)0xAA, 32).ToArray();
+                TapeBlock rawStream = TapeBlock.CreateData(
+                    BuildDataBlock(payload),
+                    2168,
+                    3223,
+                    667,
+                    735,
+                    855,
+                    1710,
+                    8,
+                    1000);
+
+                var machine = new Spectrum128Machine(tempFolder);
+                machine.MountTape(new MountedTape(
+                    "native-rom.tap",
+                    new[] { rawStream },
+                    allowRomLoadTraps: false));
+
+                machine.Cpu.Regs.PC = 0x056B;
+                machine.Cpu.Regs.SP = 0x9000;
+                machine.Cpu.Regs.IX = 0x8000;
+                machine.Cpu.Regs.DE = (ushort)payload.Length;
+                machine.Cpu.Regs.A = 0xFF;
+                machine.Cpu.Regs.F = 0x01;
+
+                Assert.False(machine.TryServiceTapeTrap());
+                Assert.Equal((ushort)0x056B, machine.Cpu.Regs.PC);
+                Assert.Equal((byte)0x00, machine.PeekMemory(0x8000));
+            }
+            finally
+            {
+                Directory.Delete(tempFolder, true);
+            }
+        }
+
+        [Fact]
         public void MountedTap_BootstrapLoad_Preserves_DataPause_For_RuntimeHandoff()
         {
             string tempFolder = CreateTempRoms();

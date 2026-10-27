@@ -29,6 +29,7 @@ namespace Spectrum128kEmulator.Tap
         private readonly int nonRomTimingDivisor;
         private readonly int loadableTimingDivisor;
         private readonly bool initialEarLevelHigh;
+        private readonly bool allowRomLoadTraps;
         private int playbackClockHz = TapeTimingClockHz;
         private int nextBlockIndex;
         private int earPlaybackBlockIndex;
@@ -87,7 +88,8 @@ namespace Spectrum128kEmulator.Tap
             int initialPrePlaybackPauseTStates = 0,
             int nonRomTimingDivisor = 1,
             int loadableTimingDivisor = 1,
-            bool initialEarLevelHigh = true)
+            bool initialEarLevelHigh = true,
+            bool allowRomLoadTraps = true)
         {
             DisplayName = string.IsNullOrWhiteSpace(displayName) ? "unnamed.tap" : displayName;
             this.blocks = blocks ?? throw new ArgumentNullException(nameof(blocks));
@@ -96,6 +98,7 @@ namespace Spectrum128kEmulator.Tap
             this.nonRomTimingDivisor = Math.Max(1, nonRomTimingDivisor);
             this.loadableTimingDivisor = Math.Max(1, loadableTimingDivisor);
             this.initialEarLevelHigh = initialEarLevelHigh;
+            this.allowRomLoadTraps = allowRomLoadTraps;
             if (initialBlockIndex < 0 || initialBlockIndex > blocks.Count)
                 throw new ArgumentOutOfRangeException(nameof(initialBlockIndex));
 
