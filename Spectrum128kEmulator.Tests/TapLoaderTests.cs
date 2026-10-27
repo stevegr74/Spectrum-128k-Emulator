@@ -18,6 +18,21 @@ namespace Spectrum128kEmulator.Tests
             return folder;
         }
 
+        [Theory]
+        [InlineData(0x00, 8063)]
+        [InlineData(0x07, 8063)]
+        [InlineData(0x7F, 8063)]
+        [InlineData(0x80, 3223)]
+        [InlineData(0xFF, 3223)]
+        public void ParseBlocks_SelectsPilotLengthFromFlagRange(byte flag, ushort expectedPilotPulses)
+        {
+            byte[] tap = BuildTap(BuildDataBlock(new byte[] { 0x42 }, flag));
+
+            TapeBlock block = Assert.Single(TapLoader.ParseBlocks(tap));
+
+            Assert.Equal(expectedPilotPulses, block.PilotPulseCount);
+        }
+
         [Fact]
         public void LoadTap_CodeBlock_Writes_Bytes_To_Target_Address()
         {

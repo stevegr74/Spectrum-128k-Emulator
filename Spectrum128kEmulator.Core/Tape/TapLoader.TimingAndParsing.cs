@@ -113,7 +113,7 @@ namespace Spectrum128kEmulator.Tap
                 blocks.Add(TapeBlock.CreateData(
                     streamData,
                     PilotPulseLengthTStates,
-                    streamData[0] == HeaderFlag ? HeaderPilotPulseCount : DataPilotPulseCount,
+                    streamData[0] < 0x80 ? HeaderPilotPulseCount : DataPilotPulseCount,
                     SyncFirstPulseLengthTStates,
                     SyncSecondPulseLengthTStates,
                     ZeroBitPulseLengthTStates,

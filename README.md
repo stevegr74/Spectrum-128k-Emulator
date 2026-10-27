@@ -64,6 +64,7 @@ Current limitations and active work:
 - Address-based ROM tape services are enabled only for the fingerprinted bundled ROM pair; an unknown ROM pair uses real-time mounted pulse/EAR playback instead of assuming compatible internal addresses.
 - ROM-driven tape handoffs preserve consumed-block pauses, exact TZX pause signal transitions, and zero-duration stop markers.
 - TZX pulse and pause timings use their 3.5 MHz tape-time basis and are scaled to the selected machine clock; unstructured ROM loads return to their actual caller so banked multiload stages can continue safely.
+- Standard-speed TAP/TZX pilot length follows the complete flag range: flags below `0x80`, including custom loader flags, receive the 8,063-pulse pilot; flags at or above `0x80` receive 3,223 pulses.
 - Mounted playback detects stable keyboard/HALT handoffs, pauses at multiload boundaries, and preserves custom ROM flag and LOAD/VERIFY state across accelerated blocks.
 - Accelerated BASIC bootstrap expressions preserve `INT` and division semantics used by byte-extraction loader idioms instead of rejecting otherwise safe programs.
 - Protected playback and Quick State preserve precise tape pulse, EAR, loader-continuation and replay positions.
