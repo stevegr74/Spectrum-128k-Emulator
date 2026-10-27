@@ -26,6 +26,7 @@ that every level, control path, or hardware edge case has been tested.
 | 🟢 | Exolon | `.tap`, `.tzx` | Both tape formats load and reach the game |
 | 🟢 | Fairlight: A Prelude | `.tap` | Loading reaches the illustrated title screen and remains stable |
 | 🟢 | Feud (Bulldog original release) | `.tzx` | Loading reaches the control-selection menu and remains stable |
+| 🟢 | Frankie (original Speedlock 1 release) | `.tzx` | Protected Speedlock pulse playback completes in both machine modes, ends the tape cleanly, reaches the joystick-selection menu, and accepts input into keyboard definition |
 | 🟢 | Head Over Heels | `.tap` | Loading reaches the complete illustrated title screen and remains stable |
 | 🟢 | Glider Rider (Bug-Byte) | `.tzx` | In 48K mode, protected loading reaches the complete title screen and remains stable |
 | 🟢 | Ikari Warriors | `.tzx` | Both the original and Encore releases load and run; transport stops after loading |
@@ -136,7 +137,6 @@ were made as part of this audit.
 | Status | File / release | Result |
 | :---: | --- | --- |
 | 🟠 | Chase HQ Portuguese sides 1 and 2 `.tzx` | Side 1 reaches a stop marker with a black frame; side 2 alone also stops without a meaningful screen |
-| 🔴 | Frankie (original Speedlock 1) `.tzx` | Tape ends on a solid cyan screen; the Frankie SNA works |
 | 🔴 | Glider Rider (Quicksilva original) `.tzx` | Ends on a cyan/black frame in both machine modes; the Bug-Byte TZX works in 48K mode and the SNA works |
 | 🟠 | Impossamole side 2 `.tzx` | Standalone side reaches a stop marker with a black frame; side 1 reaches its menu, but the cross-side continuation was not proven |
 | 🟠 | Indiana Jones and the Last Crusade Kixx/US Gold TZX side sets | Side 1 reaches its loading/title handoff, but mounting and completing side 2 was not proven; the 128K TAP path is verified |
