@@ -42,6 +42,53 @@ namespace Spectrum128kEmulator.Tests
         }
 
         [Fact]
+        public void ParseBlocks_RecognizesValidRomHeaderPrefix_WithoutDiscardingTrailingTapeBytes()
+        {
+            byte[] header = BuildSpectrumHeaderBlock(
+                type: 0,
+                fileName: "PADDED",
+                dataLength: 123,
+                parameter1: 10,
+                parameter2: 123);
+            byte expectedChecksum = header[^1];
+            Array.Resize(ref header, header.Length + 1);
+            header[^1] = 0x80;
+
+            Tap.TapeBlock block = Assert.Single(Tap.TzxLoader.ParseBlocks(BuildTzx(
+                BuildStandardSpeedDataBlock(header, pauseMs: 1000))));
+
+            Assert.Equal(20, block.StreamByteCount);
+            Assert.Equal(17, block.Payload!.Length);
+            Assert.Equal(expectedChecksum, block.Checksum);
+            Assert.Equal((byte)0x80, block.GetStreamByte(19));
+            Assert.True(Tap.TapLoader.IsStandardHeaderBlock(block));
+            Assert.Equal("PADDED", Tap.TapLoader.ParseHeaderInfo(block).FileName);
+        }
+
+        [Fact]
+        public void PrepareBlocks_UsesHeaderLengthToRecognizePaddedRomDataPrefix()
+        {
+            byte[] payload = Enumerable.Repeat((byte)0xA5, 123).ToArray();
+            byte[] data = BuildSpectrumDataBlock(payload);
+            byte expectedChecksum = data[^1];
+            Array.Resize(ref data, data.Length + 1);
+            data[^1] = 0x55;
+
+            IReadOnlyList<Tap.TapeBlock> blocks = Tap.TzxLoader.PrepareBlocksForExecution(
+                Tap.TzxLoader.ParseBlocks(BuildTzx(
+                    BuildStandardSpeedDataBlock(
+                        BuildSpectrumHeaderBlock(0, "PADDED", (ushort)payload.Length, 10, (ushort)payload.Length),
+                        pauseMs: 1000),
+                    BuildStandardSpeedDataBlock(data, pauseMs: 1000))));
+
+            Assert.Equal(2, blocks.Count);
+            Assert.Equal(126, blocks[1].StreamByteCount);
+            Assert.Equal(payload, blocks[1].Payload);
+            Assert.Equal(expectedChecksum, blocks[1].Checksum);
+            Assert.Equal((byte)0x55, blocks[1].GetStreamByte(125));
+        }
+
+        [Fact]
         public void ParseBlocks_Parses_PureTone_PulseSequence_And_PureData()
         {
             byte[] tzx = BuildTzx(

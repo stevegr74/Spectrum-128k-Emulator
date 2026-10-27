@@ -160,9 +160,78 @@ namespace Spectrum128kEmulator.Tap
                    oneBit == StandardOneBitPulseLength;
         }
 
+        private static int? FindLogicalRomRecordByteCount(byte[] streamData, bool canUseRomLoadTrap)
+        {
+            const int headerRecordByteCount = 19;
+            if (!canUseRomLoadTrap ||
+                streamData.Length <= headerRecordByteCount ||
+                streamData[0] != 0x00 ||
+                streamData[1] > 0x03)
+            {
+                return null;
+            }
+
+            byte checksum = 0;
+            for (int index = 0; index < headerRecordByteCount; index++)
+                checksum ^= streamData[index];
+
+            return checksum == 0 ? headerRecordByteCount : null;
+        }
+
         private static IReadOnlyList<TapeBlock> NormalizeRomLoadableStandardDataBlocks(IReadOnlyList<TapeBlock> blocks)
         {
-            return blocks;
+            var normalized = new List<TapeBlock>(blocks);
+            for (int headerIndex = 0; headerIndex < normalized.Count; headerIndex++)
+            {
+                TapeBlock headerBlock = normalized[headerIndex];
+                if (!TapLoader.IsStandardHeaderBlock(headerBlock))
+                    continue;
+
+                int dataIndex = headerIndex + 1;
+                while (dataIndex < normalized.Count && normalized[dataIndex].Kind == TapeBlockKind.Metadata)
+                    dataIndex++;
+                if (dataIndex >= normalized.Count)
+                    continue;
+
+                TapeBlock dataBlock = normalized[dataIndex];
+                TapLoader.TapHeaderInfo header = TapLoader.ParseHeaderInfo(headerBlock);
+                int logicalByteCount = header.DataLength + 2;
+                if (!CanUseLogicalRomRecordPrefix(dataBlock, expectedFlag: 0xFF, logicalByteCount))
+                    continue;
+
+                normalized[dataIndex] = TapeBlock.CreateData(
+                    dataBlock.StreamData!,
+                    dataBlock.PilotPulseLength,
+                    dataBlock.PilotPulseCount,
+                    dataBlock.SyncFirstPulseLength,
+                    dataBlock.SyncSecondPulseLength,
+                    dataBlock.ZeroBitPulseLength,
+                    dataBlock.OneBitPulseLength,
+                    dataBlock.UsedBitsInLastByte,
+                    dataBlock.PauseAfterBlockMs,
+                    dataBlock.CanUseRomLoadTrap,
+                    romRecordByteCount: logicalByteCount);
+            }
+
+            return normalized;
+        }
+
+        private static bool CanUseLogicalRomRecordPrefix(TapeBlock block, byte expectedFlag, int logicalByteCount)
+        {
+            if (!block.CanUseRomLoadTrap ||
+                block.StreamData == null ||
+                block.StreamData.Length <= logicalByteCount ||
+                logicalByteCount < 2 ||
+                block.StreamData[0] != expectedFlag)
+            {
+                return false;
+            }
+
+            byte checksum = 0;
+            for (int index = 0; index < logicalByteCount; index++)
+                checksum ^= block.StreamData[index];
+
+            return checksum == 0;
         }
 
         private static List<RawTzxBlock> ParseRawBlocks(byte[] fileData)
@@ -192,7 +261,8 @@ namespace Spectrum128kEmulator.Tap
                             StandardZeroBitPulseLength,
                             StandardOneBitPulseLength,
                             usedBitsInLastByte: 8,
-                            pauseAfterBlockMs: pauseMs)));
+                            pauseAfterBlockMs: pauseMs,
+                            romRecordByteCount: FindLogicalRomRecordByteCount(streamData, canUseRomLoadTrap: true))));
                         break;
                     }
 
@@ -212,6 +282,15 @@ namespace Spectrum128kEmulator.Tap
                         EnsureAvailable(fileData, offset, dataLength);
                         byte[] streamData = ReadBytes(fileData, offset, dataLength);
                         offset += dataLength;
+                        bool canUseRomLoadTrap = UsesStandardRomTimings(
+                            streamData,
+                            pilotPulseLength,
+                            pilotCount,
+                            syncFirst,
+                            syncSecond,
+                            zeroBit,
+                            oneBit,
+                            usedBits);
                         blocks.Add(RawTzxBlock.FromTapeBlock(TapeBlock.CreateData(
                             streamData,
                             pilotPulseLength,
@@ -222,15 +301,8 @@ namespace Spectrum128kEmulator.Tap
                             oneBit,
                             usedBits,
                             pauseMs,
-                            canUseRomLoadTrap: UsesStandardRomTimings(
-                                streamData,
-                                pilotPulseLength,
-                                pilotCount,
-                                syncFirst,
-                                syncSecond,
-                                zeroBit,
-                                oneBit,
-                                usedBits))));
+                            canUseRomLoadTrap,
+                            romRecordByteCount: FindLogicalRomRecordByteCount(streamData, canUseRomLoadTrap))));
                         break;
                     }
 

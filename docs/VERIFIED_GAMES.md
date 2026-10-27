@@ -36,7 +36,7 @@ that every level, control path, or hardware edge case has been tested.
 | 🟢 | Indiana Jones and the Last Crusade | `128k.tap` | Initial load auto-stops at the picture; side-two resume loads into gameplay and preserves the next multiload boundary |
 | 🟢 | Indiana Jones and the Temple of Doom (Kixx and US Gold original) | `.tzx` | Both releases reach the stop-tape prompt and advance to the complete quest-start screen; the US Gold release requires 48K mode |
 | 🟢 | Kick Off 2 | `.tzx` | Loading reaches its complete title/menu prompt and remains stable |
-| 🟢 | Kung-Fu Master (Americana) | `.tzx` | Loading reaches the illustrated title screen and remains stable |
+| 🟢 | Kung-Fu Master (Americana and US Gold/Ocean original) | `.tzx` | Both releases reach their complete illustrated title screens; the original accepts input into its start/demonstration menu after its padded two-stage BASIC prefix and protected loader complete |
 | 🟢 | Magician | `.tap` | Loading reaches the illustrated adventure opening and remains stable |
 | 🟢 | Pac-Land | `.tzx` | In 48K mode, ROM-driven loading reaches the game/high-score screen and remains stable |
 | 🟢 | Paperboy (Elite original) | `.tzx` | Loading reaches the high-score/start screen and remains stable |
@@ -139,7 +139,6 @@ were made as part of this audit.
 | 🟠 | Chase HQ Portuguese sides 1 and 2 `.tzx` | Side 1 reaches a stop marker with a black frame; side 2 alone also stops without a meaningful screen |
 | 🟠 | Impossamole side 2 `.tzx` | Standalone side reaches a stop marker with a black frame; side 1 reaches its menu, but the cross-side continuation was not proven |
 | 🟠 | Indiana Jones and the Last Crusade Kixx/US Gold TZX side sets | Side 1 reaches its loading/title handoff, but mounting and completing side 2 was not proven; the 128K TAP path is verified |
-| 🔴 | Kung-Fu Master `.tzx` | Unlabelled release ends on a blank grey frame; the Americana release works |
 | 🔴 | Kwah! (Melbourne House original) `.tzx` | Tape ends on a black frame |
 | 🔴 | Paperboy (Encore) `.tzx` | Tape ends on a black frame; the Elite original TZX and Paperboy SNA work |
 | 🔴 | Red Hawk parts 1 and 2 `.tap` | Both parts end at the Sinclair copyright/BASIC screen; the Red Hawk SNA works |
