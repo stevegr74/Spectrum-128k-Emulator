@@ -53,7 +53,7 @@ namespace Spectrum128kEmulator
         {
             using var dialog = new OpenFileDialog
             {
-                Title = "Mount .tap Tape Image",
+                Title = "Mount Tape Image",
                 Filter = "Spectrum tape images (*.tap;*.tzx)|*.tap;*.tzx|All files (*.*)|*.*",
                 CheckFileExists = true,
                 Multiselect = false
@@ -112,6 +112,71 @@ namespace Spectrum128kEmulator
                     "Tape Mount Error",
                     MessageBoxButtons.OK,
                     MessageBoxIcon.Error);
+            }
+        }
+
+        private void ReplaceMountedTapeFromDialog()
+        {
+            lock (machineLock)
+            {
+                if (!machine.HasMountedTape)
+                    return;
+            }
+
+            using var dialog = new OpenFileDialog
+            {
+                Title = "Replace Mounted Tape (Preserve Machine)",
+                Filter = "Spectrum tape images (*.tap;*.tzx)|*.tap;*.tzx|All files (*.*)|*.*",
+                CheckFileExists = true,
+                Multiselect = false
+            };
+            using IDisposable pauseLease = AcquireEmulationPauseLease();
+
+            if (dialog.ShowDialog(this) != DialogResult.OK)
+                return;
+
+            try
+            {
+                string extension = Path.GetExtension(dialog.FileName);
+                string displayName = Path.GetFileName(dialog.FileName);
+                Tap.TapMountResult result = default!;
+                ExecuteWithEmulationPaused(() =>
+                {
+                    ClearHostAndSpectrumInputState();
+                    result = ReplaceMountedTape(dialog.FileName);
+                    fpsLabel.Text = $"{extension.TrimStart('.').ToUpperInvariant()} side mounted: {displayName} ({result.TotalBlockCount} blocks)";
+                });
+
+                SetLoadedMediaDisplayName(dialog.FileName);
+                SuppressSpectrumHostInputForMilliseconds(PostLoadInputSuppressionMilliseconds);
+                ShowMountedTapeTransportFeedback();
+                PresentCurrentMachineFrame(frameClock.ElapsedTicks, force: true);
+                screenBox.Focus();
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show(
+                    this,
+                    $"Failed to replace tape:\n{ex.Message}",
+                    "Tape Replacement Error",
+                    MessageBoxButtons.OK,
+                    MessageBoxIcon.Error);
+            }
+        }
+
+        private Tap.TapMountResult ReplaceMountedTape(string path)
+        {
+            string extension = Path.GetExtension(path);
+            lock (machineLock)
+            {
+                if (!machine.HasMountedTape)
+                    throw new InvalidOperationException("There is no mounted tape to replace.");
+
+                return extension.Equals(".tzx", StringComparison.OrdinalIgnoreCase)
+                    ? Tap.TzxLoader.Mount(machine, path)
+                    : extension.Equals(".tap", StringComparison.OrdinalIgnoreCase)
+                        ? Tap.TapLoader.Mount(machine, path)
+                        : throw new InvalidOperationException("Tape replacement requires a .tap or .tzx image.");
             }
         }
 
