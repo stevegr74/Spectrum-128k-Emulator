@@ -33,7 +33,7 @@ that every level, control path, or hardware edge case has been tested.
 | 🟢 | Ikari Warriors | `.tzx` | Both the original and Encore releases load and run; transport stops after loading |
 | 🟢 | Impossible Mission | `.tap`, `.tzx` | The TAP plus primary, Bugfix, and Ricochet TZX releases complete protected loading and reach the control menu; protected chained BASIC stages retain exact ROM interpreter-cursor handling |
 | 🟢 | Impossible Mission II | `.tzx` | US Gold original and both Kixx sides complete protected loading and reach stable game/control screens |
-| 🟢 | Impossamole (Gremlin original, side 1) | `.tzx` | In 48K mode, side 1 reaches the control menu with level 0 retained after its stop marker; later-level continuation with side 2 remains unverified below |
+| 🟢 | Impossamole (Gremlin original, side 1) | `.tzx` | In 48K mode, side 1 reaches the control and level menus, explicitly requests `START TAPE`, loads the complete Blondie level after manual Play, ends the tape cleanly, and enters the playable level lifecycle through `PRESS FIRE` and `GAME OVER` |
 | 🟢 | Indiana Jones and the Last Crusade | `128k.tap`, Kixx/US Gold original `.tzx` side sets | The TAP initial load auto-stops at the picture and resumes into gameplay; in 48K mode both TZX releases reach title/options, request side 2, preserve live state across tape replacement, load The Cross of Coronado into gameplay, and stop at the next marker |
 | 🟢 | Indiana Jones and the Temple of Doom (Kixx and US Gold original) | `.tzx` | Both releases reach the stop-tape prompt and advance to the complete quest-start screen; the US Gold release requires 48K mode |
 | 🟢 | Kick Off 2 | `.tzx` | Loading reaches its complete title/menu prompt and remains stable |
@@ -143,7 +143,7 @@ were made as part of this audit.
 | Status | File / release | Result |
 | :---: | --- | --- |
 | 🟠 | Chase HQ Portuguese side 2 `.tzx` | Side 2 begins with raw continuation data and is not independently bootable. Side 1 contains Stage 1 plus five later stop-delimited stage records, so the side swap is only reached after six stages of gameplay; the first 48K stage handoff is verified above, but that distant cross-side continuation remains unproven |
-| 🟠 | Impossamole side 2 `.tzx` | Side 2 contains continuation blocks for levels 1-4 and is not independently bootable; replacing side 1 after level 0 has not yet been gameplay-proven |
+| 🟠 | Impossamole side 2 `.tzx` | Side 2 contains continuation blocks for levels 1-4 and is not independently bootable. Side-one level 0 and its manual tape resume are verified above, but completing that level to reach and prove the preserved-machine side replacement remains a gameplay-gated acceptance step |
 | 🟠 | WEC Le Mans side B `.tzx` | The tape metadata and original instructions identify this as 48K-only continuation data, not a bootable program. Side A is gameplay-verified in both modes and 128K needs no second side, but reaching the 48K in-race side-B load point requires gameplay progression and remains unproven |
 
 ## Recording New Results
