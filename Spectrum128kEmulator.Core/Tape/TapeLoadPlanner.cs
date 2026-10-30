@@ -20,9 +20,9 @@ namespace Spectrum128kEmulator.Tap
             if (TapLoader.HasInconsistentStandardBasicHeaderDataPair(blocks))
             {
                 return new TapeLoadPlan(
-                    TapeLoadStrategy.MountedRealtime,
+                    TapeLoadStrategy.RomBootstrapMounted,
                     TapeLoadPlanReason.InconsistentStandardBasicPair,
-                    "Tape contains an internally inconsistent BASIC header/data pair and cannot be accelerated safely.");
+                    "Tape contains an internally inconsistent BASIC header/data pair that must be interpreted by the real ROM loader.");
             }
 
             if (TapLoader.CanLoadAllStandardTapeBlocks(blocks))
