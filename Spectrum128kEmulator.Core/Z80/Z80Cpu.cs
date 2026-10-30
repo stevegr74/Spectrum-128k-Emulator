@@ -46,6 +46,7 @@ namespace Spectrum128kEmulator.Z80
         public ulong LastInterruptProgressTStates { get; private set; } = 0;
 
         private int eiDelay = 0;
+        private bool suppressInterruptsForNextInstruction;
         private int interruptMode = 0;
         private byte qFlags = 0;
         private bool flagsWrittenThisInstruction;
@@ -141,6 +142,7 @@ namespace Spectrum128kEmulator.Z80
             eiDelay = 0;
             interruptMode = 0;
             qFlags = 0;
+            suppressInterruptsForNextInstruction = false;
             flagsWrittenThisInstruction = false;
 
             recentTrace.Clear();
@@ -181,6 +183,7 @@ namespace Spectrum128kEmulator.Z80
             eiDelay = 0;
             interruptMode = 0;
             qFlags = 0;
+            suppressInterruptsForNextInstruction = false;
             flagsWrittenThisInstruction = false;
             LastInterruptProgressTStates = TStates;
 
@@ -203,7 +206,7 @@ namespace Spectrum128kEmulator.Z80
                     break;
                 }
 
-                if (InterruptPending && IFF1)
+                if (InterruptPending && IFF1 && !suppressInterruptsForNextInstruction)
                 {
                     AcceptMaskableInterrupt();
                     continue;
@@ -237,7 +240,7 @@ namespace Spectrum128kEmulator.Z80
                     break;
                 }
 
-                if (InterruptPending && IFF1)
+                if (InterruptPending && IFF1 && !suppressInterruptsForNextInstruction)
                 {
                     AcceptMaskableInterrupt();
                     continue;
@@ -387,6 +390,7 @@ namespace Spectrum128kEmulator.Z80
             }
 
             qFlags = flagsWrittenThisInstruction ? Regs.F : (byte)0;
+            suppressInterruptsForNextInstruction = false;
         }
 
         public string[] GetRecentTraceSnapshot() => recentTrace.ToArray();
@@ -430,6 +434,25 @@ namespace Spectrum128kEmulator.Z80
             RecordInterruptEvent($"RESTORE_STATE iff1={(iff1 ? 1 : 0)} iff2={(iff2 ? 1 : 0)} im={this.interruptMode}", iff1);
         }
 
+        public void RestoreSnapshotExecutionState(
+            bool halted,
+            bool interruptPending,
+            bool suppressInterrupts,
+            bool flagsSet)
+        {
+            this.halted = halted;
+            InterruptPending = interruptPending;
+            suppressInterruptsForNextInstruction = suppressInterrupts;
+            eiDelay = 0;
+            qFlags = flagsSet ? Regs.F : (byte)0;
+            flagsWrittenThisInstruction = false;
+            InstructionFetchCount = 0;
+            LastInterruptProgressTStates = TStates;
+            ExecutionStopped = false;
+            recentTrace.Clear();
+            recentInterruptEvents.Clear();
+        }
+
         public void ClearSnapshotExecutionState()
         {
             halted = false;
@@ -438,6 +461,7 @@ namespace Spectrum128kEmulator.Z80
             InstructionFetchCount = 0;
 
             qFlags = 0;
+            suppressInterruptsForNextInstruction = false;
             flagsWrittenThisInstruction = false;
             LastInterruptProgressTStates = TStates;
 

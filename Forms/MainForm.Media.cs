@@ -197,8 +197,8 @@ namespace Spectrum128kEmulator
         {
             using var dialog = new OpenFileDialog
             {
-                Title = "Load .z80 Snapshot or .rzx Recording",
-                Filter = "Z80 snapshots and recordings (*.z80;*.rzx)|*.z80;*.rzx|All files (*.*)|*.*",
+                Title = "Load Snapshot or RZX Recording",
+                Filter = "Spectrum snapshots and recordings (*.z80;*.szx;*.rzx)|*.z80;*.szx;*.rzx|All files (*.*)|*.*",
                 CheckFileExists = true,
                 Multiselect = false
             };
@@ -227,7 +227,24 @@ namespace Spectrum128kEmulator
                             machine.ClearDebugHistory();
                     });
                 }
-                else
+                else if (extension.Equals(".szx", StringComparison.OrdinalIgnoreCase))
+                {
+                    ExecuteWithEmulationPaused(() =>
+                    {
+                        ClearHostAndSpectrumInputState();
+                        lock (machineLock)
+                        {
+                            Spectrum128Machine newMachine = CreateConfiguredMachine();
+                            SzxSnapshotLoader.Load(newMachine, dialog.FileName);
+                            machine = newMachine;
+                        }
+                        ResetFrameScheduler();
+                        RecreateAudioPipeline();
+                        lock (machineLock)
+                            machine.ClearDebugHistory();
+                    });
+                }
+                else if (extension.Equals(".z80", StringComparison.OrdinalIgnoreCase))
                 {
                     ExecuteWithEmulationPaused(() =>
                     {
@@ -244,8 +261,13 @@ namespace Spectrum128kEmulator
                             machine.ClearDebugHistory();
                     });
                 }
+                else
+                {
+                    throw new InvalidOperationException("Select a .z80 or .szx snapshot, or an .rzx recording.");
+                }
                 SetLoadedMediaDisplayName(dialog.FileName);
                 fpsLabel.Text = $"Loaded: {Path.GetFileName(dialog.FileName)}";
+                SuppressSpectrumHostInputForMilliseconds(PostLoadInputSuppressionMilliseconds);
                 PresentCurrentMachineFrame(frameClock.ElapsedTicks, force: true);
                 screenBox.Focus();
             }

@@ -12,7 +12,7 @@ This project focuses on correctness, clean architecture, and incremental develop
 - Explicit 48K and 128K models, 128K paging, keyboard matrix, interrupts, and a model-specific timing baseline
 - Beam-latched Spectrum display with INK, PAPER, BRIGHT, FLASH, timestamped borders, and fixed 1x/Scale2x/Scale3x modes
 - 48K beeper and AY-3-8912 tone, noise, envelope, and mixing through a clock-driven audio pipeline
-- 48K/128K `.sna`, `.z80` v1/v2/v3, and `.rzx` loading/replay
+- 48K/128K `.sna`, `.z80` v1/v2/v3, baseline `.szx`, and `.rzx` loading/replay
 - `.tap` and `.tzx` parsing, fast bootstrap, ROM-driven loading, protected/mounted playback, VERIFY, and multi-block sequencing
 - Manual/resumable tape transport with 48K stop-marker support and persistent status feedback
 - Up to two simultaneous USB joysticks with independently selectable Kempston, Cursor, and game-facing Sinclair 1/2 mappings plus automatic or explicit controller selection and configurable raw-axis, hat, fire-button, and dead-zone mapping
@@ -56,6 +56,7 @@ Current limitations and active work:
 - clock-driven audio and the turbo-to-real-time handoff are hardened; broader subjective title-by-title audio comparison remains ongoing
 - broader protected/custom TZX compatibility remains ongoing
 - Milestone 22 USB joystick support is complete, including two independently mapped host controllers, selectable Kempston/Cursor/Sinclair interfaces, and simultaneous Interface II input
+- Milestone 23 SZX loading is complete for exact 48K and original 128K CPU, RAM, paging, ULA, and AY state; snapshots requiring unsupported models or peripherals are rejected
 
 ### Implementation Notes
 
@@ -103,9 +104,9 @@ bank-aware Poke Manager is complete and accepted. Its initial catalogue contains
 infinite-lives poke for the Ocean 128K RoboCop snapshot. Milestone 22 is
 complete, with two independently configured USB controllers, selectable
 Kempston/Cursor/Sinclair interfaces, simultaneous Interface II input, and a
-platform-neutral core boundary. SZX
-snapshot loading and a model-selectable 48K/128K on-screen keyboard follow in
-Milestones 23 and 24. Generic Kempston and AMX mouse support follows in
+platform-neutral core boundary. Milestone 23 SZX snapshot loading is complete
+for supported 48K and original 128K machine state. A model-selectable 48K/128K
+on-screen keyboard follows in Milestone 24. Generic Kempston and AMX mouse support follows in
 Milestone 25. Tape compatibility
 and broader title-specific audio fidelity validation continue in parallel, with
 the verified media matrix plus ZEXDOC/ZEXALL used as regression gates.
@@ -145,6 +146,7 @@ Spectrum128kEmulator/
 |   |-- BorderFrame.cs                     timestamped border events
 |   |-- SnapshotLoader.cs                  SNA snapshot loading
 |   |-- Z80SnapshotLoader.cs               Z80 snapshot loading
+|   |-- SzxSnapshotLoader.cs               bounded SZX chunk parsing and state restoration
 |   |-- RzxLoader.cs                       RZX replay loading
 |   `-- RzxPlaybackSession.cs              RZX playback orchestration
 |
@@ -219,7 +221,7 @@ that do not consume a function key.
 | `F6` | Open the debugger and disassembler, paused on an immutable machine capture |
 | `F7` / `F8` | Save or restore the temporary in-memory Quick State |
 | `F9` | Load a 48K or 128K `.sna` snapshot |
-| `F10` | Load a `.z80` snapshot or play an `.rzx` recording |
+| `F10` | Load a `.z80` or `.szx` snapshot, or play an `.rzx` recording |
 | `F11` | Mount a `.tap` or `.tzx` tape image |
 | `Shift+F11` | Replace the mounted tape without resetting the running machine |
 | `F12` | Write a machine diagnostic dump |
@@ -350,7 +352,15 @@ Current snapshot status:
   - interrupt state and interrupt mode restored from snapshot metadata
   - 48K-layout v1/v2/v3 snapshots can run on the selected 48K or 128K hardware model
 
-Snapshots can be loaded with `F9` (`.sna`) and `F10` (`.z80`) in the UI.
+- `.szx`
+  - SZX 1.x loading implemented for exact 48K and original 128K machine IDs
+  - restores CPU registers and execution state, RAM, frame phase, ULA state, 128K paging, and AY registers
+  - accepts compressed or uncompressed RAM pages, arbitrary chunk order, and unknown optional metadata
+  - validates the complete snapshot before changing the machine
+  - rejects unsupported machine models, alternate timing, Issue 2 behavior, external 48K AY state, and known unsupported peripheral blocks rather than approximating them
+  - an independently generated libspectrum SZX 1.3 48K fixture passes load and execution smoke validation
+
+Snapshots can be loaded with `F9` (`.sna`) and `F10` (`.z80` or `.szx`) in the UI.
 
 ---
 
@@ -425,7 +435,7 @@ compatibility; completed milestones remain regression baselines.
 | 20 | Complete | Tape state ownership, transition coverage, structured diagnostics, and behavior-preserving subsystem decomposition |
 | 21 | Complete | Accepted bank-aware Poke Manager with one-off writes, guarded restore, and an initial 38-game checksum-scoped catalogue |
 | 22 | Complete | Two-channel USB joystick input with selectable Kempston, Cursor, and Interface II mappings through a Windows-only host adapter and platform-neutral core state |
-| 23 | Planned | SZX snapshot loading for supported 48K and 128K machine state, with explicit handling of unsupported peripherals |
+| 23 | Complete | Bounded SZX loading for supported 48K and original 128K machine state, with explicit rejection of unsupported models and peripherals |
 | 24 | Planned | Pop-up on-screen keyboard with selectable authentic 48K and 128K layouts |
 | 25 | Planned | Host mouse capture through generic Kempston Mouse support followed by interrupt-driven AMX Mouse emulation |
 
@@ -527,12 +537,12 @@ compatibility; completed milestones remain regression baselines.
 - Migrates single-controller settings into Controller 1 without changing their numeric interface values; Controller 2 defaults to disabled
 - Covers 48K/128K port behavior, timed reads, simultaneous Cursor/Interface II matrix contributions, mixed keyboard ownership, two-device polling, mapping, configuration round-tripping, disconnect cleanup, persistence, menu state, and thread ownership with hardware-independent tests; the configuration flow and single attached controller have also passed live Windows acceptance
 
-### Milestone 23 - SZX Snapshot Support Planned
-- Add a dedicated chunk-based `.szx` parser with strict bounds checking, version validation, and clear diagnostics for malformed files
-- Restore the supported 48K and 128K CPU, RAM, paging, ULA, AY, and keyboard state through the existing machine-state boundaries
-- Ignore safely optional metadata while rejecting snapshots that require unsupported machines or mandatory peripherals rather than silently loading an inaccurate state
-- Integrate `.szx` with the existing snapshot picker, recent-media title handling, reset lifecycle, audio/input cleanup, and Quick State ownership rules
-- Add synthetic chunk-order, unknown-chunk, truncation, compression, paging, and model-selection tests plus representative 48K/128K execution smoke tests
+### Milestone 23 - SZX Snapshot Support Complete
+- Added a dedicated SZX 1.x chunk parser with strict bounds checking, complete pre-apply validation, and clear malformed-file diagnostics
+- Restores supported 48K and original 128K CPU registers and execution state, RAM, paging, frame phase, ULA state, and AY state through existing machine boundaries
+- Accepts compressed and uncompressed RAM pages, arbitrary chunk order, and safely optional unknown metadata while rejecting unsupported machines, timing variants, and known peripheral state
+- Integrated `.szx` with the shared F10 picker, media-title handling, reset lifecycle, audio/input cleanup, manual harness, and existing machine ownership rules
+- Added synthetic chunk-order, unknown-chunk, truncation, compression, duplicate/missing-state, paging, interrupt-pulse, unsupported-model/peripheral, and 48K/128K execution smoke tests; an upstream libspectrum SZX 1.3 48K fixture also passes load and execution validation
 
 ### Milestone 24 - On-Screen Keyboard Planned
 - Add a discoverable non-modal pop-up keyboard through the normal menus and right-click context menu without consuming another function key

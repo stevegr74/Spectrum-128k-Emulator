@@ -713,6 +713,17 @@ namespace Spectrum128kEmulator
             realignInterruptPhaseAfterNextAccept = false;
         }
 
+        public void RestoreSnapshotInterruptPulse(byte remainingTStates)
+        {
+            if (remainingTStates > 48)
+                throw new ArgumentOutOfRangeException(nameof(remainingTStates));
+
+            cpu.InterruptPending = remainingTStates != 0;
+            interruptPulseEndTStates = remainingTStates == 0
+                ? null
+                : cpu.TStates + remainingTStates;
+        }
+
         public byte[] GetScreenBankData() => ramBanks[ScreenBank];
 
         public void ForceApply7ffdValue(byte value)
@@ -1417,6 +1428,36 @@ namespace Spectrum128kEmulator
                 throw new ArgumentException("RAM bank data must be exactly 16384 bytes.", nameof(data));
 
             Buffer.BlockCopy(data, 0, ramBanks[bank], 0, data.Length);
+        }
+
+        public void RestoreSnapshotUlaState(byte portFeValue)
+        {
+            micHigh = (portFeValue & 0x08) != 0;
+            speakerHigh = (portFeValue & 0x10) != 0;
+            SpeakerEdge = false;
+            frameStartSpeakerHigh = speakerHigh;
+            frameStartBorderColor = BorderColor;
+            borderEvents.Clear();
+            beeperEvents.Clear();
+        }
+
+        public void RestoreSnapshotAyState(byte selectedRegister, byte[] registers)
+        {
+            ArgumentNullException.ThrowIfNull(registers);
+            if (registers.Length != 16)
+                throw new ArgumentException("AY snapshot state must contain exactly 16 registers.", nameof(registers));
+
+            ay.Reset();
+            for (byte register = 0; register < registers.Length; register++)
+            {
+                ay.SelectRegister(register);
+                ay.WriteRegister(registers[register]);
+            }
+
+            lastAyRegister = (byte)(selectedRegister & 0x0F);
+            ay.SelectRegister(lastAyRegister);
+            ayWrites.Clear();
+            frameStartAyState = CaptureAyAudioState();
         }
 
         public void ConfigureFor128kSnapshot(byte last7ffdValue, int borderColor)

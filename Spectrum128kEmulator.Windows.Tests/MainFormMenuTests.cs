@@ -38,7 +38,7 @@ namespace Spectrum128kEmulator.Tests
                             "F8 - Restore Quick State",
                             "---",
                             "F9 - Load .sna Snapshot",
-                            "F10 - Load .z80 Snapshot / Play .rzx Recording",
+                            "F10 - Load .z80/.szx Snapshot / Play .rzx",
                             "F11 - Mount .tap or .tzx Tape Image",
                             "Shift+F11 - Replace Tape (Preserve Machine)",
                             "---",

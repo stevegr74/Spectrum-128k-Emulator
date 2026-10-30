@@ -217,6 +217,10 @@ if (args.Length > 0)
         else
             Z80SnapshotLoader.Load(machine, snapshotPath);
     }
+    else if (extension.Equals(".szx", StringComparison.OrdinalIgnoreCase))
+    {
+        SzxSnapshotLoader.Load(machine, snapshotPath);
+    }
     else if (extension.Equals(".tap", StringComparison.OrdinalIgnoreCase))
     {
         TapeExecutionResult result = forcedTapeStrategy.HasValue
