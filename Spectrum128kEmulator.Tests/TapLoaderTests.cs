@@ -2091,6 +2091,46 @@ namespace Spectrum128kEmulator.Tests
         }
 
         [Fact]
+        public void MountedLoadUsrContinuationPreamble_Uses_Explicit_Code_Load_Address()
+        {
+            string tempFolder = CreateTempRoms();
+
+            try
+            {
+                TapeBlock headerBlock = TapeBlock.CreateData(
+                    BuildHeaderBlock(type: 3, fileName: "CODE", dataLength: 3, parameter1: 0x8000, parameter2: 0),
+                    2168, 8063, 667, 735, 855, 1710, 8, 1000);
+                TapeBlock dataBlock = TapeBlock.CreateData(
+                    BuildDataBlock(new byte[] { 0xAA, 0xBB, 0xC9 }),
+                    2168, 3223, 667, 735, 855, 1710, 8, 1000);
+
+                var machine = new Spectrum128Machine(tempFolder);
+                machine.MountTape(new MountedTape("code-address-override.tap", new[] { headerBlock, dataBlock }));
+
+                Type executorType = typeof(TapLoader).GetNestedType("BasicBootstrapExecutor", BindingFlags.NonPublic)!;
+                MethodInfo preambleMethod = executorType.GetMethod(
+                    "ExecuteMountedUsrContinuationPreamble",
+                    BindingFlags.NonPublic | BindingFlags.Static)!;
+                var variables = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+                string[][] preamble = new[]
+                {
+                    new[] { "LOAD", "\"\"", "CODE", "16384" }
+                };
+
+                preambleMethod.Invoke(null, new object[] { machine, variables, preamble });
+
+                Assert.Equal((byte)0xAA, machine.PeekMemory(0x4000));
+                Assert.Equal((byte)0xBB, machine.PeekMemory(0x4001));
+                Assert.Equal((byte)0xC9, machine.PeekMemory(0x4002));
+                Assert.Equal((byte)0x00, machine.PeekMemory(0x8000));
+            }
+            finally
+            {
+                Directory.Delete(tempFolder, true);
+            }
+        }
+
+        [Fact]
         public void MountedLoadUsrContinuationResolver_Drops_Stale_FollowOn_Usr_Zero_When_Live_TargetLine_Is_Gone()
         {
             string tempFolder = CreateTempRoms();

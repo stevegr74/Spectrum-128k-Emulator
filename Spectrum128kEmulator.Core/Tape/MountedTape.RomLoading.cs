@@ -364,7 +364,9 @@ namespace Spectrum128kEmulator.Tap
             return machine.RomProfile.TapeReturnAddress;
         }
 
-        public BootstrapTapeLoadResult TryConsumeBootstrapLoad(Spectrum128Machine machine)
+        public BootstrapTapeLoadResult TryConsumeBootstrapLoad(
+            Spectrum128Machine machine,
+            ushort? codeLoadAddress = null)
         {
             if (machine == null)
                 throw new ArgumentNullException(nameof(machine));
@@ -426,7 +428,7 @@ namespace Spectrum128kEmulator.Tap
                         break;
 
                     case 3:
-                        TapLoader.LoadBytes(machine, header.StartAddress, dataBlock.Payload!);
+                        TapLoader.LoadBytes(machine, codeLoadAddress ?? header.StartAddress, dataBlock.Payload!);
                         break;
 
                     case 1:
