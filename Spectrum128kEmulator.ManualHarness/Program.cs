@@ -876,6 +876,7 @@ static IEnumerable<(int row, int bit)> ResolveKey(string keyName)
         case "i": yield return (5, 2); yield break;
         case "o": yield return (5, 1); yield break;
         case "p": yield return (5, 0); yield break;
+        case "q": yield return (2, 0); yield break;
         case "r": yield return (2, 3); yield break;
         case "s": yield return (1, 1); yield break;
         case "x": yield return (0, 2); yield break;

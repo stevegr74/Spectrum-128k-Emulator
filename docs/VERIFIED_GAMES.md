@@ -70,7 +70,7 @@ that every level, control path, or hardware edge case has been tested.
 | 🟢 | Turbo Esprit (Durell original, side 2) | `.tzx` | ROM-driven loading and the explicit copyright prompts advance to the city-selection menu |
 | 🟢 | Uridium and Uridium Plus (Hewson original) | `.tzx` | Both releases preserve their intentionally malformed BASIC headers under native ROM loading and reach the animated title sequence from 48K and 128K startup; Uridium auto-stops at its completed handoff and Uridium Plus ends cleanly |
 | 🟢 | Wanted! Monty Mole (Gremlin original) | `.tzx` | In 48K mode, the ROM-driven continuation completes, ends the tape cleanly, reaches the options menu, and enters gameplay |
-| 🟢 | WEC Le Mans (Imagine original, side A) | `.tzx` | In both 48K and 128K modes, protected loading reaches the control menu and starts active racing. The 128K load consumes the complete side-A image and ends the tape; the 48K load automatically stops with its later data boundary retained for the side-B continuation noted below |
+| 🟢 | WEC Le Mans (Imagine original, sides A and B) | `.tzx` | Protected loading reaches active racing in both machine modes. The 128K load consumes side A completely; in 48K mode, gameplay reaches the side-B request, the first side-B record stops at its explicit marker, and the later manual resume consumes the final record before the game reaches its high-score screen |
 | 🟢 | Where Time Stood Still | `.tap` | Fast load completes and terminal tape state is detected |
 | 🟢 | Willy's New Mansion: Special Edition | `.tap`, `.tzx` | Both formats reach the difficulty-selection menu and remain stable |
 
@@ -143,7 +143,6 @@ were made as part of this audit.
 | Status | File / release | Result |
 | :---: | --- | --- |
 | 🟠 | Chase HQ Portuguese side 2 `.tzx` | Side 2 begins with raw continuation data and is not independently bootable. Side 1 contains Stage 1 plus five later stop-delimited stage records, so the side swap is only reached after six stages of gameplay; the first 48K stage handoff is verified above, but that distant cross-side continuation remains unproven |
-| 🟠 | WEC Le Mans side B `.tzx` | The tape metadata and original instructions identify this as 48K-only continuation data, not a bootable program. Side A is gameplay-verified in both modes and 128K needs no second side, but reaching the 48K in-race side-B load point requires gameplay progression and remains unproven |
 
 ## Recording New Results
 
