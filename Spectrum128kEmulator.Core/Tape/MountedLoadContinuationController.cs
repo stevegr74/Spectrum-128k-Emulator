@@ -245,7 +245,8 @@ namespace Spectrum128kEmulator.Tap
                     cpu.TStates + StreamingInterpreterRefreshIntervalTStates;
             }
 
-            if (mountedTape.IsActivelyStreamingEarSignal ||
+            bool isUsrReturn = cpu.Regs.PC == profile.UsrReturnAddress;
+            if ((!isUsrReturn && mountedTape.IsActivelyStreamingEarSignal) ||
                 !CanResume(cpu.Regs.PC, mountedTape, profile))
             {
                 return false;

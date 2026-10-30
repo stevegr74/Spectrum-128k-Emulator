@@ -311,6 +311,41 @@ namespace Spectrum128kEmulator.Tests
         }
 
         [Fact]
+        public void PendingMountedLoadUsrContinuation_Resumes_On_Usr_Return_While_Tape_Is_Streaming()
+        {
+            string tempFolder = CreateTempRoms();
+            try
+            {
+                var machine = new Spectrum128Machine(tempFolder);
+                machine.MountTape(new MountedTape(
+                    "streaming-mounted",
+                    new[]
+                    {
+                        TapeBlock.CreateData(new byte[] { 0xFF, 0xAA, 0x00 }, 2168, 3223, 667, 735, 855, 1710, 8, 1000)
+                    }));
+                Assert.True(machine.MountedTape!.IsActivelyStreamingEarSignal);
+
+                machine.SetPendingMountedLoadUsrContinuation(0x8000);
+                machine.Cpu.Regs.PC = machine.RomProfile.UsrReturnAddress;
+                machine.Cpu.Regs.SP = 0xFF00;
+
+                MethodInfo resumeMethod = typeof(Spectrum128Machine).GetMethod(
+                    "TryResumePendingMountedLoadUsrContinuation",
+                    BindingFlags.Instance | BindingFlags.NonPublic)!;
+
+                bool resumed = (bool)resumeMethod.Invoke(machine, new object[] { machine.Cpu })!;
+
+                Assert.True(resumed);
+                Assert.Equal((ushort)0x8000, machine.Cpu.Regs.PC);
+                Assert.Equal((ushort)0x8000, machine.Cpu.Regs.BC);
+            }
+            finally
+            {
+                Directory.Delete(tempFolder, true);
+            }
+        }
+
+        [Fact]
         public void Requires128kTapeLoadMode_Selects128kForGenericBasicHandoffToProtectedStream()
         {
             string tempFolder = CreateTempRoms();

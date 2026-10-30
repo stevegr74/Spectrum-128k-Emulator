@@ -603,6 +603,9 @@ namespace Spectrum128kEmulator.Tap
                 // Match the ROM's USR entry shape closely: on entry the machine-code
                 // routine sees STACK-BC as its return address, and successful returns
                 // back to BASIC expect H'L' to still reference end-calc.
+                // The report address beneath STACK-BC is the normal BASIC caller;
+                // without it, a returning USR routine eventually RETs to address zero.
+                WriteWord(machine, machine.Cpu.Regs.SP, machine.RomProfile.MainExecutionReportAddress);
                 machine.Cpu.Regs.SP -= 2;
                 WriteWord(machine, machine.Cpu.Regs.SP, machine.RomProfile.UsrReturnAddress);
                 machine.Cpu.Regs.BC = entryPoint;
@@ -1816,6 +1819,9 @@ namespace Spectrum128kEmulator.Tap
                 string keyword = NormalizeStatementKeyword(statement[0]);
                 if (keyword is "REM" or "?" or "BORDER" or "PAPER" or "INK" or "CLS" or "CLEAR" or "POKE")
                     return true;
+
+                if (keyword == "LOAD")
+                    return statement.Contains("CODE");
 
                 if (keyword == "LET")
                     return statement.Contains("=");

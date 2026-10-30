@@ -44,6 +44,7 @@ that every level, control path, or hardware edge case has been tested.
 | 🟢 | Paperboy 2 (Mindscape) | `.tzx` | Loading reaches the character-selection menu and remains stable |
 | 🟢 | Rambo (Hit Squad) | `.tzx` | Long protected loader completes; title and game screens run |
 | 🟢 | Rambo (Ocean) | `.tzx` | Speedlock BASIC handoff uses real-ROM bootstrap; protected pulse loading completes without initial screen corruption |
+| 🟢 | Red Hawk (parts 1 and 2) | `.tap` | Both headered multi-stage CODE chains preserve their post-decompressor continuation, end the tape cleanly, and reach their distinct playable start screens |
 | 🟢 | Rick Dangerous (Kixx) | `.tzx` | Protected loading reaches the control-selection menu and remains stable |
 | 🟢 | Robocop 2 (Ocean original) | `.tzx` | Protected loading reaches the title screen and remains stable |
 | 🟢 | Robocop 3 (Ocean original, SpeedLock 7) | `.tzx` | Protected loading reaches active gameplay and remains stable |
@@ -141,7 +142,6 @@ were made as part of this audit.
 | 🟠 | Chase HQ Portuguese sides 1 and 2 `.tzx` | Side 1 reaches a stop marker with a black frame; side 2 alone also stops without a meaningful screen |
 | 🟠 | Impossamole side 2 `.tzx` | Standalone side reaches a stop marker with a black frame; side 1 reaches its menu, but the cross-side continuation was not proven |
 | 🟠 | Indiana Jones and the Last Crusade Kixx/US Gold TZX side sets | Side 1 reaches its loading/title handoff, but mounting and completing side 2 was not proven; the 128K TAP path is verified |
-| 🔴 | Red Hawk parts 1 and 2 `.tap` | Both parts end at the Sinclair copyright/BASIC screen; the Red Hawk SNA works |
 | 🔴 | The Way of the Exploding Fist original/Ricochet `.tzx` | Both tapes end without reaching a meaningful title/game screen; the SNA works |
 | 🔴 | Uridium and Uridium Plus (Hewson original) `.tzx` | Inconsistent BASIC header/data pairs now select safe real-time mounting instead of throwing, but both tapes end on black frames; their snapshots work |
 | 🟠 | WEC Le Mans side 2 `.tzx` | Standalone side reaches a stop marker with a black frame; side 1 reaches its menu, but the cross-side continuation was not proven |

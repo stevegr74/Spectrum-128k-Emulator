@@ -28,7 +28,8 @@ namespace Spectrum128kEmulator.Tap
                 ushort programStart,
                 ushort programLength,
                 ushort autoStartLine,
-                bool requireUsrReturnAddressBetweenSteps = true)
+                bool requireUsrReturnAddressBetweenSteps = true,
+                bool requireFollowOnUsr = false)
             {
                 if (!TryBuildMountedUsrContinuationSteps(
                     machine,
@@ -39,6 +40,9 @@ namespace Spectrum128kEmulator.Tap
                 {
                     return null;
                 }
+
+                if (requireFollowOnUsr && continuationSteps.Count == 0)
+                    return null;
 
                 if (continuationSteps.Count == 0)
                 {
@@ -168,6 +172,8 @@ namespace Spectrum128kEmulator.Tap
                                 if (IsSafeUsrContinuationPreambleStatement(clause))
                                     continue;
 
+                                machine.Trace?.Invoke(
+                                    $"[MountedLoad] Unsupported clause before initial USR: {string.Join(' ', clause)}");
                                 return false;
                             }
 
@@ -194,6 +200,8 @@ namespace Spectrum128kEmulator.Tap
                                 continue;
                             }
 
+                            machine.Trace?.Invoke(
+                                $"[MountedLoad] Unsupported clause after initial USR: {string.Join(' ', clause)}");
                             return false;
                         }
                     }
@@ -1134,6 +1142,14 @@ namespace Spectrum128kEmulator.Tap
                             {
                                 ApplyMountedContinuationDisplaySideEffects(machine);
                             }
+                            break;
+                        }
+
+                        case "LOAD":
+                        {
+                            BootstrapTapeLoadResult loadResult = machine.TryConsumeBootstrapTapeLoad();
+                            if (!loadResult.Success || loadResult.LoadedBasicProgram)
+                                throw new InvalidOperationException("Mounted CODE LOAD could not consume a standard tape data block.");
                             break;
                         }
 
