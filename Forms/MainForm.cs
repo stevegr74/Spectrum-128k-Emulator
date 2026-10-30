@@ -70,6 +70,7 @@ namespace Spectrum128kEmulator
         private readonly ToolStripMenuItem disassemblerMenuItem = new ToolStripMenuItem("F6 - Debugger / Disassembler");
         private readonly ToolStripMenuItem saveQuickStateMenuItem = new ToolStripMenuItem("F7 - Save Quick State");
         private readonly ToolStripMenuItem restoreQuickStateMenuItem = new ToolStripMenuItem("F8 - Restore Quick State");
+        private readonly ToolStripMenuItem replaceTapeMenuItem = new ToolStripMenuItem("Shift+F11 - Replace Tape (Preserve Machine)");
         private readonly ToolStripMenuItem joystickMenuItem = new ToolStripMenuItem("Joystick");
         private readonly ToolStripMenuItem pokeManagerMenuItem = new ToolStripMenuItem("Poke Manager...");
 
@@ -237,6 +238,8 @@ namespace Spectrum128kEmulator
             displayContextMenu.Items.Add("F9 - Load .sna Snapshot", null, (_, _) => LoadSnaSnapshotFromDialog());
             displayContextMenu.Items.Add("F10 - Load .z80 Snapshot / Play .rzx Recording", null, (_, _) => LoadSnapshotOrRecordingFromDialog());
             displayContextMenu.Items.Add("F11 - Mount .tap or .tzx Tape Image", null, (_, _) => MountTapFromDialog());
+            replaceTapeMenuItem.Click += (_, _) => ReplaceMountedTapeFromDialog();
+            displayContextMenu.Items.Add(replaceTapeMenuItem);
             displayContextMenu.Items.Add(new ToolStripSeparator());
             displayContextMenu.Items.Add("F12 - Write Machine Diagnostic Dump", null, (_, _) => DumpMachineDebugState());
             displayContextMenu.Items.Add(new ToolStripSeparator());
@@ -248,6 +251,8 @@ namespace Spectrum128kEmulator
             {
                 UpdateTapeTransportMenuItem();
                 UpdateQuickStateMenuItems();
+                lock (machineLock)
+                    replaceTapeMenuItem.Enabled = machine.HasMountedTape;
             };
             UpdateMachineModelMenuItems();
             UpdateTapeTransportMenuItem();

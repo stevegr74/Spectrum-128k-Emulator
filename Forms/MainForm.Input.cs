@@ -115,6 +115,14 @@ namespace Spectrum128kEmulator
                 return;
             }
 
+            if (IsTapeReplacementShortcut(e))
+            {
+                ReplaceMountedTapeFromDialog();
+                e.Handled = true;
+                e.SuppressKeyPress = true;
+                return;
+            }
+
             if (IsPlainShortcut(e, Keys.F11))
             {
                 MountTapFromDialog();
@@ -144,6 +152,9 @@ namespace Spectrum128kEmulator
             e.Handled = true;
             e.SuppressKeyPress = true;
         }
+
+        private static bool IsTapeReplacementShortcut(KeyEventArgs e) =>
+            e.KeyCode == Keys.F11 && e.Shift && !e.Control && !e.Alt;
 
         private void MainForm_KeyUp(object? sender, KeyEventArgs e)
         {

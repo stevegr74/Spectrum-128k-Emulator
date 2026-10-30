@@ -78,6 +78,7 @@ Press `F1` to open the quick-reference window. Emulation pauses while it is open
 | `F9` | Load a `.sna` snapshot |
 | `F10` | Load a `.z80` snapshot or play an `.rzx` recording |
 | `F11` | Mount a `.tap` or `.tzx` tape image |
+| `Shift+F11` | Replace the mounted tape while preserving the running machine |
 | `F12` | Write a machine diagnostic dump |
 | Right-click | Open the complete context menu |
 
@@ -169,6 +170,11 @@ Tape images reproduce a loading process rather than a finished machine state. Th
 
 Press `F11` and choose a `.tap` or `.tzx` image.
 
+For a multi-side release, wait until the game asks for the other side and press
+`Shift+F11`. Choose the next tape image to replace the mounted tape without
+resetting CPU, RAM, paging, or the running game. The same action is available
+from the right-click menu and is disabled until a tape is mounted.
+
 ## Automatic Loading
 
 The emulator selects a loading strategy from the tape structure:
@@ -200,8 +206,9 @@ The emulator also handles supported TZX pauses, stop markers, tape end, and dete
 
 1. Confirm the correct 48K/128K model was selected before mounting.
 2. Wait for the game to request the next section.
-3. Press `F5` once to resume if it did not resume automatically.
-4. If the game immediately errors, do not repeatedly toggle transport; record the displayed error and media filename for diagnosis.
+3. If the game requests another tape side, press `Shift+F11` and select it.
+4. Press `F5` once to resume if the mounted tape did not start automatically.
+5. If the game immediately errors, do not repeatedly toggle transport; record the displayed error and media filename for diagnosis.
 
 # Chapter 7 - Quick State
 

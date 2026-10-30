@@ -221,6 +221,7 @@ that do not consume a function key.
 | `F9` | Load a 48K or 128K `.sna` snapshot |
 | `F10` | Load a `.z80` snapshot or play an `.rzx` recording |
 | `F11` | Mount a `.tap` or `.tzx` tape image |
+| `Shift+F11` | Replace the mounted tape without resetting the running machine |
 | `F12` | Write a machine diagnostic dump |
 
 The right-click `Joystick` submenu contains separate Controller 1 and Controller
@@ -480,6 +481,7 @@ compatibility; completed milestones remain regression baselines.
 ### Milestone 20 - Tape Architecture Hardening Complete
 - Documented current tape-state ownership and invariants across transport, load-strategy selection, continuation handling, threading, and Quick State restoration in [Tape State Ownership](docs/TAPE_STATE_OWNERSHIP.md)
 - Added focused machine-level lifecycle coverage for no-tape behavior, media replacement, eject, model reset, and stopped/ended Quick State restoration
+- Added explicit `Shift+F11` tape-side replacement that preserves the running CPU, RAM, paging, and machine model while mounting the next TAP/TZX side; the right-click menu exposes the same guarded action
 - Isolated tape read, loader-activity, handoff, and automatic-resume counters plus their Quick State in a dedicated activity tracker without changing transition policy
 - Centralized mounted-media identity, transport state, lifecycle transitions, and exact transport Quick State restoration in a dedicated controller
 - Moved automatic handoff stop/resume decisions behind the activity tracker and added direct coverage for all safety gates plus exact EAR-phase preservation
