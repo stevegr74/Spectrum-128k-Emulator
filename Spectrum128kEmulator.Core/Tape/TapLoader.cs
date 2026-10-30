@@ -259,9 +259,11 @@ namespace Spectrum128kEmulator.Tap
                 initialEarLevelHigh: initialEarLevelHigh);
             machine.MountTape(tape);
 
-            // A BASIC bootstrap followed by raw standard records must retain the
-            // interpreter continuation that consumes those records before USR runs.
-            if (RequiresMountedRealtimeForMixedTape(machine, blocks))
+            // A BASIC bootstrap with later tape records must retain any proven
+            // continuation that consumes those records before a follow-on USR runs.
+            bool rawStandardMixedRemainder = RequiresMountedRealtimeForMixedTape(machine, blocks);
+            bool headeredStandardRemainder = HasStandardHeaderDataPairAfterLeadingBasic(blocks);
+            if (rawStandardMixedRemainder || headeredStandardRemainder)
             {
                 Func<Spectrum128Machine, ushort?>? continuationResolver =
                     BasicBootstrapExecutor.CreateMountedLoadUsrContinuationResolver(
@@ -269,7 +271,8 @@ namespace Spectrum128kEmulator.Tap
                         BasicProgramStart,
                         effectiveProgramLength,
                         effectiveHeader.AutoStartLine,
-                        requireUsrReturnAddressBetweenSteps: false);
+                        requireUsrReturnAddressBetweenSteps: false,
+                        requireFollowOnUsr: headeredStandardRemainder && !rawStandardMixedRemainder);
                 if (continuationResolver != null)
                     machine.SetPendingMountedLoadUsrContinuationResolver(continuationResolver);
             }

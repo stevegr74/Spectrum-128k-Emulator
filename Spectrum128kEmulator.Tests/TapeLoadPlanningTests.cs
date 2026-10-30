@@ -563,6 +563,8 @@ namespace Spectrum128kEmulator.Tests
 
                 Assert.Equal(2, result.ConsumedBlockCount);
                 Assert.Equal((ushort)0x8000, machine.Cpu.Regs.PC);
+                Assert.Equal(machine.RomProfile.UsrReturnAddress, ReadWord(machine, machine.Cpu.Regs.SP));
+                Assert.Equal(machine.RomProfile.MainExecutionReportAddress, ReadWord(machine, (ushort)(machine.Cpu.Regs.SP + 2)));
                 Assert.Equal((ushort)10, ReadWord(machine, 23618));
                 Assert.True(machine.HasMountedTape);
                 Assert.False(machine.MountedTape!.HasRemainingBlocks);
@@ -574,6 +576,58 @@ namespace Spectrum128kEmulator.Tests
                 Assert.Equal((byte)0x00, machine.PeekMemory(0x8000));
                 Assert.Equal((byte)0x01, machine.PeekMemory(0x8001));
                 Assert.Equal((byte)0x02, machine.PeekMemory(0x8002));
+            }
+            finally
+            {
+                Directory.Delete(tempFolder, true);
+            }
+        }
+
+        [Fact]
+        public void BootstrapBasicProgramAndMountRemaining_Arms_Headered_Code_Chain_Continuation()
+        {
+            string tempFolder = CreateTempRoms();
+            string tapePath = Path.Combine(tempFolder, "headered-chain.tap");
+
+            try
+            {
+                byte[] basicLoader = BuildBasicProgram(
+                    BuildBasicLine(10,
+                        Token(239), Ascii("\"STAGE1\" "), Token(175),
+                        Colon(),
+                        Token(249), Ascii(" "), Token(192), Ascii("32768"), NumberMarker(32768)),
+                    BuildBasicLine(20,
+                        Token(239), Ascii("\"STAGE2\" "), Token(175),
+                        Colon(),
+                        Token(249), Ascii(" "), Token(192), Ascii("36864"), NumberMarker(36864)));
+
+                byte[] tap = BuildTap(
+                    BuildHeaderBlock(type: 0, fileName: "CHAIN", dataLength: (ushort)basicLoader.Length, parameter1: 10, parameter2: (ushort)basicLoader.Length),
+                    BuildDataBlock(basicLoader),
+                    BuildHeaderBlock(type: 3, fileName: "STAGE1", dataLength: 1, parameter1: 0x8000, parameter2: 0),
+                    BuildDataBlock(new byte[] { 0xC9 }),
+                    BuildHeaderBlock(type: 3, fileName: "STAGE2", dataLength: 2, parameter1: 0x9000, parameter2: 0),
+                    BuildDataBlock(new byte[] { 0x00, 0xC9 }));
+                File.WriteAllBytes(tapePath, tap);
+
+                var machine = new Spectrum128Machine(tempFolder);
+                TapLoader.BootstrapBasicProgramAndMountRemaining(machine, tapePath);
+
+                Assert.Equal((ushort)0x8000, machine.Cpu.Regs.PC);
+                Assert.True(machine.HasPendingMountedLoadUsrContinuation);
+                Assert.True(machine.MountedTape!.IsActivelyStreamingEarSignal);
+
+                machine.Cpu.Regs.PC = machine.RomProfile.UsrReturnAddress;
+                MethodInfo resumeMethod = typeof(Spectrum128Machine).GetMethod(
+                    "TryResumePendingMountedLoadUsrContinuation",
+                    BindingFlags.Instance | BindingFlags.NonPublic)!;
+
+                bool resumed = (bool)resumeMethod.Invoke(machine, new object[] { machine.Cpu })!;
+
+                Assert.True(resumed);
+                Assert.Equal(machine.RomProfile.BasicResumeExecutionLoopAddress, machine.Cpu.Regs.PC);
+                Assert.False(machine.HasPendingMountedLoadUsrContinuation);
+                Assert.True(machine.HasMountedTape);
             }
             finally
             {
