@@ -20,7 +20,7 @@ that every level, control path, or hardware edge case has been tested.
 | 🟢 | Captain America | `.tzx` | Protected loader completes; game runs |
 | 🟢 | Cauldron (original and Silverbird/Cyberlode 1.1 releases) | `.tzx` | Both releases reach their complete title/control screens; standard-speed custom flags below `0x80` retain the required long pilot tone |
 | 🟢 | Cauldron II (Erbe, original, and Silverbird/Cyberlode releases) | `.tzx` | All three releases reach the control-selection menu and remain stable; malformed accelerated expressions in the Cyberlode loader fall back before execution |
-| 🟢 | Chase HQ (Portuguese, side 1) | `.tzx` | Its noncanonical protected BASIC layout starts through the native ROM in both machine modes; 48K reaches the stop/key prompt and 128K reaches the complete title screen, with transport stopped at the retained level boundary |
+| 🟢 | Chase HQ (Portuguese, side 1) | `.tzx` | Its noncanonical protected BASIC layout starts through the native ROM in both machine modes. In 48K mode the stop/key prompt, control selection, confirmation, and Stage 1 start screen all work, with transport stopped at the retained Stage 2 boundary; 128K reaches the complete title screen |
 | 🟢 | Cliff Hanger | `.tzx` | Loading reaches the control-selection menu and remains stable |
 | 🟢 | Cobra (Hit Squad and Ocean original releases) | `.tzx` | Both releases complete loading and reach the stable opening credit sequence |
 | 🟢 | Donkey Kong (Erbe) | `.tzx` | Custom loader completes without corrupting the loading screen; game runs |
@@ -142,7 +142,7 @@ were made as part of this audit.
 
 | Status | File / release | Result |
 | :---: | --- | --- |
-| 🟠 | Chase HQ Portuguese side 2 `.tzx` | Side 2 begins with raw continuation data and is not independently bootable; side 1 is verified above, but a cross-side continuation has not been proven |
+| 🟠 | Chase HQ Portuguese side 2 `.tzx` | Side 2 begins with raw continuation data and is not independently bootable. Side 1 contains Stage 1 plus five later stop-delimited stage records, so the side swap is only reached after six stages of gameplay; the first 48K stage handoff is verified above, but that distant cross-side continuation remains unproven |
 | 🟠 | Impossamole side 2 `.tzx` | Side 2 contains continuation blocks for levels 1-4 and is not independently bootable; replacing side 1 after level 0 has not yet been gameplay-proven |
 | 🟠 | WEC Le Mans side B `.tzx` | The tape metadata and original instructions identify this as 48K-only continuation data, not a bootable program. Side A is gameplay-verified in both modes and 128K needs no second side, but reaching the 48K in-race side-B load point requires gameplay progression and remains unproven |
 
