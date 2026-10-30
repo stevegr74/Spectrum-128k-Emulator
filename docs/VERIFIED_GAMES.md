@@ -34,7 +34,7 @@ that every level, control path, or hardware edge case has been tested.
 | 🟢 | Impossible Mission | `.tap`, `.tzx` | The TAP plus primary, Bugfix, and Ricochet TZX releases complete protected loading and reach the control menu; protected chained BASIC stages retain exact ROM interpreter-cursor handling |
 | 🟢 | Impossible Mission II | `.tzx` | US Gold original and both Kixx sides complete protected loading and reach stable game/control screens |
 | 🟢 | Impossamole (Gremlin original, side 1) | `.tzx` | In 48K mode, side 1 reaches the control menu with level 0 retained after its stop marker; later-level continuation with side 2 remains unverified below |
-| 🟢 | Indiana Jones and the Last Crusade | `128k.tap` | Initial load auto-stops at the picture; side-two resume loads into gameplay and preserves the next multiload boundary |
+| 🟢 | Indiana Jones and the Last Crusade | `128k.tap`, Kixx/US Gold original `.tzx` side sets | The TAP initial load auto-stops at the picture and resumes into gameplay; in 48K mode both TZX releases reach title/options, request side 2, preserve live state across tape replacement, load The Cross of Coronado into gameplay, and stop at the next marker |
 | 🟢 | Indiana Jones and the Temple of Doom (Kixx and US Gold original) | `.tzx` | Both releases reach the stop-tape prompt and advance to the complete quest-start screen; the US Gold release requires 48K mode |
 | 🟢 | Kick Off 2 | `.tzx` | Loading reaches its complete title/menu prompt and remains stable |
 | 🟢 | Kung-Fu Master (Americana and US Gold/Ocean original) | `.tzx` | Both releases reach their complete illustrated title screens; the original accepts input into its start/demonstration menu after its padded two-stage BASIC prefix and protected loader complete |
@@ -144,7 +144,6 @@ were made as part of this audit.
 | :---: | --- | --- |
 | 🟠 | Chase HQ Portuguese side 2 `.tzx` | Side 2 begins with raw continuation data and is not independently bootable; side 1 is verified above, but a cross-side continuation has not been proven |
 | 🟠 | Impossamole side 2 `.tzx` | Side 2 contains continuation blocks for levels 1-4 and is not independently bootable; replacing side 1 after level 0 has not yet been gameplay-proven |
-| 🟠 | Indiana Jones and the Last Crusade Kixx/US Gold TZX side sets | Side 1 reaches its loading/title handoff, but mounting and completing side 2 was not proven; the 128K TAP path is verified |
 | 🟠 | WEC Le Mans side 2 `.tzx` | Standalone side reaches a stop marker with a black frame; side 1 reaches its menu, but the cross-side continuation was not proven |
 
 ## Recording New Results
