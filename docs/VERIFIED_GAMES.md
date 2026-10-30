@@ -40,7 +40,7 @@ that every level, control path, or hardware edge case has been tested.
 | 🟢 | Kwah! (Melbourne House original) | `.tzx` | In 48K mode, the ROM-driven continuation completes, ends the tape cleanly, accepts SPACE at the start prompt, and enters the game |
 | 🟢 | Magician | `.tap` | Loading reaches the illustrated adventure opening and remains stable |
 | 🟢 | Pac-Land | `.tzx` | In 48K mode, ROM-driven loading reaches the game/high-score screen and remains stable |
-| 🟢 | Paperboy (Elite original) | `.tzx` | Loading reaches the high-score/start screen and remains stable |
+| 🟢 | Paperboy (Elite original and Encore) | `.tzx` | Both releases reach the high-score/start screen and remain stable; Encore completes protected playback and ends the tape cleanly from both 48K and 128K startup selections |
 | 🟢 | Paperboy 2 (Mindscape) | `.tzx` | Loading reaches the character-selection menu and remains stable |
 | 🟢 | Rambo (Hit Squad) | `.tzx` | Long protected loader completes; title and game screens run |
 | 🟢 | Rambo (Ocean) | `.tzx` | Speedlock BASIC handoff uses real-ROM bootstrap; protected pulse loading completes without initial screen corruption |
@@ -141,7 +141,6 @@ were made as part of this audit.
 | 🟠 | Chase HQ Portuguese sides 1 and 2 `.tzx` | Side 1 reaches a stop marker with a black frame; side 2 alone also stops without a meaningful screen |
 | 🟠 | Impossamole side 2 `.tzx` | Standalone side reaches a stop marker with a black frame; side 1 reaches its menu, but the cross-side continuation was not proven |
 | 🟠 | Indiana Jones and the Last Crusade Kixx/US Gold TZX side sets | Side 1 reaches its loading/title handoff, but mounting and completing side 2 was not proven; the 128K TAP path is verified |
-| 🔴 | Paperboy (Encore) `.tzx` | Tape ends on a black frame; the Elite original TZX and Paperboy SNA work |
 | 🔴 | Red Hawk parts 1 and 2 `.tap` | Both parts end at the Sinclair copyright/BASIC screen; the Red Hawk SNA works |
 | 🔴 | The Way of the Exploding Fist original/Ricochet `.tzx` | Both tapes end without reaching a meaningful title/game screen; the SNA works |
 | 🔴 | Uridium and Uridium Plus (Hewson original) `.tzx` | Inconsistent BASIC header/data pairs now select safe real-time mounting instead of throwing, but both tapes end on black frames; their snapshots work |
