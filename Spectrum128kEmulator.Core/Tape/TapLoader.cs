@@ -488,7 +488,8 @@ namespace Spectrum128kEmulator.Tap
                 case TapeLoadStrategy.RomBootstrapMounted:
                 {
                     bool requiresNativeRomLoader =
-                        plan.ReasonCode == TapeLoadPlanReason.InconsistentStandardBasicPair;
+                        plan.ReasonCode is TapeLoadPlanReason.InconsistentStandardBasicPair or
+                            TapeLoadPlanReason.NonCanonicalBasicProgram;
                     bool requiresNative128Basic =
                         machine.MachineModel == SpectrumMachineModel.Spectrum128K &&
                         !ReferenceEquals(machine.RomProfile, SpectrumRomProfile.SyntheticTest) &&
@@ -2261,6 +2262,51 @@ namespace Spectrum128kEmulator.Tap
                 payload,
                 header.ProgramLength,
                 header.AutoStartLine);
+        }
+
+        internal static bool HasNonCanonicalLeadingBasicProgram(IReadOnlyList<TapeBlock> blocks)
+        {
+            int index = 0;
+            while (index < blocks.Count && blocks[index].Kind == TapeBlockKind.Metadata)
+                index++;
+
+            if (index + 1 >= blocks.Count ||
+                !IsStandardHeaderBlock(blocks[index]) ||
+                blocks[index + 1].Flag != DataFlag)
+            {
+                return false;
+            }
+
+            TapHeaderInfo header = ParseHeaderInfo(blocks[index]);
+            byte[]? payload = blocks[index + 1].Payload;
+            if (header.Type != ProgramType || header.ProgramLength == 0 || payload == null)
+                return false;
+            if (header.ProgramLength > payload.Length)
+                return true;
+
+            int cursor = 0;
+            int previousLineNumber = -1;
+            while (cursor < header.ProgramLength)
+            {
+                if (header.ProgramLength - cursor < 4)
+                    return true;
+
+                int lineNumber = (payload[cursor] << 8) | payload[cursor + 1];
+                int lineLength = payload[cursor + 2] | (payload[cursor + 3] << 8);
+                int nextLineOffset = cursor + 4 + lineLength;
+                if (lineLength == 0 ||
+                    nextLineOffset > header.ProgramLength ||
+                    lineNumber <= previousLineNumber ||
+                    payload[nextLineOffset - 1] != 0x0D)
+                {
+                    return true;
+                }
+
+                previousLineNumber = lineNumber;
+                cursor = nextLineOffset;
+            }
+
+            return false;
         }
 
         private readonly record struct BootstrapExecutionResult(int IgnoredLoadCount, int ConsumedMountedLoadCount)

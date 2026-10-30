@@ -65,6 +65,7 @@ namespace Spectrum128kEmulator.Tap
         StandardBasicChainRequiresRom,
         UnsupportedStandardBootstrapControlFlow,
         InconsistentStandardBasicPair,
+        NonCanonicalBasicProgram,
         StandardTapeRequiresMountedSemantics,
         ProtectedContinuationRequiresRom,
         SafeLeadingBasicChain,
