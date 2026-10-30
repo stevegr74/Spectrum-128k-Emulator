@@ -365,7 +365,7 @@ dotnet run --project Spectrum128kEmulator.ManualHarness
 This runs the emulator without UI and logs state.
 
 Its generic diagnostics accept `frames=`, `model=48|128`, `quiet=1`, `audioanalysis=1`, `dumpblocks=1`, `strategy=`,
-scheduled key/register/memory events, memory-write watches, instruction traces, and
+scheduled key/register/memory/tape-replacement events, memory-write watches, instruction traces, and
 execution breakpoints. It writes a machine dump and BMP frame image only for the run being
 investigated; audio analysis reports generated frame/sample counts, nonzero samples,
 peak, RMS, clipping, and maximum adjacent-sample delta. Game-specific probes are
