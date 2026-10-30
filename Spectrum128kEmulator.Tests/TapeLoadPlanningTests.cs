@@ -209,7 +209,7 @@ namespace Spectrum128kEmulator.Tests
         }
 
         [Fact]
-        public void CreateExecutionPlan_UsesMountedRealtime_ForInconsistentBasicHeaderDataPair()
+        public void CreateExecutionPlan_UsesRealRomLoader_ForInconsistentBasicHeaderDataPair()
         {
             string tempFolder = CreateTempRoms();
 
@@ -230,12 +230,58 @@ namespace Spectrum128kEmulator.Tests
 
                 TapeLoadPlan plan = TapLoader.CreateExecutionPlan(machine, blocks);
 
-                Assert.Equal(TapeLoadStrategy.MountedRealtime, plan.Strategy);
+                Assert.Equal(TapeLoadStrategy.RomBootstrapMounted, plan.Strategy);
                 Assert.Equal(TapeLoadPlanReason.InconsistentStandardBasicPair, plan.ReasonCode);
             }
             finally
             {
                 Directory.Delete(tempFolder, true);
+            }
+        }
+
+        [Theory]
+        [InlineData(SpectrumMachineModel.Spectrum48K)]
+        [InlineData(SpectrumMachineModel.Spectrum128K)]
+        public void LoadWithPolicy_InconsistentBasicHeader_StartsNativeRomLoader(
+            SpectrumMachineModel machineModel)
+        {
+            string tapePath = Path.Combine(Path.GetTempPath(), $"native-rom-loader-{Guid.NewGuid():N}.tap");
+
+            try
+            {
+                byte[] payload = new byte[] { 0x0D };
+                File.WriteAllBytes(tapePath, BuildTap(
+                    BuildHeaderBlock(
+                        type: 0,
+                        fileName: "ROM HEADER",
+                        dataLength: (ushort)payload.Length,
+                        parameter1: 0,
+                        parameter2: 42020),
+                    BuildDataBlock(payload)));
+
+                string romFolder = Path.Combine(AppContext.BaseDirectory, "ROMs");
+                var machine = new Spectrum128Machine(romFolder);
+                machine.Reset(machineModel);
+
+                TapeExecutionResult result = TapLoader.LoadWithPolicy(machine, tapePath);
+
+                Assert.Equal(TapeLoadStrategy.RomBootstrapMounted, result.Strategy);
+                Assert.Equal(TapeLoadPlanReason.InconsistentStandardBasicPair, result.ReasonCode);
+                Assert.True(machine.HasMountedTape);
+                Assert.True(
+                    machine.Cpu.Regs.PC is >= 0x0556 and <= 0x0605 ||
+                    (machine.PeekMemory(23611) & 0x10) != 0);
+
+                machine.Cpu.Regs.PC = machine.RomProfile.LoadBytesTrapAddress;
+                machine.Cpu.Regs.IX = 0x8000;
+                machine.Cpu.Regs.DE = 1;
+                machine.Cpu.Regs.A = 0;
+                machine.Cpu.Regs.F = 1;
+                Assert.False(machine.TryServiceTapeTrap());
+            }
+            finally
+            {
+                File.Delete(tapePath);
             }
         }
 

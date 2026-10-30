@@ -60,7 +60,7 @@ Current limitations and active work:
 ### Implementation Notes
 
 - Fast tape bootstrap is capability-gated. Unsupported initial or chained BASIC control flow, including protected handoff directly into raw pulses and mixed raw-stream autorun that cannot be represented safely, falls back to a clean real-ROM autorun path with the remaining tape mounted. Proven headered CODE chains preserve their follow-on USR continuation even when the next tape signal has started. In 128K mode, unsupported standard BASIC also starts through ROM 0 and the native Tape Loader with byte-copy traps disabled, preserving the ROM's complete multi-file load sequence and bank setup. Protected chained BASIC data that depends on live ROM interpreter cursors likewise remains on exact pulse/EAR playback.
-- BASIC expression syntax and header/data length consistency are preflighted before acceleration; malformed or ambiguous pairs fall back without partially executing the bootstrap or terminating the emulator.
+- BASIC expression syntax and header/data length consistency are preflighted before acceleration; malformed or ambiguous pairs fall back without partially executing the bootstrap. ROM-dependent malformed BASIC headers start through the native 48K `LOAD ""` command or 128K Tape Loader with byte traps disabled, preserving their intentional header side effects.
 - Explicit BASIC `LOAD ... CODE address` destinations override the address advertised by the tape header in both initial bootstrap and mounted continuation stages.
 - Address-based ROM tape services are enabled only for the fingerprinted bundled ROM pair; an unknown ROM pair uses real-time mounted pulse/EAR playback instead of assuming compatible internal addresses.
 - ROM-driven tape handoffs preserve consumed-block pauses, exact TZX pause signal transitions, and zero-duration stop markers.
@@ -128,6 +128,7 @@ Spectrum128kEmulator/
 |   |   |-- MountedTape.cs                 pulse/EAR playback state
 |   |   |-- MountedTape.RomLoading.cs      ROM-load traps and byte-stream handling
 |   |   |-- TapLoader.cs                   TAP orchestration and plan execution
+|   |   |-- TapLoader.NativeRomBootstrap.cs  native 48K/128K ROM loader startup
 |   |   |-- TapLoader.TimingAndParsing.cs  TAP parsing and pulse timing
 |   |   |-- TapLoader.BasicBootstrap.cs    BASIC bootstrap analysis and execution
 |   |   |-- TapLoader.BasicExpressions.cs  bootstrap expression parser

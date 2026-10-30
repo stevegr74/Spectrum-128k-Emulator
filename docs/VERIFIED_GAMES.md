@@ -67,6 +67,7 @@ that every level, control path, or hardware edge case has been tested.
 | 🟢 | The Oracle's Cave (Doric Computer) | `.tzx` | ROM-driven multi-stage loading completes; maze generation and level selection lead into the playable cave |
 | 🟢 | The Way of the Exploding Fist (Melbourne House original and Ricochet) | `.tzx` | Both releases complete their multi-file load and reach the animated title screen; explicit BASIC CODE destinations override conflicting header addresses |
 | 🟢 | Turbo Esprit (Durell original, side 2) | `.tzx` | ROM-driven loading and the explicit copyright prompts advance to the city-selection menu |
+| 🟢 | Uridium and Uridium Plus (Hewson original) | `.tzx` | Both releases preserve their intentionally malformed BASIC headers under native ROM loading and reach the animated title sequence from 48K and 128K startup; Uridium auto-stops at its completed handoff and Uridium Plus ends cleanly |
 | 🟢 | Wanted! Monty Mole (Gremlin original) | `.tzx` | In 48K mode, the ROM-driven continuation completes, ends the tape cleanly, reaches the options menu, and enters gameplay |
 | 🟢 | WEC Le Mans (Imagine original, side 1) | `.tzx` | Loading reaches the control-selection menu; side 2 remains unverified below |
 | 🟢 | Where Time Stood Still | `.tap` | Fast load completes and terminal tape state is detected |
@@ -143,7 +144,6 @@ were made as part of this audit.
 | 🟠 | Chase HQ Portuguese sides 1 and 2 `.tzx` | Side 1 reaches a stop marker with a black frame; side 2 alone also stops without a meaningful screen |
 | 🟠 | Impossamole side 2 `.tzx` | Standalone side reaches a stop marker with a black frame; side 1 reaches its menu, but the cross-side continuation was not proven |
 | 🟠 | Indiana Jones and the Last Crusade Kixx/US Gold TZX side sets | Side 1 reaches its loading/title handoff, but mounting and completing side 2 was not proven; the 128K TAP path is verified |
-| 🔴 | Uridium and Uridium Plus (Hewson original) `.tzx` | Inconsistent BASIC header/data pairs now select safe real-time mounting instead of throwing, but both tapes end on black frames; their snapshots work |
 | 🟠 | WEC Le Mans side 2 `.tzx` | Standalone side reaches a stop marker with a black frame; side 1 reaches its menu, but the cross-side continuation was not proven |
 
 ## Recording New Results

@@ -487,13 +487,23 @@ namespace Spectrum128kEmulator.Tap
 
                 case TapeLoadStrategy.RomBootstrapMounted:
                 {
+                    bool requiresNativeRomLoader =
+                        plan.ReasonCode == TapeLoadPlanReason.InconsistentStandardBasicPair;
                     bool requiresNative128Basic =
                         machine.MachineModel == SpectrumMachineModel.Spectrum128K &&
                         !ReferenceEquals(machine.RomProfile, SpectrumRomProfile.SyntheticTest) &&
                         (plan.ReasonCode == TapeLoadPlanReason.UnsupportedStandardBootstrapControlFlow ||
                          (plan.ReasonCode == TapeLoadPlanReason.UnsupportedMixedBootstrapControlFlow &&
                           Requires128kTapeLoadModeForStandardTape(machine, blocks)));
-                    TapBootstrapResult result = requiresNative128Basic
+                    TapBootstrapResult result = requiresNativeRomLoader
+                        ? StartNativeRomTapeLoader(
+                            machine,
+                            displayName,
+                            blocks,
+                            nonRomTimingDivisor,
+                            loadableTimingDivisor,
+                            initialEarLevelHigh)
+                        : requiresNative128Basic
                         ? StartNative128kRomTapeLoader(
                             machine,
                             displayName,
