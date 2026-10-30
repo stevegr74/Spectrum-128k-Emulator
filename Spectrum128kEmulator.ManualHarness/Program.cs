@@ -41,6 +41,7 @@ if (args.Length > 0)
     List<ScheduledMemoryWriteEvent> scheduledMemoryWriteEvents = new();
     List<ScheduledFrameTimingEvent> scheduledFrameTimingEvents = new();
     List<int> scheduledTapeToggleFrames = new();
+    List<ScheduledTapeReplacementEvent> scheduledTapeReplacementEvents = new();
     int optionStartIndex = 1;
     if (args.Length > 1 && !args[1].Contains('='))
     {
@@ -154,6 +155,10 @@ if (args.Length > 0)
         else if (arg.StartsWith("transport=", StringComparison.OrdinalIgnoreCase))
         {
             scheduledTapeToggleFrames.Add(int.Parse(arg["transport=".Length..]));
+        }
+        else if (arg.StartsWith("replacement=", StringComparison.OrdinalIgnoreCase))
+        {
+            scheduledTapeReplacementEvents.Add(ParseTapeReplacementEvent(arg["replacement=".Length..]));
         }
         else if (arg.StartsWith("traceframes=", StringComparison.OrdinalIgnoreCase))
         {
@@ -367,6 +372,20 @@ if (args.Length > 0)
                 TapeTransportState transportState = machine.ToggleTapeTransport();
                 Console.WriteLine($"TRANSPORT frame={iteration} state={transportState}");
             }
+        }
+
+        foreach (ScheduledTapeReplacementEvent replacementEvent in scheduledTapeReplacementEvents)
+        {
+            if (replacementEvent.Frame != iteration)
+                continue;
+
+            string replacementExtension = Path.GetExtension(replacementEvent.Path);
+            TapMountResult replacementResult = replacementExtension.Equals(".tzx", StringComparison.OrdinalIgnoreCase)
+                ? TzxLoader.Mount(machine, replacementEvent.Path)
+                : TapLoader.Mount(machine, replacementEvent.Path);
+            Console.WriteLine(
+                $"REPLACEMENT frame={iteration} file={Path.GetFileName(replacementEvent.Path)} " +
+                $"blocks={replacementResult.TotalBlockCount} pc=0x{machine.Cpu.Regs.PC:X4}");
         }
 
         foreach (ScheduledPcEvent pcEvent in scheduledPcEvents)
@@ -688,6 +707,17 @@ static ScheduledFrameTimingEvent ParseFrameTimingEvent(string script)
     return new ScheduledFrameTimingEvent(frame, frameTStates);
 }
 
+static ScheduledTapeReplacementEvent ParseTapeReplacementEvent(string script)
+{
+    int separatorIndex = script.IndexOf('|');
+    if (separatorIndex <= 0 || separatorIndex == script.Length - 1)
+        throw new InvalidOperationException($"Invalid tape replacement '{script}'. Expected frame|path.");
+
+    int frame = int.Parse(script[..separatorIndex]);
+    string path = script[(separatorIndex + 1)..];
+    return new ScheduledTapeReplacementEvent(frame, path);
+}
+
 static TapeLoadStrategy ParseTapeStrategy(string value)
 {
     return value.Trim().ToLowerInvariant() switch
@@ -927,3 +957,4 @@ readonly record struct ScheduledPcEvent(int Frame, ushort ProgramCounter);
 readonly record struct ScheduledRegisterEvent(int Frame, string RegisterName, ushort Value);
 readonly record struct ScheduledMemoryWriteEvent(int Frame, ushort Address, byte Value);
 readonly record struct ScheduledFrameTimingEvent(int Frame, int FrameTStates);
+readonly record struct ScheduledTapeReplacementEvent(int Frame, string Path);
