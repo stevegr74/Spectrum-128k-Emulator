@@ -143,7 +143,7 @@ namespace Spectrum128kEmulator.Tests
                 TapeLoadPlan plan = TapLoader.CreateExecutionPlan(machine, blocks);
 
                 Assert.Equal(TapeLoadStrategy.RomBootstrapMounted, plan.Strategy);
-                Assert.Equal(TapeLoadPlanReason.UnsupportedMixedBootstrapControlFlow, plan.ReasonCode);
+                Assert.Equal(TapeLoadPlanReason.NonCanonicalBasicProgram, plan.ReasonCode);
             }
             finally
             {
@@ -267,6 +267,57 @@ namespace Spectrum128kEmulator.Tests
 
                 Assert.Equal(TapeLoadStrategy.RomBootstrapMounted, result.Strategy);
                 Assert.Equal(TapeLoadPlanReason.InconsistentStandardBasicPair, result.ReasonCode);
+                Assert.True(machine.HasMountedTape);
+                Assert.True(
+                    machine.Cpu.Regs.PC is >= 0x0556 and <= 0x0605 ||
+                    (machine.PeekMemory(23611) & 0x10) != 0);
+
+                machine.Cpu.Regs.PC = machine.RomProfile.LoadBytesTrapAddress;
+                machine.Cpu.Regs.IX = 0x8000;
+                machine.Cpu.Regs.DE = 1;
+                machine.Cpu.Regs.A = 0;
+                machine.Cpu.Regs.F = 1;
+                Assert.False(machine.TryServiceTapeTrap());
+            }
+            finally
+            {
+                File.Delete(tapePath);
+            }
+        }
+
+        [Theory]
+        [InlineData(SpectrumMachineModel.Spectrum48K)]
+        [InlineData(SpectrumMachineModel.Spectrum128K)]
+        public void LoadWithPolicy_NonCanonicalBasicProgram_StartsNativeRomLoader(
+            SpectrumMachineModel machineModel)
+        {
+            string tapePath = Path.Combine(Path.GetTempPath(), $"protected-basic-{Guid.NewGuid():N}.tap");
+
+            try
+            {
+                byte[] protectedProgram = BuildBasicProgram(
+                    BuildBasicLine(0, Token(234), Ascii("EMBEDDED CODE")),
+                    BuildBasicLine(0,
+                        Token(249), Ascii(" "), Token(192), Ascii("32768"), NumberMarker(32768)));
+                File.WriteAllBytes(tapePath, BuildTap(
+                    BuildHeaderBlock(
+                        type: 0,
+                        fileName: "PROTECTED",
+                        dataLength: (ushort)protectedProgram.Length,
+                        parameter1: 0,
+                        parameter2: (ushort)protectedProgram.Length),
+                    BuildDataBlock(protectedProgram),
+                    BuildDataBlock(new byte[] { 0x10, 0x20, 0x30 }, flag: 0x98)));
+
+                string romFolder = Path.Combine(AppContext.BaseDirectory, "ROMs");
+                var machine = new Spectrum128Machine(romFolder);
+                machine.Reset(machineModel);
+
+                TapeExecutionResult result = TapLoader.LoadWithPolicy(machine, tapePath);
+
+                Assert.Equal(TapeLoadStrategy.RomBootstrapMounted, result.Strategy);
+                Assert.Equal(TapeLoadPlanReason.NonCanonicalBasicProgram, result.ReasonCode);
+                Assert.Equal(0, result.ConsumedBlockCount);
                 Assert.True(machine.HasMountedTape);
                 Assert.True(
                     machine.Cpu.Regs.PC is >= 0x0556 and <= 0x0605 ||

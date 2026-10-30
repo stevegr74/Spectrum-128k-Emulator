@@ -58,6 +58,14 @@ namespace Spectrum128kEmulator.Tap
                     "All blocks are standard header/data pairs and can be fully fake-loaded.");
             }
 
+            if (TapLoader.HasNonCanonicalLeadingBasicProgram(blocks))
+            {
+                return new TapeLoadPlan(
+                    TapeLoadStrategy.RomBootstrapMounted,
+                    TapeLoadPlanReason.NonCanonicalBasicProgram,
+                    "Tape begins with a noncanonical BASIC program whose exact line layout must be interpreted by the real ROM loader.");
+            }
+
             if (TapLoader.HasTwoStageBasicPrefixBeforeElectricallyDecodedProtectedStream(blocks))
             {
                 return new TapeLoadPlan(
