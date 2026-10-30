@@ -819,10 +819,10 @@ namespace Spectrum128kEmulator
             return TryHandleMountedTapeTrap(cpu);
         }
 
-        public BootstrapTapeLoadResult TryConsumeBootstrapTapeLoad()
+        public BootstrapTapeLoadResult TryConsumeBootstrapTapeLoad(ushort? codeLoadAddress = null)
         {
             return mountedTape != null
-                ? mountedTape.TryConsumeBootstrapLoad(this)
+                ? mountedTape.TryConsumeBootstrapLoad(this, codeLoadAddress)
                 : BootstrapTapeLoadResult.None;
         }
 

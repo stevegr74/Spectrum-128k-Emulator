@@ -758,6 +758,23 @@ namespace Spectrum128kEmulator.Tap
                         continue;
                     }
 
+                    if (keyword == "LOAD")
+                    {
+                        int codeIndex = Array.IndexOf(clause, "CODE");
+                        if (codeIndex < 0)
+                            return false;
+                        if (codeIndex + 1 < clause.Length &&
+                            !CanEvaluateMountedUsrExpressionDirectly(
+                                machine,
+                                variables,
+                                clause.Skip(codeIndex + 1).ToArray()))
+                        {
+                            return false;
+                        }
+
+                        continue;
+                    }
+
                     if (!IsSafeUsrContinuationPreambleStatement(new List<string>(clause)))
                         return false;
                 }
@@ -1147,7 +1164,8 @@ namespace Spectrum128kEmulator.Tap
 
                         case "LOAD":
                         {
-                            BootstrapTapeLoadResult loadResult = machine.TryConsumeBootstrapTapeLoad();
+                            ushort? codeLoadAddress = EvaluateMountedCodeLoadAddress(machine, variables, clause);
+                            BootstrapTapeLoadResult loadResult = machine.TryConsumeBootstrapTapeLoad(codeLoadAddress);
                             if (!loadResult.Success || loadResult.LoadedBasicProgram)
                                 throw new InvalidOperationException("Mounted CODE LOAD could not consume a standard tape data block.");
                             break;
@@ -1187,6 +1205,34 @@ namespace Spectrum128kEmulator.Tap
                 }
 
                 return MountedUsrContinuationPreambleResult.ContinueStep;
+            }
+
+            private static ushort? EvaluateMountedCodeLoadAddress(
+                Spectrum128Machine machine,
+                Dictionary<string, int> variables,
+                IReadOnlyList<string> clause)
+            {
+                int codeIndex = -1;
+                for (int i = 0; i < clause.Count; i++)
+                {
+                    if (clause[i] == "CODE")
+                    {
+                        codeIndex = i;
+                        break;
+                    }
+                }
+
+                if (codeIndex < 0 || codeIndex + 1 >= clause.Count)
+                    return null;
+
+                var parser = new ExpressionParser(
+                    machine,
+                    variables,
+                    new List<string>(clause),
+                    codeIndex + 1,
+                    clause.Count - 1,
+                    requireVariableResolution: true);
+                return (ushort)parser.Parse();
             }
 
             private static bool EvaluateMountedUsrContinuationIfCondition(

@@ -403,7 +403,8 @@ namespace Spectrum128kEmulator.Tap
                             }
                             else
                             {
-                                BootstrapTapeLoadResult loadResult = machine.TryConsumeBootstrapTapeLoad();
+                                ushort? codeLoadAddress = EvaluateCodeLoadAddress(statement);
+                                BootstrapTapeLoadResult loadResult = machine.TryConsumeBootstrapTapeLoad(codeLoadAddress);
                                 if (!loadResult.Success)
                                     throw new InvalidOperationException("BASIC LOAD could not consume a mounted tape block during bootstrap.");
                                 ConsumedMountedLoadCount++;
@@ -543,6 +544,15 @@ namespace Spectrum128kEmulator.Tap
 
                 if (restoreInterpreterWorkspaceOnExit)
                     RestoreInterpreterWorkspaceAfterImmediateProgram();
+            }
+
+            private ushort? EvaluateCodeLoadAddress(List<string> statement)
+            {
+                int codeIndex = statement.IndexOf("CODE");
+                if (codeIndex < 0 || codeIndex + 1 >= statement.Count)
+                    return null;
+
+                return (ushort)EvaluateExpression(statement, codeIndex + 1, statement.Count - 1);
             }
 
             private void RestoreDataValues(List<string> statement)

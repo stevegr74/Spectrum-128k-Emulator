@@ -636,6 +636,43 @@ namespace Spectrum128kEmulator.Tests
         }
 
         [Fact]
+        public void BootstrapBasicProgramAndMountRemaining_Uses_Explicit_Code_Load_Address()
+        {
+            string tempFolder = CreateTempRoms();
+            string tapePath = Path.Combine(tempFolder, "code-address-override.tap");
+
+            try
+            {
+                byte[] basicLoader = BuildBasicProgram(
+                    BuildBasicLine(10,
+                        Token(239), QuoteQuote(), Ascii(" "), Token(175), Ascii("16384"), NumberMarker(16384),
+                        Colon(),
+                        Token(249), Ascii(" "), Token(192), Ascii("16384"), NumberMarker(16384)));
+                byte[] tap = BuildTap(
+                    BuildHeaderBlock(type: 0, fileName: "LOADER", dataLength: (ushort)basicLoader.Length, parameter1: 10, parameter2: (ushort)basicLoader.Length),
+                    BuildDataBlock(basicLoader),
+                    BuildHeaderBlock(type: 3, fileName: "CODE", dataLength: 3, parameter1: 0x8000, parameter2: 0),
+                    BuildDataBlock(new byte[] { 0xAA, 0xBB, 0xC9 }));
+                File.WriteAllBytes(tapePath, tap);
+
+                var machine = new Spectrum128Machine(tempFolder);
+                TapLoader.BootstrapBasicProgramAndMountRemaining(machine, tapePath);
+
+                Assert.Equal((ushort)0x4000, machine.Cpu.Regs.PC);
+                Assert.Equal((byte)0xAA, machine.PeekMemory(0x4000));
+                Assert.Equal((byte)0xBB, machine.PeekMemory(0x4001));
+                Assert.Equal((byte)0xC9, machine.PeekMemory(0x4002));
+                Assert.Equal((byte)0x00, machine.PeekMemory(0x8000));
+                Assert.True(machine.HasMountedTape);
+                Assert.False(machine.MountedTape!.HasRemainingBlocks);
+            }
+            finally
+            {
+                Directory.Delete(tempFolder, true);
+            }
+        }
+
+        [Fact]
         public void ShouldDeferToRomForMountedLoadProgram_Defers_Simple_ClearLoad_Programs()
         {
             string tempFolder = CreateTempRoms();

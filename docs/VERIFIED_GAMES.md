@@ -65,6 +65,7 @@ that every level, control path, or hardware edge case has been tested.
 | 🟢 | The Growing Pains of Adrian Mole (Ricochet) | `.tzx` | Loading reaches the illustrated opening story screen and remains stable |
 | 🟢 | The New Zealand Story (Hit Squad) | `.tzx` | 128K protected loading reaches the menu, automatically resumes after the game enters its stable ROM tape-search loop, loads level 1-1, and auto-stops at the next multiload boundary |
 | 🟢 | The Oracle's Cave (Doric Computer) | `.tzx` | ROM-driven multi-stage loading completes; maze generation and level selection lead into the playable cave |
+| 🟢 | The Way of the Exploding Fist (Melbourne House original and Ricochet) | `.tzx` | Both releases complete their multi-file load and reach the animated title screen; explicit BASIC CODE destinations override conflicting header addresses |
 | 🟢 | Turbo Esprit (Durell original, side 2) | `.tzx` | ROM-driven loading and the explicit copyright prompts advance to the city-selection menu |
 | 🟢 | Wanted! Monty Mole (Gremlin original) | `.tzx` | In 48K mode, the ROM-driven continuation completes, ends the tape cleanly, reaches the options menu, and enters gameplay |
 | 🟢 | WEC Le Mans (Imagine original, side 1) | `.tzx` | Loading reaches the control-selection menu; side 2 remains unverified below |
@@ -142,44 +143,8 @@ were made as part of this audit.
 | 🟠 | Chase HQ Portuguese sides 1 and 2 `.tzx` | Side 1 reaches a stop marker with a black frame; side 2 alone also stops without a meaningful screen |
 | 🟠 | Impossamole side 2 `.tzx` | Standalone side reaches a stop marker with a black frame; side 1 reaches its menu, but the cross-side continuation was not proven |
 | 🟠 | Indiana Jones and the Last Crusade Kixx/US Gold TZX side sets | Side 1 reaches its loading/title handoff, but mounting and completing side 2 was not proven; the 128K TAP path is verified |
-| 🔴 | The Way of the Exploding Fist original/Ricochet `.tzx` | Both tapes end without reaching a meaningful title/game screen; the SNA works |
 | 🔴 | Uridium and Uridium Plus (Hewson original) `.tzx` | Inconsistent BASIC header/data pairs now select safe real-time mounting instead of throwing, but both tapes end on black frames; their snapshots work |
 | 🟠 | WEC Le Mans side 2 `.tzx` | Standalone side reaches a stop marker with a black frame; side 1 reaches its menu, but the cross-side continuation was not proven |
-
-## Regression Validation
-
-The 25 October 2026 full-folder audit covered all 159 supported-extension files
-present in `C:\Users\steve\Desktop\Snapshots`: 95 tape images and 64
-snapshot/replay images. Every snapshot/replay received a 2,000-frame execution
-soak, and every tape received a 35,000-frame strategy-aware soak in its labelled
-machine mode where specified. All final frames and transport states were
-inspected; explicit on-screen key/tape instructions received targeted follow-up
-runs. In total, all 95 tapes and all 64 snapshot/replay files completed the
-harness without an exception after the Starquake SNA's verified 51-byte zero
-padding was removed to restore its standard 49,179-byte 48K layout. Completion
-alone was not treated as verification: blank screens, BASIC errors, incomplete
-multipart paths, and ambiguous loader states remain in the unverified table.
-
-A follow-up model-sensitivity pass reran every unlabelled red/orange tape in 48K
-mode. It confirmed that Glider Rider (Bug-Byte), Pac-Land, Temple of Doom (US
-Gold), and Star Wars (Domark) side 2 are valid 48K paths rather than loader
-defects. Those requirements are recorded explicitly above.
-
-The interaction-dependent checks also confirmed that Target Renegade follows
-the distinct 48K multiload and 128K full-load paths, New Zealand Story resumes
-automatically into level 1-1, Indiana Jones resumes into level 1 and preserves
-the next tape boundary, and Oracle's Cave accepts a quest selection and enters
-the generated cave. A later exact-pulse follow-up confirmed that the Quicksilva
-128K release of Glider Rider completes through the native ROM Tape Loader,
-accepts its control selection, and enters live gameplay. Synthetic tests cover
-the underlying loader transitions so
-these checks do not depend on distributing the game media with the repository.
-
-The 27 October 2026 Starglider follow-up verified both Rainbird 128K Starglider
-releases and Starglider 2 through their complete title screens. It also reran
-New Zealand Story, Target Renegade in both machine modes, and Cabal 128K as
-regression checks after separating native 128 BASIC startup from hybrid paging
-state.
 
 ## Recording New Results
 
