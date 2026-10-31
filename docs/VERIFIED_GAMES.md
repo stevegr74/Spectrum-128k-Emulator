@@ -20,7 +20,7 @@ that every level, control path, or hardware edge case has been tested.
 | 🟢 | Captain America | `.tzx` | Protected loader completes; game runs |
 | 🟢 | Cauldron (original and Silverbird/Cyberlode 1.1 releases) | `.tzx` | Both releases reach their complete title/control screens; standard-speed custom flags below `0x80` retain the required long pilot tone |
 | 🟢 | Cauldron II (Erbe, original, and Silverbird/Cyberlode releases) | `.tzx` | All three releases reach the control-selection menu and remain stable; malformed accelerated expressions in the Cyberlode loader fall back before execution |
-| 🟢 | Chase HQ (Portuguese, side 1) | `.tzx` | Its noncanonical protected BASIC layout starts through the native ROM in both machine modes. In 48K mode the stop/key prompt, control selection, confirmation, and Stage 1 start screen all work, with transport stopped at the retained Stage 2 boundary; 128K reaches the complete title screen |
+| 🟢 | Chase HQ (Portuguese, sides 1 and 2) | `.tzx` | Its noncanonical protected BASIC layout starts through the native ROM in both machine modes. The 48K multiloader reaches active Stage 1 gameplay and loads Stage 2 after a manual tape resume. For the complete 128K load, manually resume side 1 at its explicit stage markers, replace it with side 2 after side 1 ends, and let the two leading 16K bank records load; transport then stops automatically and the stable title/options screen is reached |
 | 🟢 | Cliff Hanger | `.tzx` | Loading reaches the control-selection menu and remains stable |
 | 🟢 | Cobra (Hit Squad and Ocean original releases) | `.tzx` | Both releases complete loading and reach the stable opening credit sequence |
 | 🟢 | Donkey Kong (Erbe) | `.tzx` | Custom loader completes without corrupting the loading screen; game runs |
@@ -33,7 +33,7 @@ that every level, control path, or hardware edge case has been tested.
 | 🟢 | Ikari Warriors | `.tzx` | Both the original and Encore releases load and run; transport stops after loading |
 | 🟢 | Impossible Mission | `.tap`, `.tzx` | The TAP plus primary, Bugfix, and Ricochet TZX releases complete protected loading and reach the control menu; protected chained BASIC stages retain exact ROM interpreter-cursor handling |
 | 🟢 | Impossible Mission II | `.tzx` | US Gold original and both Kixx sides complete protected loading and reach stable game/control screens |
-| 🟢 | Impossamole (Gremlin original, side 1) | `.tzx` | In 48K mode, side 1 reaches the control and level menus, explicitly requests `START TAPE`, loads the complete Blondie level after manual Play, ends the tape cleanly, and enters the playable level lifecycle through `PRESS FIRE` and `GAME OVER` |
+| 🟢 | Impossamole (Gremlin original, sides 1-2) | `.tzx` | In 48K mode, side 1 reaches the control and level menus, explicitly requests `START TAPE`, loads its complete level after manual Play, and enters the playable lifecycle through `PRESS FIRE` and `GAME OVER`. Selecting a side-two level, replacing the mounted tape while preserving machine state, and playing its matching stop-delimited record reaches `PRESS FIRE`, stops transport at the marker, and enters stable gameplay |
 | 🟢 | Indiana Jones and the Last Crusade | `128k.tap`, Kixx/US Gold original `.tzx` side sets | The TAP initial load auto-stops at the picture and resumes into gameplay; in 48K mode both TZX releases reach title/options, request side 2, preserve live state across tape replacement, load The Cross of Coronado into gameplay, and stop at the next marker |
 | 🟢 | Indiana Jones and the Temple of Doom (Kixx and US Gold original) | `.tzx` | Both releases reach the stop-tape prompt and advance to the complete quest-start screen; the US Gold release requires 48K mode |
 | 🟢 | Kick Off 2 | `.tzx` | Loading reaches its complete title/menu prompt and remains stable |
@@ -70,7 +70,7 @@ that every level, control path, or hardware edge case has been tested.
 | 🟢 | Turbo Esprit (Durell original, side 2) | `.tzx` | ROM-driven loading and the explicit copyright prompts advance to the city-selection menu |
 | 🟢 | Uridium and Uridium Plus (Hewson original) | `.tzx` | Both releases preserve their intentionally malformed BASIC headers under native ROM loading and reach the animated title sequence from 48K and 128K startup; Uridium auto-stops at its completed handoff and Uridium Plus ends cleanly |
 | 🟢 | Wanted! Monty Mole (Gremlin original) | `.tzx` | In 48K mode, the ROM-driven continuation completes, ends the tape cleanly, reaches the options menu, and enters gameplay |
-| 🟢 | WEC Le Mans (Imagine original, side A) | `.tzx` | In both 48K and 128K modes, protected loading reaches the control menu and starts active racing. The 128K load consumes the complete side-A image and ends the tape; the 48K load automatically stops with its later data boundary retained for the side-B continuation noted below |
+| 🟢 | WEC Le Mans (Imagine original, sides A and B) | `.tzx` | Protected loading reaches active racing in both machine modes. The 128K load consumes side A completely; in 48K mode, gameplay reaches the side-B request, the first side-B record stops at its explicit marker, and the later manual resume consumes the final record before the game reaches its high-score screen |
 | 🟢 | Where Time Stood Still | `.tap` | Fast load completes and terminal tape state is detected |
 | 🟢 | Willy's New Mansion: Special Edition | `.tap`, `.tzx` | Both formats reach the difficulty-selection menu and remain stable |
 
@@ -132,19 +132,6 @@ that every level, control path, or hardware edge case has been tested.
 | Status | Title / file | Format | Verified checkpoint and notes |
 | :---: | --- | --- | --- |
 | 🟢 | Auf Wiedersehen Monty | `aufmonty.rzx` | Replay loads and runs through the RZX input path |
-
-## Tested, Not Yet Verified
-
-These files were exercised during the full-folder audit but did not reach a
-checkpoint strong enough for the verified tables. They are recorded here so the
-same failures and multipart limitations are not rediscovered. No emulator fixes
-were made as part of this audit.
-
-| Status | File / release | Result |
-| :---: | --- | --- |
-| 🟠 | Chase HQ Portuguese side 2 `.tzx` | Side 2 begins with raw continuation data and is not independently bootable. Side 1 contains Stage 1 plus five later stop-delimited stage records, so the side swap is only reached after six stages of gameplay; the first 48K stage handoff is verified above, but that distant cross-side continuation remains unproven |
-| 🟠 | Impossamole side 2 `.tzx` | Side 2 contains continuation blocks for levels 1-4 and is not independently bootable. Side-one level 0 and its manual tape resume are verified above, but completing that level to reach and prove the preserved-machine side replacement remains a gameplay-gated acceptance step |
-| 🟠 | WEC Le Mans side B `.tzx` | The tape metadata and original instructions identify this as 48K-only continuation data, not a bootable program. Side A is gameplay-verified in both modes and 128K needs no second side, but reaching the 48K in-race side-B load point requires gameplay progression and remains unproven |
 
 ## Recording New Results
 

@@ -31,7 +31,6 @@ namespace Spectrum128kEmulator
             string fileName = $"machine-debug-{DateTime.Now:yyyyMMdd-HHmmssfff}.txt";
             string path = Path.Combine(debugFolder, fileName);
             File.WriteAllText(path, dump);
-            fpsLabel.Text = $"{reason}: {fileName}";
         }
 
         private void WriteCrashReport(Exception ex, string context)
@@ -47,7 +46,6 @@ namespace Spectrum128kEmulator
                 BuildCrashDiagnosticDump(context);
 
             File.WriteAllText(path, report);
-            fpsLabel.Text = $"Crash: {fileName}";
         }
 
         public string BuildCrashDiagnosticDump(string context)
@@ -159,7 +157,7 @@ namespace Spectrum128kEmulator
                     $"{DateTime.Now:HH:mm:ss.fff} ticks={performanceTickCount} completedFrames={performanceCompletedFrames} presentedFrames={performancePresentedFrames} " +
                     $"turboActive={IsTurboTapeLoadActive(machine)} protected={machine.MountedTape?.IsStreamingProtectedByteStream == true} " +
                     $"execMs={performanceExecuteSliceMilliseconds:F2} audioMs={performanceAudioSubmitMilliseconds:F2} renderMs={performanceRenderMilliseconds:F2} presentMs={performancePresentMilliseconds:F2} " +
-                    $"fpsLabel={framesRenderedThisSecond} frame={machine.FrameCount}");
+                    $"presentedFps={framesRenderedThisSecond} frame={machine.FrameCount}");
 
                 performanceTickCount = 0;
                 performanceCompletedFrames = 0;

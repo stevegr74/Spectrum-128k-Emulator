@@ -102,7 +102,7 @@ The enhanced modes use pixel-art scaling rather than smoothing the image as an o
 
 ## Status Overlay
 
-Press `F2` to show or hide bottom-left diagnostics including frame rate, frame/model information, tape state, and display mode. This is intended for diagnosis and can remain hidden during normal play.
+Press `F2` to show or hide compact mint diagnostics at the top-right. FPS, machine model, tape state, and display mode appear on separate right-aligned lines, moving below full tape feedback when necessary. The diagnostics can remain hidden during normal play.
 
 ## Window Title
 
@@ -425,7 +425,7 @@ The **References** tab lists conservative incoming and outgoing references for d
 
 Press `F12` to write a machine diagnostic dump. Use this when reporting a reproducible emulation problem; note the game/media filename, machine model, point reached, and visible error.
 
-The optional `F2` overlay is useful for checking model, display, frame, and tape state before collecting a dump.
+The optional `F2` overlay is useful for checking FPS, model, display, and tape state before collecting a dump.
 
 # Chapter 12 - Troubleshooting
 

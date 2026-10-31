@@ -35,7 +35,6 @@ namespace Spectrum128kEmulator
 
         private int framesRenderedThisSecond;
         private int displayedFps;
-        private int displayedFrameCount;
         private long lastStatsTicks;
         private readonly System.Diagnostics.Stopwatch frameClock = System.Diagnostics.Stopwatch.StartNew();
         private long lastSchedulerTicks;
@@ -58,7 +57,6 @@ namespace Spectrum128kEmulator
             SizeMode = PictureBoxSizeMode.CenterImage,
             TabStop = true
         };
-        private readonly Label fpsLabel = new Label();
         private readonly ContextMenuStrip displayContextMenu = new ContextMenuStrip();
         private readonly ToolStripMenuItem nativeDisplayMenuItem = new ToolStripMenuItem("1x Native");
         private readonly ToolStripMenuItem enhanced2xDisplayMenuItem = new ToolStripMenuItem("2x Enhanced");
@@ -143,16 +141,6 @@ namespace Spectrum128kEmulator
             FormBorderStyle = FormBorderStyle.FixedSingle;
             MaximizeBox = false;
             Controls.Add(screenBox);
-
-            fpsLabel.Text = "FPS=0 Frame=0";
-            fpsLabel.AutoSize = true;
-            fpsLabel.ForeColor = Color.White;
-            fpsLabel.BackColor = Color.Black;
-            fpsLabel.Location = new Point(5, 5);
-            fpsLabel.Visible = false;
-
-            Controls.Add(fpsLabel);
-            fpsLabel.BringToFront();
 
             romFolder = Path.Combine(AppContext.BaseDirectory, "ROMs");
             machine = CreateConfiguredMachine();
@@ -278,13 +266,11 @@ namespace Spectrum128kEmulator
             displayMode = mode;
             SpectrumDisplayLayout layout = SpectrumDisplayModes.GetLayout(mode);
             ClientSize = new Size(layout.ClientWidth, layout.ClientHeight);
-            fpsLabel.Location = SpectrumDisplayModes.GetStatusOverlayLocation(layout, fpsLabel.Height);
             nativeDisplayMenuItem.Checked = mode == SpectrumDisplayMode.Native;
             enhanced2xDisplayMenuItem.Checked = mode == SpectrumDisplayMode.Enhanced2x;
             enhanced3xDisplayMenuItem.Checked = mode == SpectrumDisplayMode.Enhanced3x;
             statusOverlayMenuItem.Checked = isStatusOverlayVisible;
             screenBox.Image = GetPresentationBitmap(mode);
-            UpdateStatsLabel();
         }
 
         private void UpdateMachineModelMenuItems()
@@ -316,8 +302,7 @@ namespace Spectrum128kEmulator
         {
             isStatusOverlayVisible = !isStatusOverlayVisible;
             statusOverlayMenuItem.Checked = isStatusOverlayVisible;
-            UpdateStatsLabel();
-            fpsLabel.Visible = isStatusOverlayVisible;
+            PresentCurrentMachineFrame(frameClock.ElapsedTicks, force: true);
             screenBox.Focus();
         }
 
@@ -340,7 +325,6 @@ namespace Spectrum128kEmulator
                 ShowTapeTransportOverlay(state, markerStop);
 
             UpdateTapeTransportMenuItem();
-            UpdateStatsLabel();
             PresentCurrentMachineFrame(frameClock.ElapsedTicks + PresentationIntervalTicks);
             screenBox.Focus();
         }
@@ -369,7 +353,6 @@ namespace Spectrum128kEmulator
 
             UpdateQuickStateMenuItems();
             ShowQuickStateOverlay("QUICK STATE SAVED");
-            fpsLabel.Text = $"Quick state saved: PC={quickState!.ProgramCounter:X4} {FormatMachineModel(quickState.MachineModel)}";
             PresentCurrentMachineFrame(frameClock.ElapsedTicks + PresentationIntervalTicks);
             screenBox.Focus();
         }
@@ -397,7 +380,6 @@ namespace Spectrum128kEmulator
 
             ShowMountedTapeTransportFeedback();
             ShowQuickStateOverlay("QUICK STATE RESTORED");
-            fpsLabel.Text = $"Quick state restored: PC={state.ProgramCounter:X4} {FormatMachineModel(state.MachineModel)}";
             SuppressSpectrumHostInputForMilliseconds(PostLoadInputSuppressionMilliseconds);
             PresentCurrentMachineFrame(frameClock.ElapsedTicks + PresentationIntervalTicks);
             screenBox.Focus();
@@ -691,7 +673,6 @@ namespace Spectrum128kEmulator
             });
 
             UpdateMachineModelMenuItems();
-            fpsLabel.Text = $"Reset: {FormatMachineModel(model)}";
             SuppressSpectrumHostInputForMilliseconds(PostLoadInputSuppressionMilliseconds);
             PresentCurrentMachineFrame(frameClock.ElapsedTicks + PresentationIntervalTicks);
             screenBox.Focus();
@@ -995,6 +976,7 @@ namespace Spectrum128kEmulator
             else
                 SpectrumRenderer.RenderScaledToBitmap(presentationBitmap, presentationFrameBuffer, layout.Scale);
             DrawTapeTransportOverlay(presentationBitmap, layout.Scale, now);
+            DrawStatusOverlay(presentationBitmap, layout.Scale, now);
             DrawQuickStateOverlay(presentationBitmap, layout.Scale, now);
             long renderEndTicks = frameClock.ElapsedTicks;
 
@@ -1064,12 +1046,10 @@ namespace Spectrum128kEmulator
             lastStatsTicks = now;
             framesRenderedThisSecond = 0;
             displayedFps = 0;
-            displayedFrameCount = 0;
             totalPresentedFrameCount = 0;
             UpdateMachineModelMenuItems();
             UpdateWindowTitle();
             UpdateTapeTransportMenuItem();
-            UpdateStatsLabel();
         }
 
         private bool ShouldPresentFrame(long nowTicks)
@@ -1106,17 +1086,9 @@ namespace Spectrum128kEmulator
             if (nowTicks - lastStatsTicks >= ticksPerSecond)
             {
                 displayedFps = framesRenderedThisSecond;
-                displayedFrameCount = totalPresentedFrameCount;
                 framesRenderedThisSecond = 0;
                 lastStatsTicks = nowTicks;
-                UpdateStatsLabel();
             }
-        }
-
-        private void UpdateStatsLabel()
-        {
-            string tapeState = FormatTapeTransportState(machine.TapeTransportState, machine.IsTapeStoppedAtMarker);
-            fpsLabel.Text = $"FPS={displayedFps} Frame={displayedFrameCount} Model={FormatMachineModel(selectedMachineModel)} Tape={tapeState} Display={SpectrumDisplayModes.GetLayout(displayMode).Label}";
         }
 
         private void ShowMountedTapeTransportFeedback()
@@ -1144,7 +1116,6 @@ namespace Spectrum128kEmulator
                     ClearTapeTransportOverlay();
 
                 UpdateTapeTransportMenuItem();
-                UpdateStatsLabel();
             }
 
             if (tapeTransportOverlayState == TapeTransportState.Ended &&
@@ -1246,7 +1217,10 @@ namespace Spectrum128kEmulator
             int width = 150 * scale;
             int height = 30 * scale;
             int x = bitmap.Width - width - (8 * scale);
-            int y = 8 * scale;
+            bool avoidFullTapeOverlay = IsFullTapeOverlayVisible(nowTicks);
+            int y = isStatusOverlayVisible
+                ? SpectrumStatusOverlay.GetBounds(bitmap.Width, scale, avoidFullTapeOverlay).Bottom + (8 * scale)
+                : avoidFullTapeOverlay ? SpectrumStatusOverlay.TapeClearanceY * scale : 8 * scale;
 
             using Graphics graphics = Graphics.FromImage(bitmap);
             graphics.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
@@ -1288,17 +1262,32 @@ namespace Spectrum128kEmulator
             return $"{name[..prefixLength]}...{name[^suffixLength..]}";
         }
 
-        private static string FormatTapeTransportState(TapeTransportState state, bool markerStop)
+        private void DrawStatusOverlay(Bitmap bitmap, int scale, long nowTicks)
         {
-            return state switch
+            if (!isStatusOverlayVisible)
+                return;
+
+            TapeTransportState tapeState;
+            bool markerStop;
+            lock (machineLock)
             {
-                TapeTransportState.Playing => "Playing",
-                TapeTransportState.Stopped when markerStop => "Stopped(marker)",
-                TapeTransportState.Stopped => "Stopped",
-                TapeTransportState.Ended => "Ended",
-                _ => "None"
-            };
+                tapeState = machine.TapeTransportState;
+                markerStop = machine.IsTapeStoppedAtMarker;
+            }
+
+            var data = new SpectrumStatusOverlayData(
+                displayedFps,
+                selectedMachineModel,
+                tapeState,
+                markerStop,
+                SpectrumDisplayModes.GetLayout(displayMode).Label);
+            SpectrumStatusOverlay.Draw(bitmap, scale, data, IsFullTapeOverlayVisible(nowTicks));
         }
+
+        private bool IsFullTapeOverlayVisible(long nowTicks) =>
+            tapeTransportOverlayState != TapeTransportState.NoTape &&
+            nowTicks < tapeTransportFullOverlayExpiresAtTicks &&
+            nowTicks < tapeTransportIconExpiresAtTicks;
 
         private int GetEmulationSpeedMultiplier(Spectrum128Machine activeMachine)
         {
