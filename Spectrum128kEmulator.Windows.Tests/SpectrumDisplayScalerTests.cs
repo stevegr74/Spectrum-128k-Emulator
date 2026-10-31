@@ -1,4 +1,5 @@
 using System.Drawing;
+using Spectrum128kEmulator.Tap;
 using Xunit;
 
 namespace Spectrum128kEmulator.Tests
@@ -80,16 +81,51 @@ namespace Spectrum128kEmulator.Tests
         }
 
         [Theory]
-        [InlineData(SpectrumDisplayMode.Native, 222)]
-        [InlineData(SpectrumDisplayMode.Enhanced2x, 462)]
-        [InlineData(SpectrumDisplayMode.Enhanced3x, 702)]
-        public void StatusOverlay_IsAnchoredToBottomLeft(SpectrumDisplayMode mode, int expectedY)
+        [InlineData(SpectrumDisplayMode.Native, 214, 6, 100, 40)]
+        [InlineData(SpectrumDisplayMode.Enhanced2x, 482, 8, 150, 56)]
+        [InlineData(SpectrumDisplayMode.Enhanced3x, 775, 10, 175, 64)]
+        public void StatusOverlay_IsAnchoredToTopRight(
+            SpectrumDisplayMode mode,
+            int expectedX,
+            int expectedY,
+            int expectedWidth,
+            int expectedHeight)
         {
             SpectrumDisplayLayout layout = SpectrumDisplayModes.GetLayout(mode);
 
-            Point location = SpectrumDisplayModes.GetStatusOverlayLocation(layout, overlayHeight: 13);
+            Rectangle bounds = SpectrumStatusOverlay.GetBounds(
+                layout.ClientWidth,
+                layout.Scale,
+                avoidFullTapeOverlay: false);
 
-            Assert.Equal(new Point(5, expectedY), location);
+            Assert.Equal(new Point(expectedX, expectedY), bounds.Location);
+            Assert.Equal(new Size(expectedWidth, expectedHeight), bounds.Size);
+        }
+
+        [Fact]
+        public void StatusOverlay_MovesBelowFullTapeFeedbackAtNativeScale()
+        {
+            Rectangle bounds = SpectrumStatusOverlay.GetBounds(
+                bitmapWidth: SpectrumFrameBuffer.Width,
+                scale: 1,
+                avoidFullTapeOverlay: true);
+
+            Assert.Equal(new Point(214, 46), bounds.Location);
+        }
+
+        [Fact]
+        public void StatusOverlay_FormatsOneValuePerLine()
+        {
+            var data = new SpectrumStatusOverlayData(
+                50,
+                SpectrumMachineModel.Spectrum128K,
+                TapeTransportState.Stopped,
+                TapeStoppedAtMarker: true,
+                "2x Enhanced");
+
+            Assert.Equal(
+                ["FPS: 50", "Model: 128K", "Tape: Auto-stopped", "Display: 2x Enhanced"],
+                SpectrumStatusOverlay.FormatLines(data));
         }
     }
 }

@@ -11,7 +11,7 @@ namespace Spectrum128kEmulator
             new("Display and state",
             [
                 ("F1", "Show or close this help window"),
-                ("F2", "Show or hide the FPS and display-mode overlay"),
+                ("F2", "Show or hide compact FPS, model, tape, and display diagnostics"),
                 ("F3", "Reset and switch between 128K and 48K machine modes"),
                 ("F4", "Cycle 1x Native, 2x Enhanced, and 3x Enhanced"),
                 ("F5", "Stop or resume tape; its state appears in the on-screen transport badge"),
