@@ -56,7 +56,7 @@ Current limitations and active work:
 - clock-driven audio and the turbo-to-real-time handoff are hardened; broader subjective title-by-title audio comparison remains ongoing
 - broader protected/custom TZX compatibility remains ongoing
 - Milestone 22 USB joystick support is complete, including two independently mapped host controllers, selectable Kempston/Cursor/Sinclair interfaces, and simultaneous Interface II input
-- Milestone 23 SZX loading is complete for exact 48K and original 128K CPU, RAM, paging, ULA, and AY state; snapshots requiring unsupported models or peripherals are rejected
+- Milestone 23 SZX loading is complete for supported original 48K/128K CPU execution, RAM, paging, ULA, and AY state; snapshots requiring unsupported models or peripherals are rejected
 
 ### Implementation Notes
 
@@ -172,6 +172,7 @@ Spectrum128kEmulator/
 |-- Spectrum128kEmulator.Z80Compliance/    net8.0 ZEXDOC/ZEXALL compliance runner
 |-- ROMs/                                  required 128K ROM images
 |-- test-assets/                           checked-in test programs and fixtures
+|   |-- szx/                               external SZX acceptance runbook (media not redistributed)
 |   |-- ula/                               external ULA diagnostic runbook (media not redistributed)
 |   `-- z80/                               ZEXDOC/ZEXALL compliance programs
 `-- tmp/                                   ignored local probes, captures, and scratch artifacts
@@ -358,7 +359,8 @@ Current snapshot status:
   - accepts compressed or uncompressed RAM pages, arbitrary chunk order, and unknown optional metadata
   - validates the complete snapshot before changing the machine
   - rejects unsupported machine models, alternate timing, Issue 2 behavior, external 48K AY state, and known unsupported peripheral blocks rather than approximating them
-  - an independently generated libspectrum SZX 1.3 48K fixture passes load and execution smoke validation
+  - does not restore the SZX `WZ/MEMPTR` field because the CPU core does not currently model that undocumented latch
+  - upstream Fuse/libspectrum SZX 1.3 fixtures for both 48K and 128K pass load and execution smoke validation
 
 Snapshots can be loaded with `F9` (`.sna`) and `F10` (`.z80` or `.szx`) in the UI.
 
@@ -384,6 +386,10 @@ deliberately kept out of the harness.
 The [ULA timing validation runbook](test-assets/ula/README.md) records how the
 48K/128K Timing Test and floating-bus diagnostics are run without redistributing
 their GPL-licensed media.
+
+The [SZX validation runbook](test-assets/szx/README.md) records the exact
+upstream Fuse/libspectrum 48K and 128K fixtures, hashes, and repeatable execution
+checks without redistributing the snapshot files.
 
 > Intended for debugging, not performance measurement.
 
@@ -542,7 +548,7 @@ compatibility; completed milestones remain regression baselines.
 - Restores supported 48K and original 128K CPU registers and execution state, RAM, paging, frame phase, ULA state, and AY state through existing machine boundaries
 - Accepts compressed and uncompressed RAM pages, arbitrary chunk order, and safely optional unknown metadata while rejecting unsupported machines, timing variants, and known peripheral state
 - Integrated `.szx` with the shared F10 picker, media-title handling, reset lifecycle, audio/input cleanup, manual harness, and existing machine ownership rules
-- Added synthetic chunk-order, unknown-chunk, truncation, compression, duplicate/missing-state, paging, interrupt-pulse, unsupported-model/peripheral, and 48K/128K execution smoke tests; an upstream libspectrum SZX 1.3 48K fixture also passes load and execution validation
+- Added synthetic chunk-order, unknown-chunk, truncation, compression, duplicate/missing-state, paging, interrupt-pulse/suppression, Q-latch, reserved-state, unsupported-model/peripheral, and 48K/128K execution smoke tests; upstream Fuse/libspectrum SZX 1.3 fixtures for both models also pass load and execution validation
 
 ### Milestone 24 - On-Screen Keyboard Planned
 - Add a discoverable non-modal pop-up keyboard through the normal menus and right-click context menu without consuming another function key

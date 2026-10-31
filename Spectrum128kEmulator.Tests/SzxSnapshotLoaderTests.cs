@@ -220,6 +220,62 @@ namespace Spectrum128kEmulator.Tests
             }
         }
 
+        [Fact]
+        public void Load_RestoresFirstInstructionInterruptSuppressionAndQState()
+        {
+            string romFolder = CreateTempRoms();
+            try
+            {
+                byte[] snapshot = BuildSnapshot(
+                    1,
+                    ("Z80R", BuildCpuBlock(frameCycles: 321, flags: 0x05, holdInterruptCycles: 7)),
+                    ("SPCR", BuildSpectrumBlock(0, 0, 0)),
+                    RamBlock(5, 0x00, compressed: false),
+                    RamBlock(2, 0x00, compressed: false),
+                    RamBlock(0, 0x00, compressed: false));
+                var machine = new Spectrum128Machine(romFolder);
+
+                SzxSnapshotLoader.Load(machine, snapshot);
+
+                var restored = machine.Cpu.CaptureQuickState();
+                Assert.True(restored.SuppressInterruptsForNextInstruction);
+                Assert.Equal(machine.Cpu.Regs.F, restored.QFlags);
+                Assert.True(machine.Cpu.InterruptPending);
+
+                machine.Cpu.ExecuteInstructionFetches(1);
+
+                var afterFirstInstruction = machine.Cpu.CaptureQuickState();
+                Assert.False(afterFirstInstruction.SuppressInterruptsForNextInstruction);
+                Assert.True(machine.Cpu.InterruptPending);
+                Assert.Equal((ushort)0x1358, machine.Cpu.Regs.PC);
+            }
+            finally
+            {
+                Directory.Delete(romFolder, true);
+            }
+        }
+
+        [Fact]
+        public void Load_RejectsNonZeroReservedSpectrumState()
+        {
+            string romFolder = CreateTempRoms();
+            try
+            {
+                byte[] spectrum = BuildSpectrumBlock(0, 0, 0);
+                spectrum[6] = 1;
+                var machine = new Spectrum128Machine(romFolder);
+
+                InvalidOperationException error = Assert.Throws<InvalidOperationException>(
+                    () => SzxSnapshotLoader.Load(machine, BuildSnapshot(1, ("SPCR", spectrum))));
+
+                Assert.Contains("reserved", error.Message, StringComparison.OrdinalIgnoreCase);
+            }
+            finally
+            {
+                Directory.Delete(romFolder, true);
+            }
+        }
+
         private static string CreateTempRoms()
         {
             string folder = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"));

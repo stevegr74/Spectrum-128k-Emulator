@@ -199,6 +199,11 @@ namespace Spectrum128kEmulator
                 throw new InvalidOperationException("48K SZX snapshot contains a non-zero 7FFD paging value.");
             if (data[offset + 2] != 0)
                 throw new NotSupportedException("SZX snapshot requires +2A/+3 or clone paging through port 1FFD/EFF7.");
+            for (int reservedOffset = 4; reservedOffset < 8; reservedOffset++)
+            {
+                if (data[offset + reservedOffset] != 0)
+                    throw new InvalidOperationException("SZX SPCR block contains non-zero reserved data.");
+            }
 
             return new SpectrumState(data[offset], data[offset + 1], data[offset + 3]);
         }
@@ -325,9 +330,6 @@ namespace Spectrum128kEmulator
             if (snapshot.Ay != null)
                 machine.RestoreSnapshotAyState(snapshot.Ay.SelectedRegister, snapshot.Ay.Registers);
 
-            int frameTStates = snapshot.Model == SpectrumMachineModel.Spectrum48K
-                ? Spectrum128Machine.FrameTStates48
-                : Spectrum128Machine.FrameTStates128;
             machine.SetSnapshotResumeFramePhase((int)snapshot.Cpu.FrameCycles);
             machine.ClearLogs();
             machine.RestoreSnapshotInterruptPulse(snapshot.Cpu.HoldInterruptCycles);

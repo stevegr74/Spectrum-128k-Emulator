@@ -169,6 +169,10 @@ CPU execution state, RAM, frame phase, ULA state, 128K paging, and AY state.
 Both compressed and uncompressed RAM pages are accepted. The complete file is
 validated before the running machine is replaced.
 
+The CPU core does not currently model the undocumented Z80 `WZ/MEMPTR` latch,
+so that SZX field is not restored. Documented registers and the supported
+execution state are restored.
+
 SZX can also describe hardware that this emulator does not provide. Snapshots
 requiring another Spectrum model, alternate timing, Issue 2 behavior, an
 external 48K AY interface, or a known unsupported peripheral are rejected with
@@ -473,6 +477,7 @@ Press `F5` once. If loading fails immediately, capture the exact error rather th
 # Appendix A - Current Limitations
 
 - SZX support currently targets exact 48K and original 128K machine state; peripheral-bearing snapshots and other Spectrum models are not yet supported.
+- The undocumented Z80 `WZ/MEMPTR` latch stored by SZX is not yet modeled by the CPU core.
 - An on-screen 48K/128K keyboard is planned but not implemented.
 - Kempston Mouse and AMX Mouse are planned but not implemented.
 - Broader protected/custom TZX compatibility remains ongoing.
