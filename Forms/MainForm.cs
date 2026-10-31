@@ -224,7 +224,7 @@ namespace Spectrum128kEmulator
 
             displayContextMenu.Items.Add(new ToolStripSeparator());
             displayContextMenu.Items.Add("F9 - Load .sna Snapshot", null, (_, _) => LoadSnaSnapshotFromDialog());
-            displayContextMenu.Items.Add("F10 - Load .z80 Snapshot / Play .rzx Recording", null, (_, _) => LoadSnapshotOrRecordingFromDialog());
+            displayContextMenu.Items.Add("F10 - Load .z80/.szx Snapshot / Play .rzx", null, (_, _) => LoadSnapshotOrRecordingFromDialog());
             displayContextMenu.Items.Add("F11 - Mount .tap or .tzx Tape Image", null, (_, _) => MountTapFromDialog());
             replaceTapeMenuItem.Click += (_, _) => ReplaceMountedTapeFromDialog();
             displayContextMenu.Items.Add(replaceTapeMenuItem);

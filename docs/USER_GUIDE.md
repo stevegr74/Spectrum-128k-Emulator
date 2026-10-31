@@ -76,7 +76,7 @@ Press `F1` to open the quick-reference window. Emulation pauses while it is open
 | `F7` | Save the current machine to the temporary Quick State slot |
 | `F8` | Restore the temporary Quick State |
 | `F9` | Load a `.sna` snapshot |
-| `F10` | Load a `.z80` snapshot or play an `.rzx` recording |
+| `F10` | Load a `.z80` or `.szx` snapshot, or play an `.rzx` recording |
 | `F11` | Mount a `.tap` or `.tzx` tape image |
 | `Shift+F11` | Replace the mounted tape while preserving the running machine |
 | `F12` | Write a machine diagnostic dump |
@@ -159,6 +159,24 @@ TR-DOS snapshots are rejected because the emulator does not provide a TR-DOS ROM
 Press `F10` and choose a `.z80` file.
 
 The emulator supports Z80 v1, v2, and v3 snapshots, including applicable 128K paging and RAM-bank state.
+
+## SZX Snapshots
+
+Press `F10` and choose an `.szx` file.
+
+SZX 1.x snapshots for the exact 48K and original 128K models restore supported
+CPU execution state, RAM, frame phase, ULA state, 128K paging, and AY state.
+Both compressed and uncompressed RAM pages are accepted. The complete file is
+validated before the running machine is replaced.
+
+The CPU core does not currently model the undocumented Z80 `WZ/MEMPTR` latch,
+so that SZX field is not restored. Documented registers and the supported
+execution state are restored.
+
+SZX can also describe hardware that this emulator does not provide. Snapshots
+requiring another Spectrum model, alternate timing, Issue 2 behavior, an
+external 48K AY interface, or a known unsupported peripheral are rejected with
+an explanatory message rather than loaded inaccurately.
 
 ## RZX Recordings
 
@@ -448,7 +466,7 @@ Press `F5` once. If loading fails immediately, capture the exact error rather th
 
 - Confirm its extension matches the selected loader.
 - Non-standard/truncated SNA files and unsupported TR-DOS state are rejected rather than guessed.
-- SZX is not yet supported.
+- SZX files for unsupported Spectrum models, timing variants, or peripheral hardware are rejected rather than approximated.
 
 ## Pokes Are Not Automatically Matched
 
@@ -458,7 +476,8 @@ Press `F5` once. If loading fails immediately, capture the exact error rather th
 
 # Appendix A - Current Limitations
 
-- SZX snapshots are planned but not implemented.
+- SZX support currently targets exact 48K and original 128K machine state; peripheral-bearing snapshots and other Spectrum models are not yet supported.
+- The undocumented Z80 `WZ/MEMPTR` latch stored by SZX is not yet modeled by the CPU core.
 - An on-screen 48K/128K keyboard is planned but not implemented.
 - Kempston Mouse and AMX Mouse are planned but not implemented.
 - Broader protected/custom TZX compatibility remains ongoing.

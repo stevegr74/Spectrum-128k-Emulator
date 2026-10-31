@@ -23,7 +23,7 @@ namespace Spectrum128kEmulator
             new("Loading and diagnostics",
             [
                 ("F9", "Load a 48K or 128K .sna snapshot"),
-                ("F10", "Load a .z80 snapshot or play an .rzx recording"),
+                ("F10", "Load a .z80 or .szx snapshot, or play an .rzx recording"),
                 ("F11", "Mount a .tap or .tzx tape image"),
                 ("Shift+F11", "Replace the mounted tape while preserving the running machine for multi-side releases"),
                 ("F12", "Write a machine diagnostic dump")

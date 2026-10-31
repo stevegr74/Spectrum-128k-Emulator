@@ -30,6 +30,7 @@ namespace Spectrum128kEmulator.Z80
             internal bool IFF2;
             internal int InterruptMode;
             internal int EiDelay;
+            internal bool SuppressInterruptsForNextInstruction;
             internal byte QFlags;
             internal ulong LastInterruptProgressTStates;
         }
@@ -64,6 +65,7 @@ namespace Spectrum128kEmulator.Z80
                 IFF2 = IFF2,
                 InterruptMode = interruptMode,
                 EiDelay = eiDelay,
+                SuppressInterruptsForNextInstruction = suppressInterruptsForNextInstruction,
                 QFlags = qFlags,
                 LastInterruptProgressTStates = LastInterruptProgressTStates
             };
@@ -99,6 +101,7 @@ namespace Spectrum128kEmulator.Z80
             IFF2 = state.IFF2;
             interruptMode = state.InterruptMode;
             eiDelay = state.EiDelay;
+            suppressInterruptsForNextInstruction = state.SuppressInterruptsForNextInstruction;
             qFlags = state.QFlags;
             flagsWrittenThisInstruction = false;
             LastInterruptProgressTStates = state.LastInterruptProgressTStates;
