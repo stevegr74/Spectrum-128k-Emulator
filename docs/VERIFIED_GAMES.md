@@ -20,7 +20,7 @@ that every level, control path, or hardware edge case has been tested.
 | 🟢 | Captain America | `.tzx` | Protected loader completes; game runs |
 | 🟢 | Cauldron (original and Silverbird/Cyberlode 1.1 releases) | `.tzx` | Both releases reach their complete title/control screens; standard-speed custom flags below `0x80` retain the required long pilot tone |
 | 🟢 | Cauldron II (Erbe, original, and Silverbird/Cyberlode releases) | `.tzx` | All three releases reach the control-selection menu and remain stable; malformed accelerated expressions in the Cyberlode loader fall back before execution |
-| 🟢 | Chase HQ (Portuguese, side 1) | `.tzx` | Its noncanonical protected BASIC layout starts through the native ROM in both machine modes. In 48K mode the stop/key prompt, control selection, confirmation, and Stage 1 start screen all work, with transport stopped at the retained Stage 2 boundary; 128K reaches the complete title screen |
+| 🟢 | Chase HQ (Portuguese, sides 1 and 2) | `.tzx` | Its noncanonical protected BASIC layout starts through the native ROM in both machine modes. The 48K multiloader reaches active Stage 1 gameplay and loads Stage 2 after a manual tape resume. For the complete 128K load, manually resume side 1 at its explicit stage markers, replace it with side 2 after side 1 ends, and let the two leading 16K bank records load; transport then stops automatically and the stable title/options screen is reached |
 | 🟢 | Cliff Hanger | `.tzx` | Loading reaches the control-selection menu and remains stable |
 | 🟢 | Cobra (Hit Squad and Ocean original releases) | `.tzx` | Both releases complete loading and reach the stable opening credit sequence |
 | 🟢 | Donkey Kong (Erbe) | `.tzx` | Custom loader completes without corrupting the loading screen; game runs |
@@ -132,17 +132,6 @@ that every level, control path, or hardware edge case has been tested.
 | Status | Title / file | Format | Verified checkpoint and notes |
 | :---: | --- | --- | --- |
 | 🟢 | Auf Wiedersehen Monty | `aufmonty.rzx` | Replay loads and runs through the RZX input path |
-
-## Tested, Not Yet Verified
-
-These files were exercised during the full-folder audit but did not reach a
-checkpoint strong enough for the verified tables. They are recorded here so the
-same failures and multipart limitations are not rediscovered. No emulator fixes
-were made as part of this audit.
-
-| Status | File / release | Result |
-| :---: | --- | --- |
-| 🟠 | Chase HQ Portuguese side 2 `.tzx` | Side 2 begins with raw continuation data and is not independently bootable. Side 1 contains Stage 1 plus five later stop-delimited stage records, so the side swap is only reached after six stages of gameplay; the first 48K stage handoff is verified above, but that distant cross-side continuation remains unproven |
 
 ## Recording New Results
 
