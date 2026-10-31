@@ -175,6 +175,16 @@ All styled buttons use `EmulatorUiStyle.StyleButton`. Do not locally recreate th
 - Primary execution state is obvious without turning every command into an accent button.
 - Frozen captures remain clearly labelled.
 
+### 5.7 On-screen overlays
+
+- Draw emulator overlays into the presented image so they remain attached to the Spectrum presentation; use explicit per-mode metrics for compact host diagnostics rather than enlarging them in direct proportion to the emulated pixels.
+- Persistent diagnostics use compact, right-aligned mint technical text without a surrounding panel; a subtle dark text shadow may preserve clarity over changing screen content.
+- Temporary action feedback, such as tape transport, may use a translucent near-black surface and matching outline where the stronger separation is useful.
+- Present diagnostic values in Consolas with one labelled value per line.
+- Anchor persistent status at the top-right and transport feedback at the top-left.
+- Move or stack overlays when their bounds would collide; never allow status, tape, or Quick State feedback to obscure each other.
+- Keep overlays optional or temporary so the Spectrum display remains the primary content.
+
 ---
 
 ## 6. State and Feedback

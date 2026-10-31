@@ -33,7 +33,6 @@ namespace Spectrum128kEmulator
                         machine.ClearDebugHistory();
                 });
                 SetLoadedMediaDisplayName(dialog.FileName);
-                fpsLabel.Text = $"Loaded: {Path.GetFileName(dialog.FileName)}";
                 SuppressSpectrumHostInputForMilliseconds(PostLoadInputSuppressionMilliseconds);
                 PresentCurrentMachineFrame(frameClock.ElapsedTicks, force: true);
                 screenBox.Focus();
@@ -66,31 +65,26 @@ namespace Spectrum128kEmulator
             try
             {
                 string extension = Path.GetExtension(dialog.FileName);
-                string displayName = Path.GetFileName(dialog.FileName);
                 ExecuteWithEmulationPaused(() =>
                 {
                     ClearHostAndSpectrumInputState();
                     if (extension.Equals(".tzx", StringComparison.OrdinalIgnoreCase))
                     {
-                        Tap.TapeExecutionResult result;
                         lock (machineLock)
                         {
                             Spectrum128Machine newMachine = CreateConfiguredMachine();
-                            result = Tap.TzxLoader.LoadWithPolicy(newMachine, dialog.FileName);
+                            Tap.TzxLoader.LoadWithPolicy(newMachine, dialog.FileName);
                             machine = newMachine;
                         }
-                        fpsLabel.Text = DescribeTapeExecution("TZX", displayName, result);
                     }
                     else
                     {
-                        Tap.TapeExecutionResult result;
                         lock (machineLock)
                         {
                             Spectrum128Machine newMachine = CreateConfiguredMachine();
-                            result = Tap.TapLoader.LoadWithPolicy(newMachine, dialog.FileName);
+                            Tap.TapLoader.LoadWithPolicy(newMachine, dialog.FileName);
                             machine = newMachine;
                         }
-                        fpsLabel.Text = DescribeTapeExecution("TAP", displayName, result);
                     }
 
                     ResetFrameScheduler();
@@ -137,14 +131,10 @@ namespace Spectrum128kEmulator
 
             try
             {
-                string extension = Path.GetExtension(dialog.FileName);
-                string displayName = Path.GetFileName(dialog.FileName);
-                Tap.TapMountResult result = default!;
                 ExecuteWithEmulationPaused(() =>
                 {
                     ClearHostAndSpectrumInputState();
-                    result = ReplaceMountedTape(dialog.FileName);
-                    fpsLabel.Text = $"{extension.TrimStart('.').ToUpperInvariant()} side mounted: {displayName} ({result.TotalBlockCount} blocks)";
+                    ReplaceMountedTape(dialog.FileName);
                 });
 
                 SetLoadedMediaDisplayName(dialog.FileName);
@@ -178,19 +168,6 @@ namespace Spectrum128kEmulator
                         ? Tap.TapLoader.Mount(machine, path)
                         : throw new InvalidOperationException("Tape replacement requires a .tap or .tzx image.");
             }
-        }
-
-        private static string DescribeTapeExecution(string format, string displayName, Tap.TapeExecutionResult result)
-        {
-            return result.Strategy switch
-            {
-                Tap.TapeLoadStrategy.FullFakeLoad =>
-                    $"{format} loaded: {displayName} ({result.ConsumedBlockCount}/{result.TotalBlockCount} blocks)",
-                Tap.TapeLoadStrategy.BootstrapHybrid =>
-                    $"{format} bootstrapped: {displayName} ({result.ConsumedBlockCount}/{result.TotalBlockCount} blocks)",
-                _ =>
-                    $"{format} mounted: {displayName} ({result.TotalBlockCount} blocks)"
-            };
         }
 
         private void LoadSnapshotOrRecordingFromDialog()
@@ -245,7 +222,6 @@ namespace Spectrum128kEmulator
                     });
                 }
                 SetLoadedMediaDisplayName(dialog.FileName);
-                fpsLabel.Text = $"Loaded: {Path.GetFileName(dialog.FileName)}";
                 PresentCurrentMachineFrame(frameClock.ElapsedTicks, force: true);
                 screenBox.Focus();
             }

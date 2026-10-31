@@ -154,7 +154,7 @@ Spectrum128kEmulator/
 |-- Forms/                                 main window partials, shared UI styling, Poke Manager, and shortcut-reference dialog
 |-- Input/                                 Windows keyboard and USB-controller adapters
 |-- Pokes/                                 editable validated game/poke library and format guide
-|-- Video/                                 display modes, pixel-art scaling, and presentation adapter
+|-- Video/                                 display modes, pixel-art scaling, presentation, and overlays
 |-- Program.cs                             Windows application entry point
 |-- Spectrum128kEmulator.csproj            net10.0 Windows frontend project
 |-- docs/                                  user, design, compatibility, and engineering documentation
@@ -212,7 +212,7 @@ that do not consume a function key.
 | Key | Action |
 | --- | --- |
 | `F1` | Open the control reference; emulation pauses while it is open |
-| `F2` | Toggle bottom-left FPS, frame, model, tape, and display diagnostics |
+| `F2` | Toggle compact mint top-right FPS, model, tape, and display diagnostics |
 | `F3` | Reset and switch between explicit 128K and 48K modes |
 | `F4` | Cycle fixed display size |
 | `F5` | Stop or resume the mounted tape without ejecting it |
