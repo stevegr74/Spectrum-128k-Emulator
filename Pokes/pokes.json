@@ -351,6 +351,17 @@
       ]
     },
     {
+      "id": "manic-miner", "title": "Manic Miner", "aliases": ["Manic Miner"], "models": ["48K", "128K"],
+      "sha256": ["3C9BBF17C2A9F4C0AA10E2799D127C05D1B24DE639A14ADEDC935C5667DFA724"],
+      "pokes": [
+        { "id": "infinite-lives", "name": "Infinite lives", "description": "Prevents lives from being consumed.", "writes": [{ "space": "mapped", "address": "35136", "value": "0" }] },
+        { "id": "infinite-oxygen", "name": "Infinite oxygen", "description": "Patches all three oxygen-depletion paths.", "writes": [
+          { "space": "mapped", "address": "34798", "value": "0" }, { "space": "mapped", "address": "34799", "value": "0" }, { "space": "mapped", "address": "34800", "value": "0" }
+        ] },
+        { "id": "no-horizontal-nasties", "name": "No horizontal nasties", "description": "Disables horizontal enemy movement.", "writes": [{ "space": "mapped", "address": "36160", "value": "0" }] }
+      ]
+    },
+    {
       "id": "roller-coaster", "title": "Roller Coaster", "aliases": ["Roller Coaster"], "models": ["48K", "128K"],
       "sha256": ["385E4773BF8551E1C836CCF4701F6162AF39DBC23C2A9F48268A18552E4E44FD"],
       "pokes": [{ "id": "infinite-lives", "name": "Infinite lives", "description": "Prevents life loss.", "writes": [{ "space": "mapped", "address": "36595", "value": "182" }] }]

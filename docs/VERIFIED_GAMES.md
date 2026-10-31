@@ -40,6 +40,7 @@ that every level, control path, or hardware edge case has been tested.
 | 🟢 | Kung-Fu Master (Americana and US Gold/Ocean original) | `.tzx` | Both releases reach their complete illustrated title screens; the original accepts input into its start/demonstration menu after its padded two-stage BASIC prefix and protected loader complete |
 | 🟢 | Kwah! (Melbourne House original) | `.tzx` | In 48K mode, the ROM-driven continuation completes, ends the tape cleanly, accepts SPACE at the start prompt, and enters the game |
 | 🟢 | Magician | `.tap` | Loading reaches the illustrated adventure opening and remains stable |
+| 🟢 | Manic Miner | `.tzx` | Standard header/data loading completes in 48K mode and reaches the stable animated game/attract screen |
 | 🟢 | Pac-Land | `.tzx` | In 48K mode, ROM-driven loading reaches the game/high-score screen and remains stable |
 | 🟢 | Paperboy (Elite original and Encore) | `.tzx` | Both releases reach the high-score/start screen and remain stable; Encore completes protected playback and ends the tape cleanly from both 48K and 128K startup selections |
 | 🟢 | Paperboy 2 (Mindscape) | `.tzx` | Loading reaches the character-selection menu and remains stable |
@@ -99,6 +100,7 @@ that every level, control path, or hardware edge case has been tested.
 | 🟢 | Ikari Warriors | `.sna`, `.z80` | Both snapshots reach the control/title screen and remain stable |
 | 🟢 | Jet Set Willy | `JETSETW1.Z80`, `jsw013 (2016 edition, bugfixed).sna`, `jswx.sna` | All three variants reach active title/game screens and remain stable |
 | 🟢 | Jet Set Willy April | `JSWAPRIL.Z80` | Snapshot loads and executes |
+| 🟢 | Kokotoni Wilf | `kokotoni_wilf.sna` | Snapshot reaches the complete Elite/Kokotoni Wilf title screen and remains stable for 2,000 frames |
 | 🟢 | WEC Le Mans | `lemans.sna` | Snapshot reaches the control-selection menu and remains stable |
 | 🟢 | Mayhem | `MAYHEM.SNA` | Snapshot reaches the title screen and remains stable |
 | 🟢 | Oracle's Cave | `oracle.sna` | Snapshot reaches quest selection and remains stable |

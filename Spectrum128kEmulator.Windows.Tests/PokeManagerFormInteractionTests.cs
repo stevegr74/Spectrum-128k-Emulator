@@ -9,6 +9,7 @@ namespace Spectrum128kEmulator.Tests
     {
         private const string Hash = "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA";
         private const string ExolonHash = "8B5B08F2C8D2F46172D53E0C996F1937A5027D0BFE30888C3A1429F71F1245C3";
+        private const string ManicMinerHash = "3C9BBF17C2A9F4C0AA10E2799D127C05D1B24DE639A14ADEDC935C5667DFA724";
         private const string VerifiedRobocopHash = "C5DB22E39DAE8AF9F41BB18FCF81982BF0D3C893685DA22B223B7BAD294F3A16";
 
         [Fact]
@@ -42,8 +43,8 @@ namespace Spectrum128kEmulator.Tests
             string path = Path.Combine(AppContext.BaseDirectory, "Pokes", "pokes.json");
             PokeLibrary library = PokeLibrary.Load(path);
 
-            Assert.Equal(38, library.Games.Count);
-            Assert.Equal(140, library.Games.Sum(game => game.Pokes.Count));
+            Assert.Equal(39, library.Games.Count);
+            Assert.Equal(143, library.Games.Sum(game => game.Pokes.Count));
             Assert.All(library.Games, game => Assert.NotEmpty(game.Sha256));
             Assert.Equal(
                 library.Games.SelectMany(game => game.Sha256).Count(),
@@ -56,6 +57,18 @@ namespace Spectrum128kEmulator.Tests
             Assert.Contains(
                 library.FindMatches(exolonMedia, SpectrumMachineModel.Spectrum128K),
                 match => match.Kind == PokeMatchKind.ExactChecksum && match.Game.Id == "exolon");
+
+            PokeGameMatch manicMiner = Assert.Single(
+                library.FindMatches(
+                    new PokeMediaIdentity("Manic Miner.tzx", ManicMinerHash),
+                    SpectrumMachineModel.Spectrum48K),
+                match => match.Kind == PokeMatchKind.ExactChecksum);
+            Assert.Equal("manic-miner", manicMiner.Game.Id);
+            Assert.Equal(3, manicMiner.Game.Pokes.Count);
+            PokeDefinition oxygen = Assert.Single(manicMiner.Game.Pokes, poke => poke.Id == "infinite-oxygen");
+            Assert.Equal(
+                new[] { PokeWrite.Mapped(34798, 0), PokeWrite.Mapped(34799, 0), PokeWrite.Mapped(34800, 0) },
+                oxygen.Writes);
         }
 
         [Fact]

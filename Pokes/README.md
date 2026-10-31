@@ -25,7 +25,7 @@ Numbers may be decimal or hexadecimal using `0x`, `$`, or a trailing `H`.
 Every poke must contain at least one write, and a poke cannot write the same
 target twice.
 
-The shipped catalogue contains 38 exact-image game definitions and 140 named
+The shipped catalogue contains 39 exact-image game definitions and 143 named
 pokes. The Ocean 128K RoboCop infinite-lives entry has been verified during
 gameplay. The other entries are published
 [World of Spectrum Hackers Anonymous](https://worldofspectrum.org/hackersanon/)

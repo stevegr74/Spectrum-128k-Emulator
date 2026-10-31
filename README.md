@@ -99,8 +99,8 @@ hexadecimal memory inspection, and a compact paging/CPU-state workspace.
 Milestone 20 is complete, with explicit
 tape-state ownership, structured load and transport diagnostics, stronger
 transition tests, and behavior-preserving decomposition. Milestone 21's
-bank-aware Poke Manager is complete and accepted. Its initial catalogue contains
-38 exact-image definitions and 140 named pokes, including the user-verified
+bank-aware Poke Manager is complete and accepted. Its catalogue contains
+39 exact-image definitions and 143 named pokes, including the user-verified
 infinite-lives poke for the Ocean 128K RoboCop snapshot. Milestone 22 is
 complete, with two independently configured USB controllers, selectable
 Kempston/Cursor/Sinclair interfaces, simultaneous Interface II input, and a
@@ -245,8 +245,8 @@ The right-click menu also opens the Poke Manager. Emulation remains paused while
 it is open. Its Library tab reads the user-maintainable `Pokes/pokes.json` file;
 exact SHA-256 matches are authoritative, while filename aliases are visibly
 labelled as suggestions only. Unmatched media stays on `Choose a game...` rather
-than selecting an unrelated title. The catalogue contains 38 exact-image game
-definitions and 140 named pokes; RoboCop is gameplay-verified, while the other
+than selecting an unrelated title. The catalogue contains 39 exact-image game
+definitions and 143 named pokes; RoboCop is gameplay-verified, while the other
 source-backed entries have checksum and target-layout validation pending
 progressive gameplay confirmation. The One-off tab supports mapped RAM or an
 explicit physical RAM bank, previews current and replacement bytes, and can
@@ -439,7 +439,7 @@ compatibility; completed milestones remain regression baselines.
 | 18 | Complete | Instruction-boundary Run/Pause, Step Into/Over/Out, run to cursor, CPU context, and persistent breakpoints |
 | 19 | Complete | Bank-aware inspection, labels, conservative control/data cross-references, persistent code/data marking, and hexadecimal memory navigation |
 | 20 | Complete | Tape state ownership, transition coverage, structured diagnostics, and behavior-preserving subsystem decomposition |
-| 21 | Complete | Accepted bank-aware Poke Manager with one-off writes, guarded restore, and an initial 38-game checksum-scoped catalogue |
+| 21 | Complete | Accepted bank-aware Poke Manager with one-off writes, guarded restore, and a 39-game checksum-scoped catalogue |
 | 22 | Complete | Two-channel USB joystick input with selectable Kempston, Cursor, and Interface II mappings through a Windows-only host adapter and platform-neutral core state |
 | 23 | Complete | Bounded SZX loading for supported 48K and original 128K machine state, with explicit rejection of unsupported models and peripherals |
 | 24 | Planned | Pop-up on-screen keyboard with selectable authentic 48K and 128K layouts |
@@ -528,7 +528,7 @@ compatibility; completed milestones remain regression baselines.
 - Applies a selected set atomically while the emulation loop is paused and keeps a session-local restoration stack; restoration is refused if the program has since changed an applied byte
 - Keeps the first version to deliberate one-time writes; frozen values, conditional trainers, and cheat discovery remain deferred until their continuous-mutation semantics are designed and tested
 - Added schema, duplicate-entry, checksum/alias matching, bank-selection, model-safety, application, restoration, empty-library, layout, and frontend workflow tests
-- Added an initial catalogue of 38 exact-image game definitions and 140 named pokes from published reference data, rejecting candidates whose local snapshots did not match the expected memory layout
+- Expanded the catalogue to 39 exact-image game definitions and 143 named pokes, rejecting candidates whose local media did not match the expected memory layout
 - Kept the user-verified RoboCop infinite-lives entry distinct from source-backed entries awaiting progressive gameplay confirmation
 - Completed visual QA at the active desktop DPI, exact-match acceptance, and full regression coverage; expanding the version-verified catalogue remains ongoing data work rather than a blocker for the feature
 
